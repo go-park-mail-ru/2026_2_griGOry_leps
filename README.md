@@ -6,7 +6,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 - [Доска задач (YouGile)](https://ru.yougile.com/team/82999ec3673c/GOSH4LEEPS)
 - [Репозиторий фронтенда](https://github.com/frontend-park-mail-ru/2026_2_griGOry_leps)
-- [Макеты в Figma]()
+- [Макеты в Figma](https://www.figma.com/design/azXAN6gTvGAovlElu3VP3b/GoGET-%E2%80%94-Team-Workspace)
 - [Deploy]()
 
 ## Участники команды
@@ -26,7 +26,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 ## Технологический стек
 
 - **Язык:** Go
-- **Роутинг:** [chi](https://github.com/go-chi/chi)
+- **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
 - **База данных:** PostgreSQL
 - **Авторизация:** cookie-сессии
 - **Миграции:** [goose](https://github.com/pressly/goose)
@@ -86,7 +86,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 ### Системные требования
 
-- [Go](https://go.dev/dl/) 1.23+
+- [Go](https://go.dev/dl/) 1.26+
 - [Docker](https://www.docker.com/) и Docker Compose
 - [goose](https://github.com/pressly/goose) для миграций: `go install github.com/pressly/goose/v3/cmd/goose@latest`
 
