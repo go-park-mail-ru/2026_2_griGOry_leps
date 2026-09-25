@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
@@ -21,8 +22,16 @@ func NewAuthHandler(auth *usecase.AuthUsecase, cookieSecure bool) *AuthHandler {
 	return &AuthHandler{auth: auth, cookieSecure: cookieSecure}
 }
 
-type authRequest struct {
-	Email    string `json:"email"`
+type registerRequest struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"first_name"`
+	Nickname  string `json:"nickname"`
+	Phone     string `json:"phone"`
+}
+
+type loginRequest struct {
+	Login    string `json:"login"`
 	Password string `json:"password"`
 }
 
@@ -36,21 +45,35 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
+func userResponse(user domain.User) map[string]any {
+	return map[string]any{
+		"id":         user.ID,
+		"email":      user.Email,
+		"first_name": user.FirstName,
+		"nickname":   user.Nickname,
+		"phone":      user.Phone,
+	}
+}
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
-	var req authRequest
+	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	user, err := h.auth.Register(r.Context(), req.Email, req.Password)
+	user, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrInvalidEmail), errors.Is(err, usecase.ErrWeakPassword):
+		case errors.Is(err, usecase.ErrInvalidEmail),
+			errors.Is(err, usecase.ErrMissingFirstName),
+			errors.Is(err, usecase.ErrMissingNickname),
+			errors.Is(err, usecase.ErrInvalidPhone),
+			errors.Is(err, usecase.ErrWeakPassword):
 			writeError(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, usecase.ErrEmailTaken):
+		case errors.Is(err, usecase.ErrEmailTaken), errors.Is(err, usecase.ErrPhoneTaken):
 			writeError(w, http.StatusConflict, err.Error())
 		default:
 			log.Printf("register error: %v", err)
@@ -59,19 +82,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"id": user.ID, "email": user.Email})
+	writeJSON(w, http.StatusCreated, userResponse(user))
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
-	var req authRequest
+	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	session, err := h.auth.Login(r.Context(), req.Email, req.Password)
+	session, err := h.auth.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidLogin):
@@ -137,5 +160,5 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"id": user.ID, "email": user.Email})
+	writeJSON(w, http.StatusOK, userResponse(user))
 }

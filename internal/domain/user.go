@@ -8,6 +8,7 @@ type User struct {
 	FirstName    string
 	LastName     string
 	Email        string
+	Phone        string
 	PasswordHash string
 	CreatedAt    time.Time
 }

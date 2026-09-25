@@ -18,11 +18,15 @@ import (
 )
 
 var (
-	ErrInvalidEmail   = errors.New("invalid email")
-	ErrWeakPassword   = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
-	ErrEmailTaken     = errors.New("email already registered")
-	ErrInvalidLogin   = errors.New("invalid email or password")
-	ErrSessionExpired = errors.New("session expired")
+	ErrInvalidEmail     = errors.New("invalid email")
+	ErrMissingFirstName = errors.New("first name is required")
+	ErrMissingNickname  = errors.New("nickname is required")
+	ErrInvalidPhone     = errors.New("invalid phone number")
+	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
+	ErrEmailTaken       = errors.New("email already registered")
+	ErrPhoneTaken       = errors.New("phone already registered")
+	ErrInvalidLogin     = errors.New("invalid login or password")
+	ErrSessionExpired   = errors.New("session expired")
 )
 
 const sessionTTL = 7 * 24 * time.Hour
@@ -36,11 +40,23 @@ func NewAuthUsecase(users *repository.UserRepository, sessions *repository.Sessi
 	return &AuthUsecase{users: users, sessions: sessions}
 }
 
-func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (domain.User, error) {
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, error) {
 	email = normalizeEmail(email)
+	firstName = strings.TrimSpace(firstName)
+	nickname = strings.TrimSpace(nickname)
+	phone = normalizePhone(phone)
 
 	if _, err := mail.ParseAddress(email); err != nil {
 		return domain.User{}, ErrInvalidEmail
+	}
+	if firstName == "" {
+		return domain.User{}, ErrMissingFirstName
+	}
+	if nickname == "" {
+		return domain.User{}, ErrMissingNickname
+	}
+	if !isValidPhone(phone) {
+		return domain.User{}, ErrInvalidPhone
 	}
 	if !isStrongPassword(password) {
 		return domain.User{}, ErrWeakPassword
@@ -51,21 +67,33 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (do
 		return domain.User{}, err
 	}
 
-	user, err := uc.users.Create(ctx, email, string(hash))
+	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
-		if errors.Is(err, repository.ErrUserExists) {
+		switch {
+		case errors.Is(err, repository.ErrUserExists):
 			return domain.User{}, ErrEmailTaken
+		case errors.Is(err, repository.ErrPhoneExists):
+			return domain.User{}, ErrPhoneTaken
+		default:
+			return domain.User{}, err
 		}
-		return domain.User{}, err
 	}
 
 	return user, nil
 }
 
-func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (domain.Session, error) {
-	email = normalizeEmail(email)
+func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.Session, error) {
+	login = strings.TrimSpace(login)
 
-	user, err := uc.users.GetByEmail(ctx, email)
+	var user domain.User
+	var err error
+
+	if strings.Contains(login, "@") {
+		user, err = uc.users.GetByEmail(ctx, normalizeEmail(login))
+	} else {
+		user, err = uc.users.GetByPhone(ctx, normalizePhone(login))
+	}
+
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
 			return domain.Session{}, ErrInvalidLogin
@@ -137,6 +165,36 @@ func isStrongPassword(password string) bool {
 
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizePhone(phone string) string {
+	hasPlus := strings.HasPrefix(strings.TrimSpace(phone), "+")
+
+	var digits strings.Builder
+	for _, r := range phone {
+		if unicode.IsDigit(r) {
+			digits.WriteRune(r)
+		}
+	}
+	d := digits.String()
+
+	if len(d) == 11 && (d[0] == '8' || d[0] == '7') {
+		return "+7" + d[1:]
+	}
+	if hasPlus {
+		return "+" + d
+	}
+	return d
+}
+
+func isValidPhone(phone string) bool {
+	digits := 0
+	for _, r := range phone {
+		if unicode.IsDigit(r) {
+			digits++
+		}
+	}
+	return digits >= 10
 }
 
 func generateToken() (string, error) {
