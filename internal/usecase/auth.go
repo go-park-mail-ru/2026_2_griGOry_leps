@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/mail"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -16,7 +19,7 @@ import (
 
 var (
 	ErrInvalidEmail   = errors.New("invalid email")
-	ErrWeakPassword   = errors.New("password must be at least 8 characters")
+	ErrWeakPassword   = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
 	ErrEmailTaken     = errors.New("email already registered")
 	ErrInvalidLogin   = errors.New("invalid email or password")
 	ErrSessionExpired = errors.New("session expired")
@@ -34,10 +37,12 @@ func NewAuthUsecase(users *repository.UserRepository, sessions *repository.Sessi
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (domain.User, error) {
+	email = normalizeEmail(email)
+
 	if _, err := mail.ParseAddress(email); err != nil {
 		return domain.User{}, ErrInvalidEmail
 	}
-	if len(password) < 8 {
+	if !isStrongPassword(password) {
 		return domain.User{}, ErrWeakPassword
 	}
 
@@ -58,9 +63,14 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (do
 }
 
 func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (domain.Session, error) {
+	email = normalizeEmail(email)
+
 	user, err := uc.users.GetByEmail(ctx, email)
 	if err != nil {
-		return domain.Session{}, ErrInvalidLogin
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return domain.Session{}, ErrInvalidLogin
+		}
+		return domain.Session{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
@@ -92,7 +102,10 @@ func (uc *AuthUsecase) Logout(ctx context.Context, sessionID string) error {
 func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, error) {
 	session, err := uc.sessions.GetByID(ctx, sessionID)
 	if err != nil {
-		return domain.User{}, ErrSessionExpired
+		if errors.Is(err, repository.ErrSessionNotFound) {
+			return domain.User{}, ErrSessionExpired
+		}
+		return domain.User{}, err
 	}
 
 	if time.Now().After(session.ExpiresAt) {
@@ -100,6 +113,30 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 	}
 
 	return uc.users.GetByID(ctx, session.UserID)
+}
+
+func isStrongPassword(password string) bool {
+	if utf8.RuneCountInString(password) < 8 {
+		return false
+	}
+
+	var hasUpper, hasLower, hasDigit bool
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		}
+	}
+
+	return hasUpper && hasLower && hasDigit
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func generateToken() (string, error) {

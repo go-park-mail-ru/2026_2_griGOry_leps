@@ -10,6 +10,8 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
+const maxRequestBodyBytes = 1 << 20 // 1 MB
+
 type AuthHandler struct {
 	auth         *usecase.AuthUsecase
 	cookieSecure bool
@@ -35,6 +37,8 @@ func writeError(w http.ResponseWriter, status int, message string) {
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req authRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -59,6 +63,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req authRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -67,7 +73,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	session, err := h.auth.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, err.Error())
+		switch {
+		case errors.Is(err, usecase.ErrInvalidLogin):
+			writeError(w, http.StatusUnauthorized, err.Error())
+		default:
+			log.Printf("login error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 
@@ -86,7 +98,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("session_id"); err == nil {
-		h.auth.Logout(r.Context(), cookie.Value)
+		if err := h.auth.Logout(r.Context(), cookie.Value); err != nil {
+			log.Printf("logout error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -111,7 +127,13 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.auth.Me(r.Context(), cookie.Value)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+		switch {
+		case errors.Is(err, usecase.ErrSessionExpired):
+			writeError(w, http.StatusUnauthorized, "not authenticated")
+		default:
+			log.Printf("me error: %v", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 

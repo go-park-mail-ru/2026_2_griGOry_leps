@@ -25,6 +25,9 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 }
 
 func (r *UserRepository) Create(ctx context.Context, email, passwordHash string) (domain.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
 	var user domain.User
 
 	row := r.db.QueryRow(ctx,
@@ -46,6 +49,9 @@ func (r *UserRepository) Create(ctx context.Context, email, passwordHash string)
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
 	var user domain.User
 
 	row := r.db.QueryRow(ctx,
@@ -65,6 +71,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.U
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id int32) (domain.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
 	var user domain.User
 
 	row := r.db.QueryRow(ctx,

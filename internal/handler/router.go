@@ -8,6 +8,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+const requestTimeout = 5 * time.Second
+
 func NewRouter(frontendOrigin string, authHandler *AuthHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware)
@@ -24,7 +26,9 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler) http.Handler {
 	api.HandleFunc("/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/me", authHandler.Me).Methods(http.MethodGet)
 
-	return corsMiddleware(frontendOrigin, r)
+	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
+
+	return corsMiddleware(frontendOrigin, timed)
 }
 
 func corsMiddleware(origin string, next http.Handler) http.Handler {
