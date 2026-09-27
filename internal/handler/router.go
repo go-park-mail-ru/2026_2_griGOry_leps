@@ -18,7 +18,9 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler) http.Handler {
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			log.Printf("write health response: %v", err)
+		}
 	}).Methods(http.MethodGet)
 
 	api.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
