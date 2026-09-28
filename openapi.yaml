@@ -1,0 +1,948 @@
+openapi: 3.0.3
+info:
+  title: GO&GET API
+  version: 1.0.0
+  description: |
+    API маркетплейса GO&GET для страниц: лендинг, авторизация, лента объявлений.
+
+    **Соглашения**
+    - Все пути начинаются с `/api/v1`.
+    - JSON, поля в camelCase, даты в ISO 8601 (UTC).
+    - Цена передаётся строкой с двумя знаками после точки (`"15000.00"`), валюта всегда RUB.
+    - Каждый ответ содержит заголовок `X-Request-ID`; его же значение приходит в `traceId` ошибок.
+
+    **Авторизация**
+    Cookie-сессия: после входа или регистрации сервер выставляет httpOnly cookie
+    `session_id` (7 дней). Браузер отправляет её сам; на фронте запросы делаются
+    с `credentials: 'include'`.
+
+    **Ошибки**
+    Все ошибки приходят в формате RFC 9457 (`application/problem+json`), см. схему `Problem`.
+    Поле `code` — машиночитаемый код ошибки, `errors[]` — ошибки конкретных полей.
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Локальный бэкенд
+  - url: http://127.0.0.1:4010
+    description: Мок-сервер Prism (см. README)
+
+tags:
+  - name: Лендинг
+    description: Главная страница — категории, подборки, шапка, сердечко на карточках
+  - name: Авторизация
+    description: Вход, регистрация, восстановление пароля
+  - name: Лента
+    description: Поиск и список объявлений с фильтрами
+
+paths:
+  # ---------------------------------------------------------------- Лента
+  /ads:
+    get:
+      tags: [Лента]
+      operationId: listAds
+      summary: Список объявлений
+      description: |
+        Лента и результаты поиска. Возвращает только активные объявления (`status = active`).
+        Фильтр по категории включает все её подкатегории.
+        Сессия необязательна: у авторизованного пользователя в карточках заполняется `isFavorite`.
+      security:
+        - {}
+        - sessionCookie: []
+      parameters:
+        - name: q
+          in: query
+          description: Поиск по заголовку и описанию
+          schema: { type: string, maxLength: 100 }
+          example: велосипед
+        - name: categoryId
+          in: query
+          description: Категория или подкатегория
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/City'
+        - name: priceMin
+          in: query
+          description: Цена от, ₽
+          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+          example: '1000'
+        - name: priceMax
+          in: query
+          description: Цена до, ₽. Не может быть меньше `priceMin`.
+          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+          example: '50000'
+        - name: delivery
+          in: query
+          description: Только с доставкой (`true`) или только без неё (`false`)
+          schema: { type: boolean }
+        - name: sort
+          in: query
+          description: |
+            - `newest` — сначала новые (по умолчанию)
+            - `price_asc` — сначала дешёвые
+            - `price_desc` — сначала дорогие
+            - `popular` — по числу просмотров
+          schema:
+            type: string
+            enum: [newest, price_asc, price_desc, popular]
+            default: newest
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница объявлений
+          headers:
+            X-Request-ID: { $ref: '#/components/headers/XRequestID' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: Неверные параметры запроса
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://goget.ru/docs/errors#validation-error
+                title: Ошибка валидации
+                status: 422
+                detail: Некоторые поля заполнены неверно
+                instance: /api/v1/ads
+                code: VALIDATION_ERROR
+                traceId: 9f2c4e1a7b3d5c80
+                errors:
+                  - field: priceMax
+                    code: OUT_OF_RANGE
+                    message: Цена «до» не может быть меньше цены «от»
+                  - field: sort
+                    code: INVALID_VALUE
+                    message: 'Допустимо: newest, price_asc, price_desc, popular'
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Лендинг
+  /ads/popular:
+    get:
+      tags: [Лендинг]
+      operationId: listPopularAds
+      summary: Популярное сейчас
+      description: |
+        Активные объявления с наибольшим числом просмотров за последние 7 дней.
+        Показывается гостям и авторизованным пользователям без истории.
+      security:
+        - {}
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/City'
+        - $ref: '#/components/parameters/ShelfLimit'
+      responses:
+        '200':
+          description: Подборка объявлений
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /ads/recommended:
+    get:
+      tags: [Лендинг]
+      operationId: listRecommendedAds
+      summary: Рекомендуем для вас
+      description: |
+        Объявления из категорий, которые пользователь добавлял в избранное или смотрел
+        за последние 30 дней. Свои объявления не показываются.
+        Пустой `items` — у пользователя ещё нет истории: фронт показывает блок
+        «Пока нет рекомендаций для вас» и подгружает `/ads/popular`.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/City'
+        - $ref: '#/components/parameters/ShelfLimit'
+      responses:
+        '200':
+          description: Подборка объявлений (может быть пустой)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdList' }
+              examples:
+                withItems:
+                  summary: Есть рекомендации
+                  value:
+                    items:
+                      - id: 1024
+                        title: Велосипед горный, состояние отличное
+                        price: '15000.00'
+                        imageUrl: https://cdn.goget.ru/ads/1024/3f9c2e1a.jpg
+                        city: Москва
+                        hasDelivery: false
+                        rating: 4.9
+                        reviewsCount: 12
+                        viewsCount: 286
+                        isFavorite: false
+                        createdAt: '2026-09-28T15:40:00Z'
+                empty:
+                  summary: Нет истории — empty state
+                  value:
+                    items: []
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /categories:
+    get:
+      tags: [Лендинг, Лента]
+      operationId: listCategories
+      summary: Дерево категорий
+      description: |
+        Категории верхнего уровня с подкатегориями. Используется в карусели
+        «Выберите категорию», на странице «Все категории» и в фильтре ленты.
+        `total` — число категорий верхнего уровня («24 категории»).
+      security:
+        - {}
+      responses:
+        '200':
+          description: Категории
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryList' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /cities:
+    get:
+      tags: [Лендинг, Лента]
+      operationId: listCities
+      summary: Города с объявлениями
+      description: Для селектора города в шапке и фильтра ленты. Самые популярные сверху.
+      security:
+        - {}
+      parameters:
+        - name: q
+          in: query
+          description: Начало названия города
+          schema: { type: string, maxLength: 100 }
+          example: Мо
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Города
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CityList' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /favorites/{adId}:
+    parameters:
+      - $ref: '#/components/parameters/AdId'
+    put:
+      tags: [Лендинг, Лента]
+      operationId: addFavorite
+      summary: Добавить в избранное
+      description: Идемпотентно — повторный вызов тоже вернёт 204.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': { description: Добавлено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Лендинг, Лента]
+      operationId: removeFavorite
+      summary: Убрать из избранного
+      description: Идемпотентно — если объявления в избранном нет, тоже 204.
+      security:
+        - sessionCookie: []
+      responses:
+        '204': { description: Удалено }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Авторизация
+  /auth/register:
+    post:
+      tags: [Авторизация]
+      operationId: register
+      summary: Регистрация
+      description: |
+        Создаёт аккаунт и сразу авторизует: выставляет cookie `session_id`.
+        Все ошибки полей возвращаются одним ответом 422, чтобы подсветить форму целиком.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Аккаунт создан, пользователь авторизован
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Email, телефон или никнейм уже заняты
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://goget.ru/docs/errors#user-already-exists
+                title: Пользователь уже существует
+                status: 409
+                detail: Некоторые данные уже используются другим аккаунтом
+                instance: /api/v1/auth/register
+                code: USER_ALREADY_EXISTS
+                traceId: 9f2c4e1a7b3d5c80
+                errors:
+                  - field: email
+                    code: TAKEN
+                    message: Этот email уже зарегистрирован
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422':
+          description: Ошибка валидации
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://goget.ru/docs/errors#validation-error
+                title: Ошибка валидации
+                status: 422
+                detail: Некоторые поля заполнены неверно
+                instance: /api/v1/auth/register
+                code: VALIDATION_ERROR
+                traceId: 9f2c4e1a7b3d5c80
+                errors:
+                  - field: phone
+                    code: INVALID_FORMAT
+                    message: Введите мобильный номер в формате +7 900 000-00-00
+                  - field: password
+                    code: TOO_SHORT
+                    message: Минимум 8 символов
+                  - field: password
+                    code: NO_DIGIT
+                    message: Нужна хотя бы одна цифра
+                  - field: passwordConfirm
+                    code: MISMATCH
+                    message: Пароли не совпадают
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/login:
+    post:
+      tags: [Авторизация]
+      operationId: login
+      summary: Вход по телефону или email
+      description: |
+        Если `login` содержит `@`, он проверяется как email, иначе — как телефон.
+        При неверной паре логин/пароль и при несуществующем пользователе ответ
+        одинаковый (401 `INVALID_CREDENTIALS`), чтобы нельзя было перебором
+        узнать, зарегистрирован ли человек.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+            examples:
+              byPhone:
+                summary: По телефону
+                value: { login: '+7 900 123-45-67', password: 'Secret123' }
+              byEmail:
+                summary: По email
+                value: { login: 'ivan@mail.ru', password: 'Secret123' }
+      responses:
+        '200':
+          description: Успешный вход, выставлена cookie сессии
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://goget.ru/docs/errors#invalid-credentials
+                title: Неверный логин или пароль
+                status: 401
+                detail: Проверьте телефон или email и пароль
+                instance: /api/v1/auth/login
+                code: INVALID_CREDENTIALS
+                traceId: 9f2c4e1a7b3d5c80
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/password/forgot:
+    post:
+      tags: [Авторизация]
+      operationId: forgotPassword
+      summary: Отправить код для сброса пароля
+      description: |
+        Отправляет на email код из 6 цифр. Отвечает 202 даже для незарегистрированного
+        email. Повторная отправка возможна через `resendAfter` секунд
+        (на макете — «Отправить ещё раз через 0:59»); раньше — 429.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202':
+          description: Запрос принят
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ForgotPasswordResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/password/reset:
+    post:
+      tags: [Авторизация]
+      operationId: resetPassword
+      summary: Установить новый пароль по коду
+      description: |
+        Код действует 15 минут, даётся 5 попыток ввода. После успешного сброса все
+        сессии пользователя завершаются, нужно войти заново.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: Пароль изменён }
+        '400':
+          description: Код неверный или истёк (или некорректный JSON)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              example:
+                type: https://goget.ru/docs/errors#invalid-reset-code
+                title: Неверный код
+                status: 400
+                detail: Код неверный или истёк. Запросите новый код
+                instance: /api/v1/auth/password/reset
+                code: INVALID_RESET_CODE
+                traceId: 9f2c4e1a7b3d5c80
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me:
+    get:
+      tags: [Лендинг]
+      operationId: getMe
+      summary: Текущий пользователь
+      description: Для шапки авторизованного пользователя (аватар с инициалами).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Пользователь
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: httpOnly cookie, выставляется сервером при входе и регистрации.
+
+  headers:
+    XRequestID:
+      description: Идентификатор запроса; совпадает с `traceId` в ошибках.
+      schema: { type: string }
+    SetSessionCookie:
+      description: '`session_id=<id>; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax`'
+      schema: { type: string }
+    RetryAfter:
+      description: Через сколько секунд можно повторить запрос.
+      schema: { type: integer }
+
+  parameters:
+    City:
+      name: city
+      in: query
+      description: Точное название города из `/cities`
+      schema: { type: string, maxLength: 100 }
+      example: Москва
+    Limit:
+      name: limit
+      in: query
+      description: Размер страницы
+      schema: { type: integer, minimum: 1, maximum: 60, default: 24 }
+    Offset:
+      name: offset
+      in: query
+      description: Сколько объявлений пропустить
+      schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+    ShelfLimit:
+      name: limit
+      in: query
+      description: Сколько карточек в карусели
+      schema: { type: integer, minimum: 1, maximum: 30, default: 12 }
+    AdId:
+      name: adId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    BadRequest:
+      description: Некорректный JSON или неизвестное поле в теле
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#malformed-json
+            title: Некорректный JSON
+            status: 400
+            detail: Синтаксическая ошибка JSON в позиции 42
+            instance: /api/v1/auth/login
+            code: MALFORMED_JSON
+            traceId: 9f2c4e1a7b3d5c80
+    Unauthorized:
+      description: Сессии нет или она истекла
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#unauthorized
+            title: Требуется авторизация
+            status: 401
+            detail: Войдите в аккаунт
+            instance: /api/v1/me
+            code: UNAUTHORIZED
+            traceId: 9f2c4e1a7b3d5c80
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#not-found
+            title: Не найдено
+            status: 404
+            detail: Объявление не найдено или снято с публикации
+            instance: /api/v1/favorites/1024
+            code: NOT_FOUND
+            traceId: 9f2c4e1a7b3d5c80
+    UnsupportedMediaType:
+      description: Тело отправлено не в JSON
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ValidationError:
+      description: Ошибка валидации полей или параметров
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#validation-error
+            title: Ошибка валидации
+            status: 422
+            detail: Некоторые поля заполнены неверно
+            instance: /api/v1/auth/login
+            code: VALIDATION_ERROR
+            traceId: 9f2c4e1a7b3d5c80
+            errors:
+              - field: login
+                code: INVALID_FORMAT
+                message: Введите телефон +7 900 000-00-00 или email
+    RateLimited:
+      description: Слишком много запросов
+      headers:
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#rate-limited
+            title: Слишком много запросов
+            status: 429
+            detail: Повторите попытку позже
+            instance: /api/v1/auth/password/forgot
+            code: RATE_LIMITED
+            traceId: 9f2c4e1a7b3d5c80
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://goget.ru/docs/errors#internal-error
+            title: Внутренняя ошибка сервера
+            status: 500
+            detail: Что-то пошло не так. Сообщите traceId в поддержку
+            instance: /api/v1/ads
+            code: INTERNAL_ERROR
+            traceId: 9f2c4e1a7b3d5c80
+
+  schemas:
+    # ---------------------------------------------------------- Ошибки
+    Problem:
+      type: object
+      description: Единый формат ошибки (RFC 9457).
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Ссылка на описание ошибки в документации
+        title:
+          type: string
+          description: Короткое описание, одинаковое для всех ошибок с этим кодом
+        status:
+          type: integer
+          description: HTTP-статус (дублирует статус ответа)
+        detail:
+          type: string
+          description: Подробности конкретного случая, можно показать пользователю
+        instance:
+          type: string
+          description: Путь запроса
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        traceId:
+          type: string
+          description: Идентификатор запроса для поиска в логах
+        errors:
+          type: array
+          description: Ошибки полей. Для одного поля может быть несколько записей.
+          items: { $ref: '#/components/schemas/FieldError' }
+
+    FieldError:
+      type: object
+      required: [field, code, message]
+      properties:
+        field:
+          type: string
+          description: Имя поля тела запроса или query/path-параметра
+          example: password
+        code: { $ref: '#/components/schemas/FieldErrorCode' }
+        message:
+          type: string
+          description: Текст для показа под полем
+          example: Минимум 8 символов
+
+    ErrorCode:
+      type: string
+      description: |
+        | Код | HTTP | Когда |
+        |---|---|---|
+        | `BAD_REQUEST` | 400 | Неизвестное поле в теле и прочие ошибки запроса |
+        | `MALFORMED_JSON` | 400 | Тело не является корректным JSON |
+        | `INVALID_RESET_CODE` | 400 | Код сброса пароля неверный или истёк |
+        | `UNAUTHORIZED` | 401 | Сессии нет или она истекла |
+        | `INVALID_CREDENTIALS` | 401 | Неверный логин или пароль |
+        | `FORBIDDEN` | 403 | Нет прав на действие |
+        | `NOT_FOUND` | 404 | Ресурс или адрес не найден |
+        | `METHOD_NOT_ALLOWED` | 405 | Метод не поддерживается для адреса |
+        | `USER_ALREADY_EXISTS` | 409 | Email, телефон или никнейм заняты |
+        | `PAYLOAD_TOO_LARGE` | 413 | Тело больше 64 КБ |
+        | `UNSUPPORTED_MEDIA_TYPE` | 415 | Content-Type не application/json |
+        | `VALIDATION_ERROR` | 422 | Поля или параметры не прошли проверку |
+        | `RATE_LIMITED` | 429 | Слишком много запросов, см. Retry-After |
+        | `INTERNAL_ERROR` | 500 | Внутренняя ошибка сервера |
+      enum:
+        - BAD_REQUEST
+        - MALFORMED_JSON
+        - INVALID_RESET_CODE
+        - UNAUTHORIZED
+        - INVALID_CREDENTIALS
+        - FORBIDDEN
+        - NOT_FOUND
+        - METHOD_NOT_ALLOWED
+        - USER_ALREADY_EXISTS
+        - PAYLOAD_TOO_LARGE
+        - UNSUPPORTED_MEDIA_TYPE
+        - VALIDATION_ERROR
+        - RATE_LIMITED
+        - INTERNAL_ERROR
+
+    FieldErrorCode:
+      type: string
+      description: |
+        | Код | Значение |
+        |---|---|
+        | `REQUIRED` | Поле обязательно |
+        | `TOO_SHORT` | Короче минимума |
+        | `TOO_LONG` | Длиннее максимума |
+        | `INVALID_FORMAT` | Не подходит под формат (email, телефон, код, цена) |
+        | `INVALID_TYPE` | Неверный тип (строка вместо числа и т.п.) |
+        | `INVALID_VALUE` | Значение не из списка допустимых |
+        | `OUT_OF_RANGE` | Число вне диапазона |
+        | `MISMATCH` | Пароли не совпадают |
+        | `NO_UPPERCASE` | В пароле нет заглавной буквы |
+        | `NO_LOWERCASE` | В пароле нет строчной буквы |
+        | `NO_DIGIT` | В пароле нет цифры |
+        | `TAKEN` | Значение уже занято другим аккаунтом |
+      enum:
+        - REQUIRED
+        - TOO_SHORT
+        - TOO_LONG
+        - INVALID_FORMAT
+        - INVALID_TYPE
+        - INVALID_VALUE
+        - OUT_OF_RANGE
+        - MISMATCH
+        - NO_UPPERCASE
+        - NO_LOWERCASE
+        - NO_DIGIT
+        - TAKEN
+
+    # ---------------------------------------------------------- Объявления
+    AdCard:
+      type: object
+      description: Карточка объявления в списках
+      required: [id, title, price, imageUrl, city, hasDelivery, rating, reviewsCount, viewsCount, isFavorite, createdAt]
+      properties:
+        id: { type: integer, example: 1024 }
+        title: { type: string, maxLength: 200, example: 'Велосипед горный, состояние отличное' }
+        price:
+          type: string
+          pattern: '^\d{1,10}\.\d{2}$'
+          description: Цена в рублях, строкой без потери точности
+          example: '15000.00'
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Главное фото (первое по position); null, если фото нет
+          example: https://cdn.goget.ru/ads/1024/3f9c2e1a.jpg
+        city: { type: string, nullable: true, example: Москва }
+        hasDelivery:
+          type: boolean
+          description: Показывать бейдж «Доставка»
+        rating:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5
+          nullable: true
+          description: Средняя оценка, округлённая до 0.1; null, если отзывов нет
+          example: 4.9
+        reviewsCount: { type: integer, minimum: 0, example: 12 }
+        viewsCount: { type: integer, minimum: 0, example: 286 }
+        isFavorite:
+          type: boolean
+          description: В избранном у текущего пользователя; для гостя всегда false
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата публикации; «сегодня в 18:40» фронт формирует сам
+          example: '2026-09-28T15:40:00Z'
+
+    AdPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdCard' }
+        total:
+          type: integer
+          description: Всего объявлений по фильтру («47 объявлений»)
+          example: 47
+        limit: { type: integer, example: 24 }
+        offset: { type: integer, example: 0 }
+
+    AdList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdCard' }
+
+    # ---------------------------------------------------------- Категории и города
+    SubCategory:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: integer, example: 12 }
+        name: { type: string, example: Легковые автомобили }
+        slug: { type: string, example: cars }
+
+    Category:
+      type: object
+      required: [id, name, slug, imageUrl, children]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Авто }
+        slug: { type: string, example: auto }
+        imageUrl: { type: string, format: uri, nullable: true }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/SubCategory' }
+
+    CategoryList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Category' }
+        total: { type: integer, example: 24 }
+
+    City:
+      type: object
+      required: [name, adsCount]
+      properties:
+        name: { type: string, example: Москва }
+        adsCount: { type: integer, example: 1532 }
+
+    CityList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/City' }
+
+    # ---------------------------------------------------------- Авторизация
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [firstName, nickname, phone, email, password, passwordConfirm]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Имя. Буквы любого алфавита, пробел, дефис, апостроф. Видно только владельцу.
+          example: Иван
+        nickname:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_.]+$'
+          description: Публичное имя, уникальное. Латиница, цифры, точка, подчёркивание.
+          example: ivan_bike
+        phone:
+          type: string
+          pattern: '^\+?[\d\s\-()]+$'
+          description: |
+            Российский мобильный номер в любом привычном виде: `+7 900 000-00-00`,
+            `89000000000`, `9000000000`. Сервер нормализует к `+79000000000`. Уникальный.
+          example: '+7 900 123-45-67'
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: Уникальный, приводится к нижнему регистру
+          example: ivan@mail.ru
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: |
+            Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
+            Каждое нарушенное правило приходит отдельной записью в `errors[]`
+            (`TOO_SHORT`, `NO_UPPERCASE`, `NO_LOWERCASE`, `NO_DIGIT`).
+          example: Secret123
+        passwordConfirm:
+          type: string
+          format: password
+          description: Должен совпадать с `password` (иначе `MISMATCH`)
+          example: Secret123
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          maxLength: 255
+          description: Телефон или email. Содержит `@` — проверяется как email, иначе как телефон.
+          example: '+7 900 123-45-67'
+        password:
+          type: string
+          format: password
+          maxLength: 72
+          description: Сложность при входе не проверяется
+          example: Secret123
+
+    ForgotPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 255, example: ivan@mail.ru }
+
+    ForgotPasswordResponse:
+      type: object
+      required: [resendAfter, expiresIn]
+      properties:
+        resendAfter:
+          type: integer
+          description: Через сколько секунд можно запросить код снова
+          example: 60
+        expiresIn:
+          type: integer
+          description: Сколько секунд действует код
+          example: 900
+
+    ResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email, code, newPassword, newPasswordConfirm]
+      properties:
+        email: { type: string, format: email, maxLength: 255, example: ivan@mail.ru }
+        code:
+          type: string
+          pattern: '^\d{6}$'
+          description: Код из письма
+          example: '482913'
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: Те же правила, что у `RegisterRequest.password`
+          example: NewSecret1
+        newPasswordConfirm:
+          type: string
+          format: password
+          example: NewSecret1
+
+    User:
+      type: object
+      required: [id, firstName, lastName, nickname, email, phone, type, createdAt]
+      properties:
+        id: { type: integer, example: 42 }
+        firstName: { type: string, example: Иван }
+        lastName: { type: string, nullable: true, example: null }
+        nickname: { type: string, example: ivan_bike }
+        email: { type: string, format: email, example: ivan@mail.ru }
+        phone: { type: string, example: '+79001234567' }
+        type:
+          type: string
+          enum: [buyer, seller, both, admin]
+          example: buyer
+        createdAt: { type: string, format: date-time, example: '2026-09-01T10:00:00Z' }
