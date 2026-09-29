@@ -199,9 +199,6 @@ paths:
         - name: has_delivery
           in: query
           schema: { type: boolean }
-        - name: type
-          in: query
-          schema: { type: string, enum: [sell, buy, service] }
         - name: sort
           in: query
           description: |
@@ -233,7 +230,7 @@ paths:
                 limit: { value: { error: invalid limit } }
                 offset: { value: { error: invalid offset } }
                 priceFormat: { value: { error: invalid price format } }
-                priceRange: { value: { error: priceMax must not be less than priceMin } }
+                priceRange: { value: { error: price_max must not be less than price_min } }
                 sort: { value: { error: invalid sort value } }
                 type: { value: { error: invalid ad type } }
         '500': { $ref: '#/components/responses/InternalError' }

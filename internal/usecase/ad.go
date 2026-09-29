@@ -13,9 +13,8 @@ import (
 
 var (
 	ErrInvalidPriceFormat = errors.New("invalid price format")
-	ErrInvalidPriceRange  = errors.New("priceMax must not be less than priceMin")
+	ErrInvalidPriceRange  = errors.New("price_max must not be less than price_min")
 	ErrInvalidSort        = errors.New("invalid sort value")
-	ErrInvalidAdType      = errors.New("invalid ad type")
 )
 
 const (
@@ -26,9 +25,7 @@ const (
 
 var (
 	priceFormat  = regexp.MustCompile(`^\d{1,10}(\.\d{1,2})?$`)
-	allowedSorts = map[string]bool{"": true, "newest": true, "price_asc": true, "price_desc": true}
-	allowedTypes = map[string]bool{"": true, "sell": true, "buy": true, "service": true}
-)
+	allowedSorts = map[string]bool{"": true, "newest": true, "price_asc": true, "price_desc": true})
 
 type ListAdsParams struct {
 	Query       string
@@ -37,7 +34,6 @@ type ListAdsParams struct {
 	PriceMin    string
 	PriceMax    string
 	HasDelivery *bool
-	Type        string
 	Sort        string
 	Limit       int
 	Offset      int
@@ -58,9 +54,6 @@ func (uc *AdUsecase) List(ctx context.Context, p ListAdsParams, viewerID *int32)
 	if !allowedSorts[p.Sort] {
 		return domain.AdPage{}, ErrInvalidSort
 	}
-	if !allowedTypes[p.Type] {
-		return domain.AdPage{}, ErrInvalidAdType
-	}
 	if p.PriceMin != "" && !priceFormat.MatchString(p.PriceMin) {
 		return domain.AdPage{}, ErrInvalidPriceFormat
 	}
@@ -68,9 +61,9 @@ func (uc *AdUsecase) List(ctx context.Context, p ListAdsParams, viewerID *int32)
 		return domain.AdPage{}, ErrInvalidPriceFormat
 	}
 	if p.PriceMin != "" && p.PriceMax != "" {
-		min, _ := strconv.ParseFloat(p.PriceMin, 64)
-		max, _ := strconv.ParseFloat(p.PriceMax, 64)
-		if max < min {
+		minPrice, _ := strconv.ParseFloat(p.PriceMin, 64)
+		maxPrice, _ := strconv.ParseFloat(p.PriceMax, 64)
+		if maxPrice < minPrice {
 			return domain.AdPage{}, ErrInvalidPriceRange
 		}
 	}
@@ -98,7 +91,6 @@ func (uc *AdUsecase) List(ctx context.Context, p ListAdsParams, viewerID *int32)
 		PriceMin:    p.PriceMin,
 		PriceMax:    p.PriceMax,
 		HasDelivery: p.HasDelivery,
-		Type:        p.Type,
 		Sort:        p.Sort,
 		Limit:       limit,
 		Offset:      offset,

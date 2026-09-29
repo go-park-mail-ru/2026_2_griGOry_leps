@@ -43,7 +43,6 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		City:     q.Get("city"),
 		PriceMin: q.Get("price_min"),
 		PriceMax: q.Get("price_max"),
-		Type:     q.Get("type"),
 		Sort:     q.Get("sort"),
 	}
 
@@ -96,8 +95,7 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidPriceFormat),
 			errors.Is(err, usecase.ErrInvalidPriceRange),
-			errors.Is(err, usecase.ErrInvalidSort),
-			errors.Is(err, usecase.ErrInvalidAdType):
+			errors.Is(err, usecase.ErrInvalidSort):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			log.Printf("list ads error: %v", err)

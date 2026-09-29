@@ -23,7 +23,6 @@ type AdListFilter struct {
 	PriceMin    string
 	PriceMax    string
 	HasDelivery *bool
-	Type        string
 	Sort        string
 	Limit       int
 	Offset      int
@@ -37,8 +36,7 @@ const adFilterConditions = `
 	AND ($3 = '' OR a.city = $3)
 	AND ($4 = '' OR a.price >= $4::numeric)
 	AND ($5 = '' OR a.price <= $5::numeric)
-	AND ($6::bool IS NULL OR a.has_delivery = $6)
-	AND ($7 = '' OR a.type = $7)`
+	AND ($6::bool IS NULL OR a.has_delivery = $6)`
 
 func (r *AdRepository) List(ctx context.Context, f AdListFilter) ([]domain.AdCard, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -55,21 +53,21 @@ func (r *AdRepository) List(ctx context.Context, f AdListFilter) ([]domain.AdCar
 	query := `
 		SELECT
 			a.id, a.title, a.price::text, a.city, a.has_delivery, a.category_id, a.created_at,
-			(SELECT ai.url FROM ad_image ai WHERE ai.ad_id = a.id ORDER BY ai.position LIMIT 1),
+			(SELECT ai.storage_key FROM ad_image ai WHERE ai.ad_id = a.id ORDER BY ai.position LIMIT 1),
 			rv.avg_rating, COALESCE(rv.reviews_count, 0),
-			$8::int IS NOT NULL AND fav.ad_id IS NOT NULL
+			$7::int IS NOT NULL AND fav.ad_id IS NOT NULL
 		FROM ad a
 		LEFT JOIN (
 			SELECT ad_id, AVG(rating)::float8 AS avg_rating, COUNT(*) AS reviews_count
 			FROM review GROUP BY ad_id
 		) rv ON rv.ad_id = a.id
-		LEFT JOIN favorites fav ON fav.ad_id = a.id AND fav.user_id = $8
+		LEFT JOIN favorites fav ON fav.ad_id = a.id AND fav.user_id = $7
 		WHERE` + adFilterConditions + `
 		ORDER BY ` + orderBy + `
-		LIMIT $9 OFFSET $10`
+		LIMIT $8 OFFSET $9`
 
 	rows, err := r.db.Query(ctx, query,
-		f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery, f.Type, f.ViewerID, f.Limit, f.Offset,
+		f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery, f.ViewerID, f.Limit, f.Offset,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -94,7 +92,7 @@ func (r *AdRepository) List(ctx context.Context, f AdListFilter) ([]domain.AdCar
 	var total int
 	countQuery := `SELECT count(*) FROM ad a WHERE` + adFilterConditions
 	if err := r.db.QueryRow(ctx, countQuery,
-		f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery, f.Type,
+		f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
