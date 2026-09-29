@@ -25,6 +25,7 @@ var (
 	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
 	ErrEmailTaken       = errors.New("email already registered")
 	ErrPhoneTaken       = errors.New("phone already registered")
+	ErrNicknameTaken    = errors.New("nickname already taken")
 	ErrInvalidLogin     = errors.New("invalid login or password")
 	ErrSessionExpired   = errors.New("session expired")
 )
@@ -74,6 +75,8 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 			return domain.User{}, ErrEmailTaken
 		case errors.Is(err, repository.ErrPhoneExists):
 			return domain.User{}, ErrPhoneTaken
+		case errors.Is(err, repository.ErrNicknameExists):
+			return domain.User{}, ErrNicknameTaken
 		default:
 			return domain.User{}, err
 		}

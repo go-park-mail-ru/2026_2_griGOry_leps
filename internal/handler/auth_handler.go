@@ -73,7 +73,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, usecase.ErrInvalidPhone),
 			errors.Is(err, usecase.ErrWeakPassword):
 			writeError(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, usecase.ErrEmailTaken), errors.Is(err, usecase.ErrPhoneTaken):
+		case errors.Is(err, usecase.ErrEmailTaken), errors.Is(err, usecase.ErrPhoneTaken), errors.Is(err, usecase.ErrNicknameTaken):
 			writeError(w, http.StatusConflict, err.Error())
 		default:
 			log.Printf("register error: %v", err)

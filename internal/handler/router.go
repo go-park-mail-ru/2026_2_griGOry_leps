@@ -10,7 +10,7 @@ import (
 
 const requestTimeout = 5 * time.Second
 
-func NewRouter(frontendOrigin string, authHandler *AuthHandler) http.Handler {
+func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware)
 	r.Use(recoverMiddleware)
@@ -25,6 +25,8 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler) http.Handler {
 	api.HandleFunc("/login", authHandler.Login).Methods(http.MethodPost)
 	api.HandleFunc("/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/me", authHandler.Me).Methods(http.MethodGet)
+
+	api.HandleFunc("/ads", adHandler.List).Methods(http.MethodGet)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 

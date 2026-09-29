@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrUserExists   = errors.New("user already exists")
-	ErrPhoneExists  = errors.New("phone already registered")
+	ErrUserNotFound   = errors.New("user not found")
+	ErrUserExists     = errors.New("user already exists")
+	ErrPhoneExists    = errors.New("phone already registered")
+	ErrNicknameExists = errors.New("nickname already taken")
 )
 
 type UserRepository struct {
@@ -47,10 +48,14 @@ func (r *UserRepository) Create(ctx context.Context, email, passwordHash, firstN
 	if err := scanUser(row, &user); err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			if pgErr.ConstraintName == "users_phonenumber_key" {
+			switch pgErr.ConstraintName {
+			case "users_phonenumber_key":
 				return domain.User{}, ErrPhoneExists
+			case "users_nickname_key":
+				return domain.User{}, ErrNicknameExists
+			default:
+				return domain.User{}, ErrUserExists
 			}
-			return domain.User{}, ErrUserExists
 		}
 		return domain.User{}, err
 	}
