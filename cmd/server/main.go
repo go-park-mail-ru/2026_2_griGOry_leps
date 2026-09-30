@@ -33,7 +33,7 @@ func main() {
 	userRepo := repository.NewUserRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 
-	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
+	authUsecase := usecase.NewAuthUsecase(pool, userRepo, sessionRepo)
 	authHandler := handler.NewAuthHandler(authUsecase, cfg.CookieSecure)
 
 	router := handler.NewRouter(cfg.FrontendOrigin, authHandler)

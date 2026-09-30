@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -31,58 +32,85 @@ var (
 
 const sessionTTL = 7 * 24 * time.Hour
 
+type TxBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 type AuthUsecase struct {
+	db       TxBeginner
 	users    *repository.UserRepository
 	sessions *repository.SessionRepository
 }
 
-func NewAuthUsecase(users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
-	return &AuthUsecase{users: users, sessions: sessions}
+func NewAuthUsecase(db TxBeginner, users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
+	return &AuthUsecase{db: db, users: users, sessions: sessions}
 }
 
-func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, error) {
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error) {
 	email = normalizeEmail(email)
 	firstName = strings.TrimSpace(firstName)
 	nickname = strings.TrimSpace(nickname)
 	phone = normalizePhone(phone)
 
 	if _, err := mail.ParseAddress(email); err != nil {
-		return domain.User{}, ErrInvalidEmail
+		return domain.User{}, domain.Session{}, ErrInvalidEmail
 	}
 	if firstName == "" {
-		return domain.User{}, ErrMissingFirstName
+		return domain.User{}, domain.Session{}, ErrMissingFirstName
 	}
 	if nickname == "" {
-		return domain.User{}, ErrMissingNickname
+		return domain.User{}, domain.Session{}, ErrMissingNickname
 	}
 	if !isValidPhone(phone) {
-		return domain.User{}, ErrInvalidPhone
+		return domain.User{}, domain.Session{}, ErrInvalidPhone
 	}
 	if !isStrongPassword(password) {
-		return domain.User{}, ErrWeakPassword
+		return domain.User{}, domain.Session{}, ErrWeakPassword
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return domain.User{}, err
+		return domain.User{}, domain.Session{}, err
 	}
 
-	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
+	tx, err := uc.db.Begin(ctx)
+	if err != nil {
+		return domain.User{}, domain.Session{}, err
+	}
+
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	user, err := uc.users.WithTx(tx).Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrUserExists):
-			return domain.User{}, ErrEmailTaken
+			return domain.User{}, domain.Session{}, ErrEmailTaken
 		case errors.Is(err, repository.ErrPhoneExists):
-			return domain.User{}, ErrPhoneTaken
+			return domain.User{}, domain.Session{}, ErrPhoneTaken
 		default:
-			return domain.User{}, err
+			return domain.User{}, domain.Session{}, err
 		}
 	}
 
-	return user, nil
+	session, err := newSession(user.ID)
+	if err != nil {
+		return domain.User{}, domain.Session{}, err
+	}
+
+	if err := uc.sessions.WithTx(tx).Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
+		return domain.User{}, domain.Session{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.User{}, domain.Session{}, err
+	}
+
+	user.PasswordHash = ""
+
+	return user, session, nil
 }
 
-func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.Session, error) {
+func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.User, domain.Session, error) {
 	login = strings.TrimSpace(login)
 
 	var user domain.User
@@ -96,31 +124,27 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
-			return domain.Session{}, ErrInvalidLogin
+			return domain.User{}, domain.Session{}, ErrInvalidLogin
 		}
-		return domain.Session{}, err
+		return domain.User{}, domain.Session{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return domain.Session{}, ErrInvalidLogin
+		return domain.User{}, domain.Session{}, ErrInvalidLogin
 	}
 
-	token, err := generateToken()
+	session, err := newSession(user.ID)
 	if err != nil {
-		return domain.Session{}, err
-	}
-
-	session := domain.Session{
-		ID:        token,
-		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(sessionTTL),
+		return domain.User{}, domain.Session{}, err
 	}
 
 	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
-		return domain.Session{}, err
+		return domain.User{}, domain.Session{}, err
 	}
 
-	return session, nil
+	user.PasswordHash = ""
+
+	return user, session, nil
 }
 
 func (uc *AuthUsecase) Logout(ctx context.Context, sessionID string) error {
@@ -141,6 +165,19 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 	}
 
 	return uc.users.GetByID(ctx, session.UserID)
+}
+
+func newSession(userID int32) (domain.Session, error) {
+	token, err := generateToken()
+	if err != nil {
+		return domain.Session{}, err
+	}
+
+	return domain.Session{
+		ID:        token,
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(sessionTTL),
+	}, nil
 }
 
 func isStrongPassword(password string) bool {

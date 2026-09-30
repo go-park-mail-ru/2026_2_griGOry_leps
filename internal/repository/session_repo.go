@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -14,11 +13,15 @@ import (
 var ErrSessionNotFound = errors.New("session not found")
 
 type SessionRepository struct {
-	db *pgxpool.Pool
+	db DBTX
 }
 
-func NewSessionRepository(db *pgxpool.Pool) *SessionRepository {
+func NewSessionRepository(db DBTX) *SessionRepository {
 	return &SessionRepository{db: db}
+}
+
+func (r *SessionRepository) WithTx(tx pgx.Tx) *SessionRepository {
+	return &SessionRepository{db: tx}
 }
 
 func (r *SessionRepository) Create(ctx context.Context, id string, userID int32, expiresAt time.Time) error {
