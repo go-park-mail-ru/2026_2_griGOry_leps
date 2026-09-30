@@ -3,10 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -14,50 +12,37 @@ import (
 var ErrSessionNotFound = errors.New("session not found")
 
 type SessionRepository struct {
-	db *pgxpool.Pool
+	mu       sync.RWMutex
+	sessions map[string]domain.Session
 }
 
-func NewSessionRepository(db *pgxpool.Pool) *SessionRepository {
-	return &SessionRepository{db: db}
+func NewSessionRepository() *SessionRepository {
+	return &SessionRepository{sessions: make(map[string]domain.Session)}
 }
 
-func (r *SessionRepository) Create(ctx context.Context, id string, userID int32, expiresAt time.Time) error {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *SessionRepository) Create(_ context.Context, id string, userID int32, expiresAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	_, err := r.db.Exec(ctx,
-		`INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)`,
-		id, userID, expiresAt,
-	)
-	return err
+	r.sessions[id] = domain.Session{ID: id, UserID: userID, ExpiresAt: expiresAt}
+	return nil
 }
 
-func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Session, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *SessionRepository) GetByID(_ context.Context, id string) (domain.Session, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	var session domain.Session
-
-	row := r.db.QueryRow(ctx,
-		`SELECT id, user_id, expires_at FROM sessions WHERE id = $1`,
-		id,
-	)
-
-	err := row.Scan(&session.ID, &session.UserID, &session.ExpiresAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Session{}, ErrSessionNotFound
-		}
-		return domain.Session{}, err
+	session, ok := r.sessions[id]
+	if !ok {
+		return domain.Session{}, ErrSessionNotFound
 	}
-
 	return session, nil
 }
 
-func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *SessionRepository) Delete(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	_, err := r.db.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, id)
-	return err
+	delete(r.sessions, id)
+	return nil
 }
