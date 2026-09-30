@@ -6,7 +6,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -18,11 +17,15 @@ var (
 )
 
 type UserRepository struct {
-	db *pgxpool.Pool
+	db DBTX
 }
 
-func NewUserRepository(db *pgxpool.Pool) *UserRepository {
+func NewUserRepository(db DBTX) *UserRepository {
 	return &UserRepository{db: db}
+}
+
+func (r *UserRepository) WithTx(tx pgx.Tx) *UserRepository {
+	return &UserRepository{db: tx}
 }
 
 const userColumns = "id, email, password_hash, firstname, nickname, phonenumber, created_at"

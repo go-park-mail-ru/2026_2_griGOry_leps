@@ -76,7 +76,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone); err != nil {
+	user, session, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
+	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidEmail),
 			errors.Is(err, usecase.ErrMissingFirstName),
@@ -90,13 +91,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			log.Printf("register error: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
-		return
-	}
-
-	user, session, err := h.auth.Login(r.Context(), req.Email, req.Password)
-	if err != nil {
-		log.Printf("register auto-login error: %v", err)
-		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
