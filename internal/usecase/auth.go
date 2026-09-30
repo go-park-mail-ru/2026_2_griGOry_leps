@@ -63,11 +63,11 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, ErrInvalidPhone
 	}
-	if !isStrongPassword(password) {
-		return domain.User{}, domain.Session{}, ErrWeakPassword
-	}
 	if len(password) > maxPasswordBytes {
 		return domain.User{}, domain.Session{}, ErrPasswordTooLong
+	}
+	if !isStrongPassword(password) {
+		return domain.User{}, domain.Session{}, ErrWeakPassword
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
