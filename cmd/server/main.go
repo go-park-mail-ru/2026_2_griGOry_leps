@@ -25,11 +25,15 @@ func main() {
 
 	userRepo := repository.NewUserRepository()
 	sessionRepo := repository.NewSessionRepository()
+	adRepo := repository.NewAdRepository(repository.SeedAds())
 
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
-	authHandler := handler.NewAuthHandler(authUsecase, cfg.CookieSecure)
+	adUsecase := usecase.NewAdUsecase(adRepo)
 
-	router := handler.NewRouter(cfg.FrontendOrigin, authHandler)
+	authHandler := handler.NewAuthHandler(authUsecase, cfg.CookieSecure)
+	adHandler := handler.NewAdHandler(adUsecase)
+
+	router := handler.NewRouter(cfg.FrontendOrigin, authHandler, adHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
