@@ -11,7 +11,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
-const maxRequestBodyBytes = 1 << 20 // 1 MB
+const maxRequestBodyBytes = 1 << 20
 
 type AuthHandler struct {
 	auth         *usecase.AuthUsecase
@@ -57,6 +57,18 @@ func userResponse(user domain.User) map[string]any {
 	}
 }
 
+func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, session domain.Session) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    session.ID,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		Secure:   h.cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
@@ -66,7 +78,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
+	user, session, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidEmail),
@@ -84,6 +96,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setSessionCookie(w, session)
 	writeJSON(w, http.StatusCreated, userResponse(user))
 }
 
@@ -96,7 +109,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := h.auth.Login(r.Context(), req.Login, req.Password)
+	user, session, err := h.auth.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidLogin):
@@ -108,17 +121,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
-		Value:    session.ID,
-		Path:     "/",
-		Expires:  session.ExpiresAt,
-		HttpOnly: true,
-		Secure:   h.cookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	h.setSessionCookie(w, session)
+	writeJSON(w, http.StatusOK, userResponse(user))
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
