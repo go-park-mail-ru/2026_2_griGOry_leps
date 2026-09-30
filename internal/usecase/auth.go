@@ -82,7 +82,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	return user, nil
 }
 
-func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.Session, error) {
+func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.User, domain.Session, error) {
 	login = strings.TrimSpace(login)
 
 	var user domain.User
@@ -96,18 +96,18 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
-			return domain.Session{}, ErrInvalidLogin
+			return domain.User{}, domain.Session{}, ErrInvalidLogin
 		}
-		return domain.Session{}, err
+		return domain.User{}, domain.Session{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return domain.Session{}, ErrInvalidLogin
+		return domain.User{}, domain.Session{}, ErrInvalidLogin
 	}
 
 	token, err := generateToken()
 	if err != nil {
-		return domain.Session{}, err
+		return domain.User{}, domain.Session{}, err
 	}
 
 	session := domain.Session{
@@ -117,10 +117,11 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 	}
 
 	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
-		return domain.Session{}, err
+		return domain.User{}, domain.Session{}, err
 	}
+	user.PasswordHash = ""
 
-	return session, nil
+	return user, session, nil
 }
 
 func (uc *AuthUsecase) Logout(ctx context.Context, sessionID string) error {
