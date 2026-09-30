@@ -13,28 +13,31 @@ const requestTimeout = 5 * time.Second
 func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware)
-	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusNotFound, "not found")
-	})
-	r.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	})
+	r.NotFoundHandler = http.HandlerFunc(notFound)
+	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
 
-	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	r.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 
-	api.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
-	api.HandleFunc("/login", authHandler.Login).Methods(http.MethodPost)
-	api.HandleFunc("/logout", authHandler.Logout).Methods(http.MethodPost)
-	api.HandleFunc("/me", authHandler.Me).Methods(http.MethodGet)
+	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
+	r.HandleFunc("/api/login", authHandler.Login).Methods(http.MethodPost)
+	r.HandleFunc("/api/logout", authHandler.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/api/me", authHandler.Me).Methods(http.MethodGet)
 
-	api.HandleFunc("/ads", adHandler.List).Methods(http.MethodGet)
+	r.HandleFunc("/api/ads", adHandler.List).Methods(http.MethodGet)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
 	return corsMiddleware(frontendOrigin, jsonContentType(timed))
+}
+
+func notFound(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusNotFound, "not found")
+}
+
+func methodNotAllowed(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 func corsMiddleware(origin string, next http.Handler) http.Handler {
