@@ -11,7 +11,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -26,24 +25,20 @@ var (
 	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
 	ErrEmailTaken       = errors.New("email already registered")
 	ErrPhoneTaken       = errors.New("phone already registered")
+	ErrNicknameTaken    = errors.New("nickname already taken")
 	ErrInvalidLogin     = errors.New("invalid login or password")
 	ErrSessionExpired   = errors.New("session expired")
 )
 
 const sessionTTL = 7 * 24 * time.Hour
 
-type TxBeginner interface {
-	Begin(ctx context.Context) (pgx.Tx, error)
-}
-
 type AuthUsecase struct {
-	db       TxBeginner
 	users    *repository.UserRepository
 	sessions *repository.SessionRepository
 }
 
-func NewAuthUsecase(db TxBeginner, users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
-	return &AuthUsecase{db: db, users: users, sessions: sessions}
+func NewAuthUsecase(users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions}
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error) {
@@ -73,20 +68,15 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	tx, err := uc.db.Begin(ctx)
-	if err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
-
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	user, err := uc.users.WithTx(tx).Create(ctx, email, string(hash), firstName, nickname, phone)
+	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrUserExists):
 			return domain.User{}, domain.Session{}, ErrEmailTaken
 		case errors.Is(err, repository.ErrPhoneExists):
 			return domain.User{}, domain.Session{}, ErrPhoneTaken
+		case errors.Is(err, repository.ErrNicknameExists):
+			return domain.User{}, domain.Session{}, ErrNicknameTaken
 		default:
 			return domain.User{}, domain.Session{}, err
 		}
@@ -97,11 +87,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	if err := uc.sessions.WithTx(tx).Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
+	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
 
