@@ -50,18 +50,18 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		Sort:     q.Get("sort"),
 	}
 
-	categoryID, err := intParam(q, "category_id")
+	categoryID, err := intParam(q, "category_id", 1)
 	if err != nil || categoryID > math.MaxInt32 {
 		writeError(w, http.StatusBadRequest, "invalid category_id")
 		return
 	}
 	params.CategoryID = int32(categoryID)
 
-	if params.Limit, err = intParam(q, "limit"); err != nil {
+	if params.Limit, err = intParam(q, "limit", 1); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if params.Offset, err = intParam(q, "offset"); err != nil {
+	if params.Offset, err = intParam(q, "offset", 0); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -102,15 +102,14 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// intParam читает неотрицательное целое из query; отсутствующий параметр даёт 0.
-func intParam(q url.Values, name string) (int, error) {
+func intParam(q url.Values, name string, minValue int) (int, error) {
 	v := q.Get(name)
 	if v == "" {
 		return 0, nil
 	}
 
 	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
+	if err != nil || n < minValue {
 		return 0, fmt.Errorf("invalid %s", name)
 	}
 	return n, nil

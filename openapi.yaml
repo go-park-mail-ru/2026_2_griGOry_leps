@@ -201,7 +201,7 @@ paths:
         - name: limit
           in: query
           description: По умолчанию 24, значения выше 60 обрезаются до 60.
-          schema: { type: integer, minimum: 0, default: 24 }
+          schema: { type: integer, minimum: 1, default: 24 }
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -278,7 +278,7 @@ components:
         first_name: { type: string, example: Иван }
         nickname:
           type: string
-          description: Уникален (UNIQUE users_nickname_key).
+          description: Уникален без учёта регистра, при совпадении — 409 nickname already taken.
           example: ivan_bike
         phone:
           type: string
