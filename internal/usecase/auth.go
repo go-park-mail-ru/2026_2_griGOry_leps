@@ -81,7 +81,6 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 
 	return user, nil
 }
-
 func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domain.User, domain.Session, error) {
 	login = strings.TrimSpace(login)
 
@@ -119,6 +118,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
+
 	user.PasswordHash = ""
 
 	return user, session, nil
