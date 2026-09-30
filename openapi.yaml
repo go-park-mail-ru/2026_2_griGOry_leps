@@ -74,6 +74,7 @@ paths:
                 missingNickname: { value: { error: nickname is required } }
                 invalidPhone: { value: { error: invalid phone number } }
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit' } }
+                passwordTooLong: { value: { error: password is too long } }
         '409':
           description: Email, телефон или никнейм уже заняты
           content:
@@ -273,7 +274,9 @@ components:
           type: string
           format: password
           minLength: 8
-          description: Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
+          description: |
+            Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
+            Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
           example: Secret123
         first_name: { type: string, example: Иван }
         nickname:

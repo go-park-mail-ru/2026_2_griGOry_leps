@@ -12,15 +12,17 @@ const requestTimeout = 5 * time.Second
 
 func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler) http.Handler {
 	r := mux.NewRouter()
-	r.Use(loggingMiddleware)
 	r.Use(recoverMiddleware)
+	r.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusNotFound, "not found")
+	})
+	r.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	})
 
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			log.Printf("write health response: %v", err)
-		}
+	api.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 
 	api.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
@@ -32,7 +34,7 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
-	return corsMiddleware(frontendOrigin, timed)
+	return corsMiddleware(frontendOrigin, jsonContentType(timed))
 }
 
 func corsMiddleware(origin string, next http.Handler) http.Handler {
@@ -51,11 +53,10 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 	})
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
+func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		w.Header().Set("Content-Type", "application/json")
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
 
@@ -64,7 +65,7 @@ func recoverMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				log.Printf("panic: %v", err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				writeError(w, http.StatusInternalServerError, "internal error")
 			}
 		}()
 		next.ServeHTTP(w, r)
