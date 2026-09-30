@@ -77,7 +77,8 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	if err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
-	defer tx.Rollback(ctx)
+
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	user, err := uc.users.WithTx(tx).Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
