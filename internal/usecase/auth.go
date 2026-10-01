@@ -169,6 +169,9 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 	}
 
 	if time.Now().After(session.ExpiresAt) {
+		if err := uc.sessions.Delete(ctx, sessionID); err != nil {
+			return domain.User{}, err
+		}
 		return domain.User{}, ErrSessionExpired
 	}
 
