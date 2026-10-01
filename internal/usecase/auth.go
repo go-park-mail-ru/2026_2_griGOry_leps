@@ -54,7 +54,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	nickname = strings.TrimSpace(nickname)
 	phone = normalizePhone(phone)
 
-	if _, err := mail.ParseAddress(email); err != nil {
+	if !isValidEmail(email) {
 		return domain.User{}, domain.Session{}, ErrInvalidEmail
 	}
 	if firstName == "" {
@@ -194,6 +194,11 @@ func isStrongPassword(password string) bool {
 	}
 
 	return hasUpper && hasLower && hasDigit
+}
+
+func isValidEmail(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email
 }
 
 func normalizeEmail(email string) string {
