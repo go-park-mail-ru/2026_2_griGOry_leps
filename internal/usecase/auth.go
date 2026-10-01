@@ -21,7 +21,9 @@ import (
 var (
 	ErrInvalidEmail     = errors.New("invalid email")
 	ErrMissingFirstName = errors.New("first name is required")
+	ErrFirstNameTooLong = errors.New("first name is too long")
 	ErrMissingNickname  = errors.New("nickname is required")
+	ErrInvalidNickname  = errors.New("nickname must be 3-32 characters: latin letters, digits, _ and .")
 	ErrInvalidPhone     = errors.New("invalid phone number")
 	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
 	ErrPasswordTooLong  = errors.New("password is too long")
@@ -35,9 +37,13 @@ var (
 const (
 	sessionTTL       = 7 * 24 * time.Hour
 	maxPasswordBytes = 72
+	maxFirstNameLen  = 100
 )
 
-var phoneFormat = regexp.MustCompile(`^\+7\d{10}$`)
+var (
+	phoneFormat    = regexp.MustCompile(`^\+7\d{10}$`)
+	nicknameFormat = regexp.MustCompile(`^[A-Za-z0-9_.]{3,32}$`)
+)
 
 type AuthUsecase struct {
 	users    *repository.UserRepository
@@ -60,8 +66,14 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	if firstName == "" {
 		return domain.User{}, domain.Session{}, ErrMissingFirstName
 	}
+	if utf8.RuneCountInString(firstName) > maxFirstNameLen {
+		return domain.User{}, domain.Session{}, ErrFirstNameTooLong
+	}
 	if nickname == "" {
 		return domain.User{}, domain.Session{}, ErrMissingNickname
+	}
+	if !nicknameFormat.MatchString(nickname) {
+		return domain.User{}, domain.Session{}, ErrInvalidNickname
 	}
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, ErrInvalidPhone

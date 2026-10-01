@@ -71,7 +71,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidEmail),
 			errors.Is(err, usecase.ErrMissingFirstName),
+			errors.Is(err, usecase.ErrFirstNameTooLong),
 			errors.Is(err, usecase.ErrMissingNickname),
+			errors.Is(err, usecase.ErrInvalidNickname),
 			errors.Is(err, usecase.ErrInvalidPhone),
 			errors.Is(err, usecase.ErrWeakPassword),
 			errors.Is(err, usecase.ErrPasswordTooLong):

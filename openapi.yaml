@@ -71,7 +71,9 @@ paths:
                 badBody: { value: { error: invalid request body } }
                 invalidEmail: { value: { error: invalid email } }
                 missingFirstName: { value: { error: first name is required } }
+                firstNameTooLong: { value: { error: first name is too long } }
                 missingNickname: { value: { error: nickname is required } }
+                invalidNickname: { value: { error: 'nickname must be 3-32 characters: latin letters, digits, _ and .' } }
                 invalidPhone: { value: { error: invalid phone number } }
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit' } }
                 passwordTooLong: { value: { error: password is too long } }
@@ -278,10 +280,13 @@ components:
             Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
             Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
           example: Secret123
-        first_name: { type: string, example: Иван }
+        first_name: { type: string, maxLength: 100, example: Иван }
         nickname:
           type: string
-          description: Уникален без учёта регистра, при совпадении — 409 nickname already taken.
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_.]+$'
+          description: Латиница, цифры, `_` и `.`. Уникален без учёта регистра, при совпадении — 409 nickname already taken.
           example: ivan_bike
         phone:
           type: string
