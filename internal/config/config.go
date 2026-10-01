@@ -3,10 +3,10 @@ package config
 import "os"
 
 type Config struct {
-	Port            string
-	FrontendOrigin  string
-	DatabaseURL     string
-	CookieSecure    bool
+	Port           string
+	FrontendOrigin string
+	DatabaseURL    string
+	CookieSecure   bool
 }
 
 func Load() *Config {
