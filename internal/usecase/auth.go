@@ -23,6 +23,7 @@ var (
 	ErrMissingNickname  = errors.New("nickname is required")
 	ErrInvalidPhone     = errors.New("invalid phone number")
 	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
+	ErrPasswordTooLong  = errors.New("password is too long")
 	ErrEmailTaken       = errors.New("email already registered")
 	ErrPhoneTaken       = errors.New("phone already registered")
 	ErrNicknameTaken    = errors.New("nickname already taken")
@@ -30,7 +31,10 @@ var (
 	ErrSessionExpired   = errors.New("session expired")
 )
 
-const sessionTTL = 7 * 24 * time.Hour
+const (
+	sessionTTL       = 7 * 24 * time.Hour
+	maxPasswordBytes = 72
+)
 
 type AuthUsecase struct {
 	users    *repository.UserRepository
@@ -58,6 +62,9 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	}
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, ErrInvalidPhone
+	}
+	if len(password) > maxPasswordBytes {
+		return domain.User{}, domain.Session{}, ErrPasswordTooLong
 	}
 	if !isStrongPassword(password) {
 		return domain.User{}, domain.Session{}, ErrWeakPassword

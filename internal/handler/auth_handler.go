@@ -35,18 +35,6 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("write json response: %v", err)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
-}
-
 func userResponse(user domain.User) map[string]any {
 	return map[string]any{
 		"id":         user.ID,
@@ -85,7 +73,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, usecase.ErrMissingFirstName),
 			errors.Is(err, usecase.ErrMissingNickname),
 			errors.Is(err, usecase.ErrInvalidPhone),
-			errors.Is(err, usecase.ErrWeakPassword):
+			errors.Is(err, usecase.ErrWeakPassword),
+			errors.Is(err, usecase.ErrPasswordTooLong):
 			writeError(w, http.StatusBadRequest, err.Error())
 		case errors.Is(err, usecase.ErrEmailTaken),
 			errors.Is(err, usecase.ErrPhoneTaken),
