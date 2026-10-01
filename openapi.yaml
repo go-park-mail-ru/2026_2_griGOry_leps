@@ -285,7 +285,9 @@ components:
           example: ivan_bike
         phone:
           type: string
-          description: Нормализуется сервером; должно быть не меньше 10 цифр.
+          description: |
+            Российский номер в любом привычном виде: `+7 900 123-45-67`, `89001234567`,
+            `9001234567`. Сервер приводит его к `+79001234567`, иначе 400 `invalid phone number`.
           example: '+7 900 123-45-67'
 
     LoginRequest:
@@ -294,7 +296,7 @@ components:
       properties:
         login:
           type: string
-          description: Email (если содержит `@`) или телефон.
+          description: Email (если содержит `@`) или телефон в любом из форматов, что и при регистрации.
           example: '+7 900 123-45-67'
         password: { type: string, format: password, example: Secret123 }
 

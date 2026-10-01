@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -35,6 +36,8 @@ const (
 	sessionTTL       = 7 * 24 * time.Hour
 	maxPasswordBytes = 72
 )
+
+var phoneFormat = regexp.MustCompile(`^\+7\d{10}$`)
 
 type AuthUsecase struct {
 	users    *repository.UserRepository
@@ -198,8 +201,6 @@ func normalizeEmail(email string) string {
 }
 
 func normalizePhone(phone string) string {
-	hasPlus := strings.HasPrefix(strings.TrimSpace(phone), "+")
-
 	var digits strings.Builder
 	for _, r := range phone {
 		if unicode.IsDigit(r) {
@@ -208,23 +209,17 @@ func normalizePhone(phone string) string {
 	}
 	d := digits.String()
 
-	if len(d) == 11 && (d[0] == '8' || d[0] == '7') {
+	switch {
+	case len(d) == 11 && (d[0] == '7' || d[0] == '8'):
 		return "+7" + d[1:]
-	}
-	if hasPlus {
-		return "+" + d
+	case len(d) == 10:
+		return "+7" + d
 	}
 	return d
 }
 
 func isValidPhone(phone string) bool {
-	digits := 0
-	for _, r := range phone {
-		if unicode.IsDigit(r) {
-			digits++
-		}
-	}
-	return digits >= 10
+	return phoneFormat.MatchString(phone)
 }
 
 func generateToken() (string, error) {
