@@ -63,27 +63,29 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '400':
-          description: Невалидный JSON или не прошла валидация поля
+          description: Невалидный JSON или не прошла валидация поля (тогда в ответе есть `field`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               examples:
                 badBody: { value: { error: invalid request body } }
-                invalidEmail: { value: { error: invalid email } }
-                missingFirstName: { value: { error: first name is required } }
-                missingNickname: { value: { error: nickname is required } }
-                invalidPhone: { value: { error: invalid phone number } }
-                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit' } }
-                passwordTooLong: { value: { error: password is too long } }
+                invalidEmail: { value: { error: invalid email, field: email } }
+                missingFirstName: { value: { error: first name is required, field: first_name } }
+                firstNameTooLong: { value: { error: first name is too long, field: first_name } }
+                missingNickname: { value: { error: nickname is required, field: nickname } }
+                invalidNickname: { value: { error: 'nickname must be 3-32 characters: latin letters, digits, _ and .', field: nickname } }
+                invalidPhone: { value: { error: invalid phone number, field: phone } }
+                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
+                passwordTooLong: { value: { error: password is too long, field: password } }
         '409':
           description: Email, телефон или никнейм уже заняты
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               examples:
-                email: { value: { error: email already registered } }
-                phone: { value: { error: phone already registered } }
-                nickname: { value: { error: nickname already taken } }
+                email: { value: { error: email already registered, field: email } }
+                phone: { value: { error: phone already registered, field: phone } }
+                nickname: { value: { error: nickname already taken, field: nickname } }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -254,6 +256,10 @@ components:
       required: [error]
       properties:
         error: { type: string, example: invalid request body }
+        field:
+          type: string
+          enum: [email, first_name, nickname, phone, password]
+          description: Есть только у ошибок валидации полей в /register — поле формы, к которому относится ошибка.
 
     User:
       type: object
@@ -278,14 +284,19 @@ components:
             Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
             Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
           example: Secret123
-        first_name: { type: string, example: Иван }
+        first_name: { type: string, maxLength: 100, example: Иван }
         nickname:
           type: string
-          description: Уникален без учёта регистра, при совпадении — 409 nickname already taken.
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_.]+$'
+          description: Латиница, цифры, `_` и `.`. Уникален без учёта регистра, при совпадении — 409 nickname already taken.
           example: ivan_bike
         phone:
           type: string
-          description: Нормализуется сервером; должно быть не меньше 10 цифр.
+          description: |
+            Российский номер в любом привычном виде: `+7 900 123-45-67`, `89001234567`,
+            `9001234567`. Сервер приводит его к `+79001234567`, иначе 400 `invalid phone number`.
           example: '+7 900 123-45-67'
 
     LoginRequest:
@@ -294,7 +305,7 @@ components:
       properties:
         login:
           type: string
-          description: Email (если содержит `@`) или телефон.
+          description: Email (если содержит `@`) или телефон в любом из форматов, что и при регистрации.
           example: '+7 900 123-45-67'
         password: { type: string, format: password, example: Secret123 }
 

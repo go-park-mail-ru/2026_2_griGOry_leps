@@ -68,27 +68,48 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user, session, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
 	if err != nil {
-		switch {
-		case errors.Is(err, usecase.ErrInvalidEmail),
-			errors.Is(err, usecase.ErrMissingFirstName),
-			errors.Is(err, usecase.ErrMissingNickname),
-			errors.Is(err, usecase.ErrInvalidPhone),
-			errors.Is(err, usecase.ErrWeakPassword),
-			errors.Is(err, usecase.ErrPasswordTooLong):
-			writeError(w, http.StatusBadRequest, err.Error())
-		case errors.Is(err, usecase.ErrEmailTaken),
-			errors.Is(err, usecase.ErrPhoneTaken),
-			errors.Is(err, usecase.ErrNicknameTaken):
-			writeError(w, http.StatusConflict, err.Error())
-		default:
+		field := registerErrorField(err)
+		if field == "" {
 			log.Printf("register error: %v", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
+
+		status := http.StatusBadRequest
+		if errors.Is(err, usecase.ErrEmailTaken) ||
+			errors.Is(err, usecase.ErrPhoneTaken) ||
+			errors.Is(err, usecase.ErrNicknameTaken) {
+			status = http.StatusConflict
+		}
+
+		writeFieldError(w, status, field, err.Error())
 		return
 	}
 
 	h.setSessionCookie(w, session)
 	writeJSON(w, http.StatusCreated, userResponse(user))
+}
+
+func registerErrorField(err error) string {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidEmail),
+		errors.Is(err, usecase.ErrEmailTaken):
+		return "email"
+	case errors.Is(err, usecase.ErrMissingFirstName),
+		errors.Is(err, usecase.ErrFirstNameTooLong):
+		return "first_name"
+	case errors.Is(err, usecase.ErrMissingNickname),
+		errors.Is(err, usecase.ErrInvalidNickname),
+		errors.Is(err, usecase.ErrNicknameTaken):
+		return "nickname"
+	case errors.Is(err, usecase.ErrInvalidPhone),
+		errors.Is(err, usecase.ErrPhoneTaken):
+		return "phone"
+	case errors.Is(err, usecase.ErrWeakPassword),
+		errors.Is(err, usecase.ErrPasswordTooLong):
+		return "password"
+	}
+	return ""
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
