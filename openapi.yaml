@@ -1,0 +1,338 @@
+openapi: 3.0.3
+info:
+  title: GO&GET API
+  version: 1.0.0
+  description: |
+    **Соглашения**
+    - Все пути начинаются с `/api` (без версии).
+    - JSON, поля в snake_case.
+    - Цена — строка с двумя знаками после точки (`"15000.00"`), валюта всегда RUB.
+    - Ошибки — плоский объект `{"error": "текст"}`, без RFC 9457 и машиночитаемых кодов.
+
+    **Авторизация**
+    Cookie-сессия `session_id` (httpOnly, 7 дней) выставляется при регистрации
+    и при входе. Данные хранятся в памяти процесса и сбрасываются при перезапуске.
+
+servers:
+  - url: http://localhost:8080/api
+    description: Локальный бэкенд
+
+tags:
+  - name: Служебное
+    description: Health-check
+  - name: Авторизация
+    description: Регистрация, вход, выход, текущий пользователь
+  - name: Лента
+    description: Список объявлений с фильтрами
+
+paths:
+  /health:
+    get:
+      tags: [Служебное]
+      operationId: health
+      summary: Проверка живости сервиса
+      security: []
+      responses:
+        '200':
+          description: Сервис отвечает
+          content:
+            application/json:
+              schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+
+  # ---------------------------------------------------------------- Авторизация
+  /register:
+    post:
+      tags: [Авторизация]
+      operationId: register
+      summary: Регистрация
+      description: |
+        Создаёт аккаунт и сразу авторизует: выставляет cookie сессии.
+        Проверки идут по порядку, отдаётся первая сработавшая ошибка.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Аккаунт создан, cookie сессии выставлена
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Невалидный JSON или не прошла валидация поля (тогда в ответе есть `field`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                invalidEmail: { value: { error: invalid email, field: email } }
+                missingFirstName: { value: { error: first name is required, field: first_name } }
+                firstNameTooLong: { value: { error: first name is too long, field: first_name } }
+                missingNickname: { value: { error: nickname is required, field: nickname } }
+                invalidNickname: { value: { error: 'nickname must be 3-32 characters: latin letters, digits, _ and .', field: nickname } }
+                invalidPhone: { value: { error: invalid phone number, field: phone } }
+                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
+                passwordTooLong: { value: { error: password is too long, field: password } }
+        '409':
+          description: Email, телефон или никнейм уже заняты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                email: { value: { error: email already registered, field: email } }
+                phone: { value: { error: phone already registered, field: phone } }
+                nickname: { value: { error: nickname already taken, field: nickname } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /login:
+    post:
+      tags: [Авторизация]
+      operationId: login
+      summary: Вход по телефону или email
+      description: |
+        `login`, содержащий `@`, проверяется как email, иначе — как телефон.
+        Возвращает пользователя и выставляет cookie сессии.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Успешный вход, выставлена cookie сессии
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetSessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Невалидный JSON
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: |
+            Неверный логин или пароль. Ответ одинаковый и для несуществующего
+            пользователя, и для неверного пароля.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: invalid login or password }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /logout:
+    post:
+      tags: [Авторизация]
+      operationId: logout
+      summary: Выход
+      description: |
+        Идемпотентно: работает и без cookie, и с уже протухшей — всегда 200
+        и очищает cookie на клиенте.
+      security: []
+      responses:
+        '200':
+          description: Сессия завершена (или её и не было)
+          content:
+            application/json:
+              schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me:
+    get:
+      tags: [Авторизация]
+      operationId: getMe
+      summary: Текущий пользователь
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Пользователь
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          description: Cookie нет, она протухла или сессия удалена — во всех случаях один и тот же текст
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: not authenticated }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Лента
+  /ads:
+    get:
+      tags: [Лента]
+      operationId: listAds
+      summary: Список объявлений
+      description: |
+        Возвращает только активные объявления. Авторизация не нужна.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Поиск подстроки в title и description без учёта регистра
+          schema: { type: string }
+        - name: category_id
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: city
+          in: query
+          description: Точное название города без учёта регистра
+          schema: { type: string }
+          example: Москва
+        - name: price_min
+          in: query
+          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+        - name: price_max
+          in: query
+          description: Должен быть не меньше price_min, иначе 400.
+          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+        - name: has_delivery
+          in: query
+          schema: { type: boolean }
+        - name: sort
+          in: query
+          description: |
+            - `newest` — сначала новые (по умолчанию, как и при пустом параметре)
+            - `price_asc` / `price_desc`
+          schema: { type: string, enum: [newest, price_asc, price_desc], default: newest }
+        - name: limit
+          in: query
+          description: По умолчанию 24, значения выше 60 обрезаются до 60.
+          schema: { type: integer, minimum: 1, default: 24 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Страница объявлений
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdPage' }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                categoryId: { value: { error: invalid category_id } }
+                hasDelivery: { value: { error: invalid has_delivery } }
+                limit: { value: { error: invalid limit } }
+                offset: { value: { error: invalid offset } }
+                price: { value: { error: invalid price } }
+                priceRange: { value: { error: price_max must not be less than price_min } }
+                sort: { value: { error: invalid sort value } }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: httpOnly cookie, выставляется сервером в /register и /login.
+
+  headers:
+    SetSessionCookie:
+      description: '`session_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true)'
+      schema: { type: string }
+
+  responses:
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: internal error }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: invalid request body }
+        field:
+          type: string
+          enum: [email, first_name, nickname, phone, password]
+          description: Есть только у ошибок валидации полей в /register — поле формы, к которому относится ошибка.
+
+    User:
+      type: object
+      required: [id, email, first_name, nickname, phone]
+      properties:
+        id: { type: integer, example: 42 }
+        email: { type: string, format: email, example: ivan@mail.ru }
+        first_name: { type: string, example: Иван }
+        nickname: { type: string, example: ivan_bike }
+        phone: { type: string, example: '+79001234567' }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, first_name, nickname, phone]
+      properties:
+        email: { type: string, format: email, example: ivan@mail.ru }
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: |
+            Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
+            Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
+          example: Secret123
+        first_name: { type: string, maxLength: 100, example: Иван }
+        nickname:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Za-z0-9_.]+$'
+          description: Латиница, цифры, `_` и `.`. Уникален без учёта регистра, при совпадении — 409 nickname already taken.
+          example: ivan_bike
+        phone:
+          type: string
+          description: |
+            Российский номер в любом привычном виде: `+7 900 123-45-67`, `89001234567`,
+            `9001234567`. Сервер приводит его к `+79001234567`, иначе 400 `invalid phone number`.
+          example: '+7 900 123-45-67'
+
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          description: Email (если содержит `@`) или телефон в любом из форматов, что и при регистрации.
+          example: '+7 900 123-45-67'
+        password: { type: string, format: password, example: Secret123 }
+
+    AdCard:
+      type: object
+      required: [id, title, price, image_url, city, has_delivery, category_id, created_at]
+      properties:
+        id: { type: integer, example: 1024 }
+        title: { type: string, example: 'Велосипед горный, состояние отличное' }
+        price: { type: string, pattern: '^\d{1,10}\.\d{2}$', example: '15000.00' }
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Главное фото; null, если фото нет.
+        city: { type: string, example: Москва }
+        has_delivery: { type: boolean }
+        category_id: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    AdPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdCard' }
+        total: { type: integer, description: Всего объявлений по фильтру, без учёта limit/offset. }
+        limit: { type: integer }
+        offset: { type: integer }

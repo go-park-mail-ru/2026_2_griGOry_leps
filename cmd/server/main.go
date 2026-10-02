@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
@@ -24,19 +23,17 @@ func main() {
 
 	cfg := config.Load()
 
-	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
-	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
-	}
-	defer pool.Close()
+	userRepo := repository.NewUserRepository()
+	sessionRepo := repository.NewSessionRepository()
+	adRepo := repository.NewAdRepository(repository.SeedAds())
 
-	userRepo := repository.NewUserRepository(pool)
-	sessionRepo := repository.NewSessionRepository(pool)
+	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
+	adUsecase := usecase.NewAdUsecase(adRepo)
 
-	authUsecase := usecase.NewAuthUsecase(pool, userRepo, sessionRepo)
 	authHandler := handler.NewAuthHandler(authUsecase, cfg.CookieSecure)
+	adHandler := handler.NewAdHandler(adUsecase)
 
-	router := handler.NewRouter(cfg.FrontendOrigin, authHandler)
+	router := handler.NewRouter(cfg.FrontendOrigin, authHandler, adHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

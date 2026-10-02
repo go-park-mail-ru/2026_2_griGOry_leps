@@ -27,9 +27,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 - **Язык:** Go
 - **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
-- **База данных:** PostgreSQL
+- **Хранение данных:** в памяти процесса (map + sync.RWMutex), после перезапуска данные сбрасываются
 - **Авторизация:** cookie-сессии
-- **Миграции:** [goose](https://github.com/pressly/goose)
 
 ## Как работать с задачами
 
@@ -87,8 +86,6 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 ### Системные требования
 
 - [Go](https://go.dev/dl/) 1.26+
-- [Docker](https://www.docker.com/) и Docker Compose
-- [goose](https://github.com/pressly/goose) для миграций: `go install github.com/pressly/goose/v3/cmd/goose@latest`
 
 ### Пошаговая инструкция
 
@@ -105,20 +102,13 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    cp .env.example .env
    ```
 
-3. Поднимите базу данных:
-
-   ```bash
-   docker compose up -d
-   ```
-
-4. Установите зависимости и накатите миграции:
+3. Установите зависимости:
 
    ```bash
    go mod tidy
-   make migrate-up
    ```
 
-5. Запустите сервер:
+4. Запустите сервер:
 
    ```bash
    make run

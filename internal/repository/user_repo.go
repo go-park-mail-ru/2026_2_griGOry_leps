@@ -3,114 +3,101 @@ package repository
 import (
 	"context"
 	"errors"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrUserExists   = errors.New("user already exists")
-	ErrPhoneExists  = errors.New("phone already registered")
+	ErrUserNotFound   = errors.New("user not found")
+	ErrUserExists     = errors.New("user already exists")
+	ErrPhoneExists    = errors.New("phone already registered")
+	ErrNicknameExists = errors.New("nickname already taken")
 )
 
 type UserRepository struct {
-	db DBTX
+	mu         sync.RWMutex
+	lastID     int32
+	users      map[int32]domain.User
+	byEmail    map[string]int32
+	byPhone    map[string]int32
+	byNickname map[string]int32
 }
 
-func NewUserRepository(db DBTX) *UserRepository {
-	return &UserRepository{db: db}
-}
-
-func (r *UserRepository) WithTx(tx pgx.Tx) *UserRepository {
-	return &UserRepository{db: tx}
-}
-
-const userColumns = "id, email, password_hash, firstname, nickname, phonenumber, created_at"
-
-func scanUser(row pgx.Row, user *domain.User) error {
-	return row.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.FirstName, &user.Nickname, &user.Phone, &user.CreatedAt)
-}
-
-func (r *UserRepository) Create(ctx context.Context, email, passwordHash, firstName, nickname, phone string) (domain.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	var user domain.User
-
-	row := r.db.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, firstname, nickname, phonenumber)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING `+userColumns,
-		email, passwordHash, firstName, nickname, phone,
-	)
-
-	if err := scanUser(row, &user); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			if pgErr.ConstraintName == "users_phonenumber_key" {
-				return domain.User{}, ErrPhoneExists
-			}
-			return domain.User{}, ErrUserExists
-		}
-		return domain.User{}, err
+func NewUserRepository() *UserRepository {
+	return &UserRepository{
+		users:      make(map[int32]domain.User),
+		byEmail:    make(map[string]int32),
+		byPhone:    make(map[string]int32),
+		byNickname: make(map[string]int32),
 	}
+}
+
+func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstName, nickname, phone string) (domain.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.byEmail[email]; ok {
+		return domain.User{}, ErrUserExists
+	}
+	if _, ok := r.byPhone[phone]; ok {
+		return domain.User{}, ErrPhoneExists
+	}
+	nicknameKey := strings.ToLower(nickname)
+	if _, ok := r.byNickname[nicknameKey]; ok {
+		return domain.User{}, ErrNicknameExists
+	}
+
+	r.lastID++
+	user := domain.User{
+		ID:           r.lastID,
+		Email:        email,
+		PasswordHash: passwordHash,
+		FirstName:    firstName,
+		Nickname:     nickname,
+		Phone:        phone,
+		CreatedAt:    time.Now(),
+	}
+
+	r.users[user.ID] = user
+	r.byEmail[email] = user.ID
+	r.byPhone[phone] = user.ID
+	r.byNickname[nicknameKey] = user.ID
 
 	return user, nil
 }
 
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *UserRepository) GetByEmail(_ context.Context, email string) (domain.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	var user domain.User
-
-	row := r.db.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE email = $1`, email)
-
-	if err := scanUser(row, &user); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.User{}, ErrUserNotFound
-		}
-		return domain.User{}, err
+	id, ok := r.byEmail[email]
+	if !ok {
+		return domain.User{}, ErrUserNotFound
 	}
-
-	return user, nil
+	return r.users[id], nil
 }
 
-func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (domain.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *UserRepository) GetByPhone(_ context.Context, phone string) (domain.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	var user domain.User
-
-	row := r.db.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE phonenumber = $1`, phone)
-
-	if err := scanUser(row, &user); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.User{}, ErrUserNotFound
-		}
-		return domain.User{}, err
+	id, ok := r.byPhone[phone]
+	if !ok {
+		return domain.User{}, ErrUserNotFound
 	}
-
-	return user, nil
+	return r.users[id], nil
 }
 
-func (r *UserRepository) GetByID(ctx context.Context, id int32) (domain.User, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
+func (r *UserRepository) GetByID(_ context.Context, id int32) (domain.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
-	var user domain.User
-
-	row := r.db.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, id)
-
-	if err := scanUser(row, &user); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.User{}, ErrUserNotFound
-		}
-		return domain.User{}, err
+	user, ok := r.users[id]
+	if !ok {
+		return domain.User{}, ErrUserNotFound
 	}
-
 	return user, nil
 }

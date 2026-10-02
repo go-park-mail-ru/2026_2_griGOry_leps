@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -21,29 +21,37 @@ import (
 var (
 	ErrInvalidEmail     = errors.New("invalid email")
 	ErrMissingFirstName = errors.New("first name is required")
+	ErrFirstNameTooLong = errors.New("first name is too long")
 	ErrMissingNickname  = errors.New("nickname is required")
+	ErrInvalidNickname  = errors.New("nickname must be 3-32 characters: latin letters, digits, _ and .")
 	ErrInvalidPhone     = errors.New("invalid phone number")
 	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
+	ErrPasswordTooLong  = errors.New("password is too long")
 	ErrEmailTaken       = errors.New("email already registered")
 	ErrPhoneTaken       = errors.New("phone already registered")
+	ErrNicknameTaken    = errors.New("nickname already taken")
 	ErrInvalidLogin     = errors.New("invalid login or password")
 	ErrSessionExpired   = errors.New("session expired")
 )
 
-const sessionTTL = 7 * 24 * time.Hour
+const (
+	sessionTTL       = 7 * 24 * time.Hour
+	maxPasswordBytes = 72
+	maxFirstNameLen  = 100
+)
 
-type TxBeginner interface {
-	Begin(ctx context.Context) (pgx.Tx, error)
-}
+var (
+	phoneFormat    = regexp.MustCompile(`^\+7\d{10}$`)
+	nicknameFormat = regexp.MustCompile(`^[A-Za-z0-9_.]{3,32}$`)
+)
 
 type AuthUsecase struct {
-	db       TxBeginner
 	users    *repository.UserRepository
 	sessions *repository.SessionRepository
 }
 
-func NewAuthUsecase(db TxBeginner, users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
-	return &AuthUsecase{db: db, users: users, sessions: sessions}
+func NewAuthUsecase(users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions}
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error) {
@@ -52,17 +60,26 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	nickname = strings.TrimSpace(nickname)
 	phone = normalizePhone(phone)
 
-	if _, err := mail.ParseAddress(email); err != nil {
+	if !isValidEmail(email) {
 		return domain.User{}, domain.Session{}, ErrInvalidEmail
 	}
 	if firstName == "" {
 		return domain.User{}, domain.Session{}, ErrMissingFirstName
 	}
+	if utf8.RuneCountInString(firstName) > maxFirstNameLen {
+		return domain.User{}, domain.Session{}, ErrFirstNameTooLong
+	}
 	if nickname == "" {
 		return domain.User{}, domain.Session{}, ErrMissingNickname
 	}
+	if !nicknameFormat.MatchString(nickname) {
+		return domain.User{}, domain.Session{}, ErrInvalidNickname
+	}
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, ErrInvalidPhone
+	}
+	if len(password) > maxPasswordBytes {
+		return domain.User{}, domain.Session{}, ErrPasswordTooLong
 	}
 	if !isStrongPassword(password) {
 		return domain.User{}, domain.Session{}, ErrWeakPassword
@@ -73,20 +90,15 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	tx, err := uc.db.Begin(ctx)
-	if err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
-
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	user, err := uc.users.WithTx(tx).Create(ctx, email, string(hash), firstName, nickname, phone)
+	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrUserExists):
 			return domain.User{}, domain.Session{}, ErrEmailTaken
 		case errors.Is(err, repository.ErrPhoneExists):
 			return domain.User{}, domain.Session{}, ErrPhoneTaken
+		case errors.Is(err, repository.ErrNicknameExists):
+			return domain.User{}, domain.Session{}, ErrNicknameTaken
 		default:
 			return domain.User{}, domain.Session{}, err
 		}
@@ -97,11 +109,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	if err := uc.sessions.WithTx(tx).Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
+	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
 
@@ -161,6 +169,9 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 	}
 
 	if time.Now().After(session.ExpiresAt) {
+		if err := uc.sessions.Delete(ctx, sessionID); err != nil {
+			return domain.User{}, err
+		}
 		return domain.User{}, ErrSessionExpired
 	}
 
@@ -200,13 +211,16 @@ func isStrongPassword(password string) bool {
 	return hasUpper && hasLower && hasDigit
 }
 
+func isValidEmail(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email
+}
+
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func normalizePhone(phone string) string {
-	hasPlus := strings.HasPrefix(strings.TrimSpace(phone), "+")
-
 	var digits strings.Builder
 	for _, r := range phone {
 		if unicode.IsDigit(r) {
@@ -215,23 +229,17 @@ func normalizePhone(phone string) string {
 	}
 	d := digits.String()
 
-	if len(d) == 11 && (d[0] == '8' || d[0] == '7') {
+	switch {
+	case len(d) == 11 && (d[0] == '7' || d[0] == '8'):
 		return "+7" + d[1:]
-	}
-	if hasPlus {
-		return "+" + d
+	case len(d) == 10:
+		return "+7" + d
 	}
 	return d
 }
 
 func isValidPhone(phone string) bool {
-	digits := 0
-	for _, r := range phone {
-		if unicode.IsDigit(r) {
-			digits++
-		}
-	}
-	return digits >= 10
+	return phoneFormat.MatchString(phone)
 }
 
 func generateToken() (string, error) {
