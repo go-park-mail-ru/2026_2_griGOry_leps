@@ -164,10 +164,10 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Лента
-  /ads:
+  /listings:
     get:
       tags: [Лента]
-      operationId: listAds
+      operationId: listListings
       summary: Список объявлений
       description: |
         Возвращает только активные объявления. Авторизация не нужна.
