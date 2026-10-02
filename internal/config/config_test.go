@@ -9,28 +9,24 @@ import (
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("FRONTEND_ORIGIN", "")
-	t.Setenv("DATABASE_URL", "")
 	t.Setenv("COOKIE_SECURE", "")
 
 	cfg := Load()
 
 	require.Equal(t, "8080", cfg.Port)
 	require.Equal(t, "http://localhost:5173", cfg.FrontendOrigin)
-	require.Equal(t, "postgres://postgres:postgres@localhost:5432/gogetdb?sslmode=disable", cfg.DatabaseURL)
 	require.False(t, cfg.CookieSecure)
 }
 
 func TestLoad_FromEnv(t *testing.T) {
 	t.Setenv("PORT", "9999")
 	t.Setenv("FRONTEND_ORIGIN", "https://example.com")
-	t.Setenv("DATABASE_URL", "postgres://user:pass@db:5432/prod")
 	t.Setenv("COOKIE_SECURE", "true")
 
 	cfg := Load()
 
 	require.Equal(t, "9999", cfg.Port)
 	require.Equal(t, "https://example.com", cfg.FrontendOrigin)
-	require.Equal(t, "postgres://user:pass@db:5432/prod", cfg.DatabaseURL)
 	require.True(t, cfg.CookieSecure)
 }
 

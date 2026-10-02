@@ -2,17 +2,17 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 )
+
+func newTestUsecase() *AuthUsecase {
+	return NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
+}
 
 func TestNormalizeEmail(t *testing.T) {
 	tests := []struct {
@@ -38,7 +38,7 @@ func TestNormalizePhone(t *testing.T) {
 		{"7-prefix", "79001234567", "+79001234567"},
 		{"plus-7", "+79001234567", "+79001234567"},
 		{"formatted", "+7 900 123-45-67", "+79001234567"},
-		{"other country", "+3801234567890", "+3801234567890"},
+		{"ten digits", "9001234567", "+79001234567"},
 		{"empty", "", ""},
 	}
 	for _, tt := range tests {
@@ -50,17 +50,40 @@ func TestNormalizePhone(t *testing.T) {
 
 func TestIsValidPhone(t *testing.T) {
 	tests := []struct {
+		name string
 		in   string
 		want bool
 	}{
-		{"+79001234567", true},
-		{"89001234567", true},
-		{"+7 900 123-45-67", true},
-		{"12345", false},
-		{"", false},
+		{"plus-7 valid", "+79001234567", true},
+		{"plus-7 zeros", "+70000000000", true},
+		{"8-prefix invalid", "89001234567", false},
+		{"7-prefix invalid", "79001234567", false},
+		{"too short", "12345", false},
+		{"empty", "", false},
 	}
 	for _, tt := range tests {
-		require.Equal(t, tt.want, isValidPhone(tt.in))
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isValidPhone(tt.in))
+		})
+	}
+}
+
+func TestIsValidEmail(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"valid", "test@mail.ru", true},
+		{"valid with subdomain", "user@sub.example.com", true},
+		{"no at", "not-an-email", false},
+		{"no domain", "a@", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isValidEmail(tt.in))
+		})
 	}
 }
 
@@ -85,44 +108,8 @@ func TestIsStrongPassword(t *testing.T) {
 	}
 }
 
-func TestGenerateToken(t *testing.T) {
-	tok1, err := generateToken()
-	require.NoError(t, err)
-	require.Len(t, tok1, 64)
-
-	tok2, err := generateToken()
-	require.NoError(t, err)
-	require.NotEqual(t, tok1, tok2)
-}
-
-func newMockUsecase(t *testing.T) (*AuthUsecase, pgxmock.PgxPoolIface) {
-	t.Helper()
-	mock, err := pgxmock.NewPool()
-	require.NoError(t, err)
-	uc := NewAuthUsecase(
-		mock,
-		repository.NewUserRepository(mock),
-		repository.NewSessionRepository(mock),
-	)
-	return uc, mock
-}
-
-func userRows() *pgxmock.Rows {
-	return pgxmock.NewRows([]string{
-		"id", "email", "password_hash", "firstname", "nickname", "phonenumber", "created_at",
-	})
-}
-
-func mustHash(t *testing.T, password string) string {
-	t.Helper()
-	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	require.NoError(t, err)
-	return string(h)
-}
-
 func TestRegister_ValidationErrors(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	ctx := context.Background()
 
 	tests := []struct {
 		name    string
@@ -138,189 +125,154 @@ func TestRegister_ValidationErrors(t *testing.T) {
 		{"empty nickname", "a@b.ru", "Secret123", "Ivan", "  ", "+79001234567", ErrMissingNickname},
 		{"bad phone", "a@b.ru", "Secret123", "Ivan", "ivan", "123", ErrInvalidPhone},
 		{"weak password", "a@b.ru", "short", "Ivan", "ivan", "+79001234567", ErrWeakPassword},
+		{"nickname too short", "a@b.ru", "Secret123", "Ivan", "ab", "+79001234567", ErrInvalidNickname},
+		{"nickname cyrillic", "a@b.ru", "Secret123", "Ivan", "иван", "+79001234567", ErrInvalidNickname},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := uc.Register(context.Background(), tt.email, tt.pass, tt.first, tt.nick, tt.phone)
+			uc := newTestUsecase()
+			_, _, err := uc.Register(ctx, tt.email, tt.pass, tt.first, tt.nick, tt.phone)
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
+}
 
-	require.NoError(t, mock.ExpectationsWereMet())
+func TestRegister_PasswordTooLong(t *testing.T) {
+	uc := newTestUsecase()
+
+	longPassword := "Aa1" + strings.Repeat("x", 100)
+	_, _, err := uc.Register(context.Background(), "a@b.ru", longPassword, "Ivan", "ivan", "+79001234567")
+	require.ErrorIs(t, err, ErrPasswordTooLong)
+	require.NotErrorIs(t, err, ErrWeakPassword)
+}
+
+func TestRegister_FirstNameTooLong(t *testing.T) {
+	uc := newTestUsecase()
+
+	longName := strings.Repeat("И", 200)
+	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", longName, "ivan", "+79001234567")
+	require.ErrorIs(t, err, ErrFirstNameTooLong)
 }
 
 func TestRegister_Success(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
 
-	password := "Secret123"
-	hash := mustHash(t, password)
-
-	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("test@mail.ru", pgxmock.AnyArg(), "Ivan", "ivan", "+79001234567").
-		WillReturnRows(userRows().
-			AddRow(int32(1), "test@mail.ru", hash, "Ivan", "ivan", "+79001234567", time.Now()))
-	mock.ExpectExec("INSERT INTO sessions").
-		WithArgs(pgxmock.AnyArg(), int32(1), pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-	mock.ExpectCommit()
-
-	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", password, "Ivan", "ivan", "89001234567")
+	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", "Secret123", "Ivan", "ivan", "89001234567")
 	require.NoError(t, err)
-	require.Equal(t, int32(1), user.ID)
+	require.NotZero(t, user.ID)
+	require.Equal(t, "test@mail.ru", user.Email)
+	require.Equal(t, "Ivan", user.FirstName)
+	require.Equal(t, "ivan", user.Nickname)
+	require.Equal(t, "+79001234567", user.Phone)
 	require.Empty(t, user.PasswordHash)
 	require.NotEmpty(t, session.ID)
-	require.Equal(t, int32(1), session.UserID)
-	require.NoError(t, mock.ExpectationsWereMet())
+	require.Equal(t, user.ID, session.UserID)
 }
 
 func TestRegister_EmailTaken(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("a@b.ru", pgxmock.AnyArg(), "Ivan", "ivan", "+79001234567").
-		WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "users_email_key"})
-	mock.ExpectRollback()
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
 
-	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err = uc.Register(ctx, "a@b.ru", "Secret123", "Petr", "petr", "+79007654321")
 	require.ErrorIs(t, err, ErrEmailTaken)
 }
 
 func TestRegister_PhoneTaken(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	mock.ExpectBegin()
-	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("a@b.ru", pgxmock.AnyArg(), "Ivan", "ivan", "+79001234567").
-		WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "users_phonenumber_key"})
-	mock.ExpectRollback()
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
 
-	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "petr", "+79001234567")
 	require.ErrorIs(t, err, ErrPhoneTaken)
 }
 
-func TestLogin_ByEmail_Success(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+func TestRegister_NicknameTaken(t *testing.T) {
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	password := "Secret123"
-	hash := mustHash(t, password)
-
-	mock.ExpectQuery("SELECT .+ FROM users WHERE email").
-		WithArgs("test@mail.ru").
-		WillReturnRows(userRows().
-			AddRow(int32(1), "test@mail.ru", hash, "Ivan", "ivan", "+79001234567", time.Now()))
-	mock.ExpectExec("INSERT INTO sessions").
-		WithArgs(pgxmock.AnyArg(), int32(1), pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-	user, session, err := uc.Login(context.Background(), "Test@Mail.Ru", password)
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
 	require.NoError(t, err)
-	require.Equal(t, int32(1), user.ID)
+
+	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "IVAN", "+79007654321")
+	require.ErrorIs(t, err, ErrNicknameTaken)
+}
+
+func TestLogin_ByEmail_Success(t *testing.T) {
+	uc := newTestUsecase()
+	ctx := context.Background()
+
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
+
+	user, session, err := uc.Login(ctx, "a@b.ru", "Secret123")
+	require.NoError(t, err)
+	require.NotZero(t, user.ID)
 	require.Empty(t, user.PasswordHash)
 	require.NotEmpty(t, session.ID)
 }
 
 func TestLogin_ByPhone_Success(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	password := "Secret123"
-	hash := mustHash(t, password)
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
 
-	mock.ExpectQuery("SELECT .+ FROM users WHERE phonenumber").
-		WithArgs("+79001234567").
-		WillReturnRows(userRows().
-			AddRow(int32(1), "a@b.ru", hash, "Ivan", "ivan", "+79001234567", time.Now()))
-	mock.ExpectExec("INSERT INTO sessions").
-		WithArgs(pgxmock.AnyArg(), int32(1), pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-	_, _, err := uc.Login(context.Background(), "89001234567", password)
+	_, _, err = uc.Login(ctx, "+79001234567", "Secret123")
 	require.NoError(t, err)
 }
 
 func TestLogin_UserNotFound(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
-
-	mock.ExpectQuery("SELECT .+ FROM users WHERE email").
-		WithArgs("a@b.ru").
-		WillReturnError(pgx.ErrNoRows)
+	uc := newTestUsecase()
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.ErrorIs(t, err, ErrInvalidLogin)
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	hash := mustHash(t, "CorrectPass1")
+	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
 
-	mock.ExpectQuery("SELECT .+ FROM users WHERE email").
-		WithArgs("a@b.ru").
-		WillReturnRows(userRows().
-			AddRow(int32(1), "a@b.ru", hash, "Ivan", "ivan", "+79001234567", time.Now()))
-
-	_, _, err := uc.Login(context.Background(), "a@b.ru", "WrongPass1")
+	_, _, err = uc.Login(ctx, "a@b.ru", "WrongPass1")
 	require.ErrorIs(t, err, ErrInvalidLogin)
 }
 
 func TestLogout(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	mock.ExpectExec("DELETE FROM sessions").
-		WithArgs("session-id").
-		WillReturnResult(pgxmock.NewResult("DELETE", 1))
-
-	require.NoError(t, uc.Logout(context.Background(), "session-id"))
-}
-
-func TestMe_Success(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
-
-	mock.ExpectQuery("SELECT .+ FROM sessions").
-		WithArgs("session-id").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "expires_at"}).
-			AddRow("session-id", int32(1), time.Now().Add(time.Hour)))
-	mock.ExpectQuery("SELECT .+ FROM users WHERE id").
-		WithArgs(int32(1)).
-		WillReturnRows(userRows().
-			AddRow(int32(1), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567", time.Now()))
-
-	user, err := uc.Me(context.Background(), "session-id")
+	_, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
 	require.NoError(t, err)
-	require.Equal(t, int32(1), user.ID)
-}
 
-func TestMe_SessionNotFound(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+	require.NoError(t, uc.Logout(ctx, session.ID))
 
-	mock.ExpectQuery("SELECT .+ FROM sessions").
-		WithArgs("nope").
-		WillReturnError(pgx.ErrNoRows)
-
-	_, err := uc.Me(context.Background(), "nope")
+	_, err = uc.Me(ctx, session.ID)
 	require.ErrorIs(t, err, ErrSessionExpired)
 }
 
-func TestMe_SessionExpired(t *testing.T) {
-	uc, mock := newMockUsecase(t)
-	defer mock.Close()
+func TestMe_Success(t *testing.T) {
+	uc := newTestUsecase()
+	ctx := context.Background()
 
-	mock.ExpectQuery("SELECT .+ FROM sessions").
-		WithArgs("session-id").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "expires_at"}).
-			AddRow("session-id", int32(1), time.Now().Add(-time.Hour)))
+	created, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	require.NoError(t, err)
 
-	_, err := uc.Me(context.Background(), "session-id")
+	user, err := uc.Me(ctx, session.ID)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, user.ID)
+}
+
+func TestMe_SessionNotFound(t *testing.T) {
+	uc := newTestUsecase()
+
+	_, err := uc.Me(context.Background(), "nope")
 	require.ErrorIs(t, err, ErrSessionExpired)
 }
