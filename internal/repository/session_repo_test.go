@@ -2,16 +2,17 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v5"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSessionRepo_Create_Success(t *testing.T) {
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
 	defer mock.Close()
 	repo := NewSessionRepository(mock)
 
@@ -19,13 +20,13 @@ func TestSessionRepo_Create_Success(t *testing.T) {
 		WithArgs("sess-1", int32(1), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	if err := repo.Create(context.Background(), "sess-1", 1, time.Now().Add(time.Hour)); err != nil {
-		t.Errorf("Create() error = %v", err)
-	}
+	err = repo.Create(context.Background(), "sess-1", 1, time.Now().Add(time.Hour))
+	require.NoError(t, err)
 }
 
 func TestSessionRepo_GetByID_Success(t *testing.T) {
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
 	defer mock.Close()
 	repo := NewSessionRepository(mock)
 
@@ -35,13 +36,14 @@ func TestSessionRepo_GetByID_Success(t *testing.T) {
 			AddRow("sess-1", int32(1), time.Now().Add(time.Hour)))
 
 	session, err := repo.GetByID(context.Background(), "sess-1")
-	if err != nil || session.ID != "sess-1" || session.UserID != 1 {
-		t.Errorf("session = %+v, err = %v", session, err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "sess-1", session.ID)
+	require.Equal(t, int32(1), session.UserID)
 }
 
 func TestSessionRepo_GetByID_NotFound(t *testing.T) {
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
 	defer mock.Close()
 	repo := NewSessionRepository(mock)
 
@@ -49,14 +51,13 @@ func TestSessionRepo_GetByID_NotFound(t *testing.T) {
 		WithArgs("nope").
 		WillReturnError(pgx.ErrNoRows)
 
-	_, err := repo.GetByID(context.Background(), "nope")
-	if !errors.Is(err, ErrSessionNotFound) {
-		t.Errorf("err = %v, want ErrSessionNotFound", err)
-	}
+	_, err = repo.GetByID(context.Background(), "nope")
+	require.ErrorIs(t, err, ErrSessionNotFound)
 }
 
 func TestSessionRepo_Delete(t *testing.T) {
-	mock, _ := pgxmock.NewPool()
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
 	defer mock.Close()
 	repo := NewSessionRepository(mock)
 
@@ -64,7 +65,6 @@ func TestSessionRepo_Delete(t *testing.T) {
 		WithArgs("sess-1").
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
-	if err := repo.Delete(context.Background(), "sess-1"); err != nil {
-		t.Errorf("Delete() error = %v", err)
-	}
+	err = repo.Delete(context.Background(), "sess-1")
+	require.NoError(t, err)
 }

@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoad_Defaults(t *testing.T) {
@@ -12,18 +14,10 @@ func TestLoad_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.Port != "8080" {
-		t.Errorf("Port = %q, want 8080", cfg.Port)
-	}
-	if cfg.FrontendOrigin != "http://localhost:5173" {
-		t.Errorf("FrontendOrigin = %q, want http://localhost:5173", cfg.FrontendOrigin)
-	}
-	if cfg.DatabaseURL != "postgres://postgres:postgres@localhost:5432/gogetdb?sslmode=disable" {
-		t.Errorf("DatabaseURL = %q, want default", cfg.DatabaseURL)
-	}
-	if cfg.CookieSecure {
-		t.Error("CookieSecure = true, want false")
-	}
+	require.Equal(t, "8080", cfg.Port)
+	require.Equal(t, "http://localhost:5173", cfg.FrontendOrigin)
+	require.Equal(t, "postgres://postgres:postgres@localhost:5432/gogetdb?sslmode=disable", cfg.DatabaseURL)
+	require.False(t, cfg.CookieSecure)
 }
 
 func TestLoad_FromEnv(t *testing.T) {
@@ -34,18 +28,10 @@ func TestLoad_FromEnv(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.Port != "9999" {
-		t.Errorf("Port = %q, want 9999", cfg.Port)
-	}
-	if cfg.FrontendOrigin != "https://example.com" {
-		t.Errorf("FrontendOrigin = %q", cfg.FrontendOrigin)
-	}
-	if cfg.DatabaseURL != "postgres://user:pass@db:5432/prod" {
-		t.Errorf("DatabaseURL = %q", cfg.DatabaseURL)
-	}
-	if !cfg.CookieSecure {
-		t.Error("CookieSecure = false, want true")
-	}
+	require.Equal(t, "9999", cfg.Port)
+	require.Equal(t, "https://example.com", cfg.FrontendOrigin)
+	require.Equal(t, "postgres://user:pass@db:5432/prod", cfg.DatabaseURL)
+	require.True(t, cfg.CookieSecure)
 }
 
 func TestLoad_CookieSecure_False(t *testing.T) {
@@ -53,9 +39,7 @@ func TestLoad_CookieSecure_False(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.CookieSecure {
-		t.Error("CookieSecure = true, want false")
-	}
+	require.False(t, cfg.CookieSecure)
 }
 
 func TestLoad_CookieSecure_InvalidValue(t *testing.T) {
@@ -63,23 +47,17 @@ func TestLoad_CookieSecure_InvalidValue(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.CookieSecure {
-		t.Error("CookieSecure = true при значении 'yes', want false")
-	}
+	require.False(t, cfg.CookieSecure)
 }
 
 func TestGetEnv_Fallback(t *testing.T) {
 	t.Setenv("SOME_UNKNOWN_VAR", "")
 
-	if got := getEnv("SOME_UNKNOWN_VAR", "default"); got != "default" {
-		t.Errorf("getEnv = %q, want default", got)
-	}
+	require.Equal(t, "default", getEnv("SOME_UNKNOWN_VAR", "default"))
 }
 
 func TestGetEnv_Present(t *testing.T) {
 	t.Setenv("SOME_VAR", "custom")
 
-	if got := getEnv("SOME_VAR", "default"); got != "custom" {
-		t.Errorf("getEnv = %q, want custom", got)
-	}
+	require.Equal(t, "custom", getEnv("SOME_VAR", "default"))
 }

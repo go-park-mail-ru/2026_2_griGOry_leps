@@ -2,13 +2,13 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pashagolub/pgxmock/v5"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
@@ -25,9 +25,7 @@ func TestNormalizeEmail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := normalizeEmail(tt.in); got != tt.want {
-				t.Errorf("normalizeEmail(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+			require.Equal(t, tt.want, normalizeEmail(tt.in))
 		})
 	}
 }
@@ -45,9 +43,7 @@ func TestNormalizePhone(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := normalizePhone(tt.in); got != tt.want {
-				t.Errorf("normalizePhone(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+			require.Equal(t, tt.want, normalizePhone(tt.in))
 		})
 	}
 }
@@ -64,9 +60,7 @@ func TestIsValidPhone(t *testing.T) {
 		{"", false},
 	}
 	for _, tt := range tests {
-		if got := isValidPhone(tt.in); got != tt.want {
-			t.Errorf("isValidPhone(%q) = %v, want %v", tt.in, got, tt.want)
-		}
+		require.Equal(t, tt.want, isValidPhone(tt.in))
 	}
 }
 
@@ -86,33 +80,25 @@ func TestIsStrongPassword(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isStrongPassword(tt.in); got != tt.want {
-				t.Errorf("isStrongPassword(%q) = %v, want %v", tt.in, got, tt.want)
-			}
+			require.Equal(t, tt.want, isStrongPassword(tt.in))
 		})
 	}
 }
 
 func TestGenerateToken(t *testing.T) {
 	tok1, err := generateToken()
-	if err != nil {
-		t.Fatalf("generateToken() error = %v", err)
-	}
-	if len(tok1) != 64 {
-		t.Errorf("token length = %d, want 64", len(tok1))
-	}
-	tok2, _ := generateToken()
-	if tok1 == tok2 {
-		t.Error("generateToken() returned same token twice")
-	}
+	require.NoError(t, err)
+	require.Len(t, tok1, 64)
+
+	tok2, err := generateToken()
+	require.NoError(t, err)
+	require.NotEqual(t, tok1, tok2)
 }
 
 func newMockUsecase(t *testing.T) (*AuthUsecase, pgxmock.PgxPoolIface) {
 	t.Helper()
 	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock.NewPool: %v", err)
-	}
+	require.NoError(t, err)
 	uc := NewAuthUsecase(
 		mock,
 		repository.NewUserRepository(mock),
@@ -130,9 +116,7 @@ func userRows() *pgxmock.Rows {
 func mustHash(t *testing.T, password string) string {
 	t.Helper()
 	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("bcrypt: %v", err)
-	}
+	require.NoError(t, err)
 	return string(h)
 }
 
@@ -158,15 +142,11 @@ func TestRegister_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := uc.Register(context.Background(), tt.email, tt.pass, tt.first, tt.nick, tt.phone)
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("Register() err = %v, want %v", err, tt.wantErr)
-			}
+			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
 
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
-	}
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRegister_Success(t *testing.T) {
@@ -187,21 +167,12 @@ func TestRegister_Success(t *testing.T) {
 	mock.ExpectCommit()
 
 	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", password, "Ivan", "ivan", "89001234567")
-	if err != nil {
-		t.Fatalf("Register() error = %v", err)
-	}
-	if user.ID != 1 {
-		t.Errorf("user.ID = %d, want 1", user.ID)
-	}
-	if user.PasswordHash != "" {
-		t.Error("PasswordHash должен быть очищен")
-	}
-	if session.ID == "" || session.UserID != 1 {
-		t.Errorf("session = %+v", session)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("unmet expectations: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int32(1), user.ID)
+	require.Empty(t, user.PasswordHash)
+	require.NotEmpty(t, session.ID)
+	require.Equal(t, int32(1), session.UserID)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestRegister_EmailTaken(t *testing.T) {
@@ -215,9 +186,7 @@ func TestRegister_EmailTaken(t *testing.T) {
 	mock.ExpectRollback()
 
 	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
-	if !errors.Is(err, ErrEmailTaken) {
-		t.Errorf("err = %v, want ErrEmailTaken", err)
-	}
+	require.ErrorIs(t, err, ErrEmailTaken)
 }
 
 func TestRegister_PhoneTaken(t *testing.T) {
@@ -231,9 +200,7 @@ func TestRegister_PhoneTaken(t *testing.T) {
 	mock.ExpectRollback()
 
 	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
-	if !errors.Is(err, ErrPhoneTaken) {
-		t.Errorf("err = %v, want ErrPhoneTaken", err)
-	}
+	require.ErrorIs(t, err, ErrPhoneTaken)
 }
 
 func TestLogin_ByEmail_Success(t *testing.T) {
@@ -252,15 +219,10 @@ func TestLogin_ByEmail_Success(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	user, session, err := uc.Login(context.Background(), "Test@Mail.Ru", password)
-	if err != nil {
-		t.Fatalf("Login() error = %v", err)
-	}
-	if user.ID != 1 || user.PasswordHash != "" {
-		t.Errorf("user = %+v", user)
-	}
-	if session.ID == "" {
-		t.Error("session пустая")
-	}
+	require.NoError(t, err)
+	require.Equal(t, int32(1), user.ID)
+	require.Empty(t, user.PasswordHash)
+	require.NotEmpty(t, session.ID)
 }
 
 func TestLogin_ByPhone_Success(t *testing.T) {
@@ -278,9 +240,8 @@ func TestLogin_ByPhone_Success(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), int32(1), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	if _, _, err := uc.Login(context.Background(), "89001234567", password); err != nil {
-		t.Fatalf("Login() error = %v", err)
-	}
+	_, _, err := uc.Login(context.Background(), "89001234567", password)
+	require.NoError(t, err)
 }
 
 func TestLogin_UserNotFound(t *testing.T) {
@@ -292,9 +253,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 		WillReturnError(pgx.ErrNoRows)
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
-	if !errors.Is(err, ErrInvalidLogin) {
-		t.Errorf("err = %v, want ErrInvalidLogin", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidLogin)
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
@@ -309,9 +268,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 			AddRow(int32(1), "a@b.ru", hash, "Ivan", "ivan", "+79001234567", time.Now()))
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "WrongPass1")
-	if !errors.Is(err, ErrInvalidLogin) {
-		t.Errorf("err = %v, want ErrInvalidLogin", err)
-	}
+	require.ErrorIs(t, err, ErrInvalidLogin)
 }
 
 func TestLogout(t *testing.T) {
@@ -322,10 +279,9 @@ func TestLogout(t *testing.T) {
 		WithArgs("session-id").
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
-	if err := uc.Logout(context.Background(), "session-id"); err != nil {
-		t.Errorf("Logout() error = %v", err)
-	}
+	require.NoError(t, uc.Logout(context.Background(), "session-id"))
 }
+
 func TestMe_Success(t *testing.T) {
 	uc, mock := newMockUsecase(t)
 	defer mock.Close()
@@ -340,12 +296,8 @@ func TestMe_Success(t *testing.T) {
 			AddRow(int32(1), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567", time.Now()))
 
 	user, err := uc.Me(context.Background(), "session-id")
-	if err != nil {
-		t.Fatalf("Me() error = %v", err)
-	}
-	if user.ID != 1 {
-		t.Errorf("user.ID = %d, want 1", user.ID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, int32(1), user.ID)
 }
 
 func TestMe_SessionNotFound(t *testing.T) {
@@ -357,9 +309,7 @@ func TestMe_SessionNotFound(t *testing.T) {
 		WillReturnError(pgx.ErrNoRows)
 
 	_, err := uc.Me(context.Background(), "nope")
-	if !errors.Is(err, ErrSessionExpired) {
-		t.Errorf("err = %v, want ErrSessionExpired", err)
-	}
+	require.ErrorIs(t, err, ErrSessionExpired)
 }
 
 func TestMe_SessionExpired(t *testing.T) {
@@ -372,7 +322,5 @@ func TestMe_SessionExpired(t *testing.T) {
 			AddRow("session-id", int32(1), time.Now().Add(-time.Hour)))
 
 	_, err := uc.Me(context.Background(), "session-id")
-	if !errors.Is(err, ErrSessionExpired) {
-		t.Errorf("err = %v, want ErrSessionExpired", err)
-	}
+	require.ErrorIs(t, err, ErrSessionExpired)
 }
