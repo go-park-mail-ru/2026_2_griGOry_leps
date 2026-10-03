@@ -25,7 +25,7 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 	r.HandleFunc("/api/logout", authHandler.Logout).Methods(http.MethodPost)
 	r.HandleFunc("/api/me", authHandler.Me).Methods(http.MethodGet)
 
-	r.HandleFunc("/api/ads", adHandler.List).Methods(http.MethodGet)
+	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 

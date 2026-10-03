@@ -11,14 +11,18 @@ func SeedAds() []domain.Ad {
 	now := time.Now()
 
 	ads := []domain.Ad{
-		{CategoryID: 1, Title: "Велосипед горный Stels Navigator", Description: "Состояние отличное, 21 скорость", Price: 1500000, City: "Москва", HasDelivery: false},
-		{CategoryID: 2, Title: "iPhone 13 128 ГБ", Description: "Без царапин, полный комплект", Price: 4500000, City: "Москва", HasDelivery: true},
-		{CategoryID: 3, Title: "Диван угловой", Description: "Серый, раскладывается", Price: 2000000, City: "Химки", HasDelivery: false},
-		{CategoryID: 2, Title: "Наушники Sony WH-1000XM4", Description: "Шумоподавление, кейс в комплекте", Price: 1800000, City: "Балашиха", HasDelivery: true},
-		{CategoryID: 4, Title: "Куртка зимняя, размер M", Description: "Носил один сезон", Price: 350000, City: "Москва", HasDelivery: true},
-		{CategoryID: 1, Title: "Самокат Xiaomi Mi Electric Scooter", Description: "Пробег 300 км", Price: 2200000, City: "Мытищи", HasDelivery: false},
-		{CategoryID: 3, Title: "Стол письменный", Description: "Светлое дерево, 120×60", Price: 400000, City: "Москва", HasDelivery: false},
-		{CategoryID: 4, Title: "Кроссовки Nike Air Max", Description: "Размер 42, новые", Price: 750000, City: "Химки", HasDelivery: true},
+		{CategoryID: 14, Title: "Велосипед горный, состояние отличное", Description: "Stels Navigator, 21 скорость", Price: 1500000, City: "Москва", HasDelivery: false, ImageURL: "/img/listings/bike-mountain.jpg"},
+		{CategoryID: 14, Title: "Велосипед шоссейный, Б/У", Description: "Алюминиевая рама, размер M", Price: 4500000, City: "Москва", HasDelivery: false, ImageURL: "/img/listings/bike-road.jpg"},
+		{CategoryID: 12, Title: "Рюкзак школьный ортопедический", Description: "Жёсткая спинка, светоотражатели", Price: 320000, City: "Химки", HasDelivery: true, ImageURL: "/img/listings/backpack.jpg"},
+		{CategoryID: 4, Title: "Диван раскладной, доставка", Description: "Велюр, механизм еврокнижка", Price: 4800000, City: "Москва", HasDelivery: true, ImageURL: "/img/listings/sofa.jpg"},
+		{CategoryID: 15, Title: "Комплект книг для 5 класса", Description: "Все учебники по программе", Price: 150000, City: "Балашиха", HasDelivery: true, ImageURL: "/img/listings/school-books.jpg"},
+		{CategoryID: 7, Title: "Ноутбук игровой, гарантия", Description: "RTX 4060, 16 ГБ, гарантия до весны", Price: 6200000, City: "Москва", HasDelivery: true, ImageURL: "/img/listings/laptop.jpg"},
+		{CategoryID: 14, Title: "Электросамокат Xiaomi, пробег 300 км", Description: "Родная зарядка, без ремонтов", Price: 1850000, City: "Мытищи", HasDelivery: true, ImageURL: "/img/listings/scooter.jpg"},
+		{CategoryID: 14, Title: "Палатка 4-местная, двухслойная", Description: "Использовалась два похода", Price: 690000, City: "Москва", HasDelivery: true, ImageURL: "/img/listings/tent.jpg"},
+		{CategoryID: 4, Title: "Кофемашина рожковая DeLonghi", Description: "Капучинатор, полный комплект", Price: 1400000, City: "Химки", HasDelivery: true, ImageURL: "/img/listings/coffee-machine.jpg"},
+		{CategoryID: 16, Title: "Гитара акустическая Yamaha F310", Description: "Новые струны, чехол в подарок", Price: 950000, City: "Москва", HasDelivery: false, ImageURL: "/img/listings/guitar.jpg"},
+		{CategoryID: 12, Title: "Коляска прогулочная, лёгкая", Description: "Складывается одной рукой", Price: 780000, City: "Балашиха", HasDelivery: true, ImageURL: "/img/listings/stroller.jpg"},
+		{CategoryID: 7, Title: "PlayStation 5 с двумя джойстиками", Description: "Дисковая версия, на гарантии", Price: 4200000, City: "Москва", HasDelivery: false, ImageURL: "/img/listings/ps5.jpg"},
 	}
 
 	for i := range ads {
