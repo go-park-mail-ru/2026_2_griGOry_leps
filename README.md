@@ -7,7 +7,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 - [Доска задач (YouGile)](https://ru.yougile.com/team/82999ec3673c/GOSH4LEEPS)
 - [Репозиторий фронтенда](https://github.com/frontend-park-mail-ru/2026_2_griGOry_leps)
 - [Макеты в Figma](https://www.figma.com/design/azXAN6gTvGAovlElu3VP3b/GoGET-%E2%80%94-Team-Workspace)
-- [Deploy]()
+- [Deploy](http://161.104.107.201:8001)
+- [API](http://161.104.107.201:8000/api/health)
 
 ## Участники команды
 
@@ -29,6 +30,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 - **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
 - **Хранение данных:** в памяти процесса (map + sync.RWMutex), после перезапуска данные сбрасываются
 - **Авторизация:** cookie-сессии
+- **Документация API:** OpenAPI ([`openapi.yaml`](openapi.yaml))
 
 ## Как работать с задачами
 
@@ -102,10 +104,16 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    cp .env.example .env
    ```
 
+   | Переменная | Что задаёт | По умолчанию |
+   |---|---|---|
+   | `PORT` | порт сервера | `8080` |
+   | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
+   | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
+
 3. Установите зависимости:
 
    ```bash
-   go mod tidy
+   go mod download
    ```
 
 4. Запустите сервер:
@@ -114,4 +122,37 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    make run
    ```
 
-Бэкенд будет доступен на `http://localhost:8080`.
+Бэкенд будет доступен на `http://localhost:8080`, проверить можно запросом `curl http://localhost:8080/api/health`.
+
+### Команды
+
+| Команда | Что делает |
+|---|---|
+| `make run` | запуск сервера |
+| `make build` | сборка бинарника в `bin/server` |
+| `make test` | запуск тестов |
+| `make tidy` | обновление `go.mod` и `go.sum` |
+
+## API
+
+Все ручки начинаются с `/api`, полное описание — в [`openapi.yaml`](openapi.yaml).
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| `GET` | `/api/health` | проверка, что сервер жив |
+| `POST` | `/api/register` | регистрация, сразу создаёт сессию |
+| `POST` | `/api/login` | вход |
+| `POST` | `/api/logout` | выход, удаляет сессию |
+| `GET` | `/api/me` | текущий пользователь по cookie сессии |
+| `GET` | `/api/listings` | лента объявлений |
+
+## Структура проекта
+
+```
+cmd/server/          точка входа
+internal/config/     чтение переменных окружения
+internal/domain/     модели
+internal/handler/    HTTP-обработчики и роутер
+internal/usecase/    бизнес-логика
+internal/repository/ хранилище в памяти и тестовые объявления
+```
