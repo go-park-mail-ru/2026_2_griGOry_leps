@@ -116,22 +116,21 @@ func TestRegister_ValidationErrors(t *testing.T) {
 		email   string
 		pass    string
 		first   string
-		nick    string
 		phone   string
 		wantErr error
 	}{
-		{"bad email", "not-an-email", "Secret123", "Ivan", "ivan", "+79001234567", ErrInvalidEmail},
-		{"empty first name", "a@b.ru", "Secret123", "  ", "ivan", "+79001234567", ErrMissingFirstName},
-		{"empty nickname", "a@b.ru", "Secret123", "Ivan", "  ", "+79001234567", ErrMissingNickname},
-		{"bad phone", "a@b.ru", "Secret123", "Ivan", "ivan", "123", ErrInvalidPhone},
-		{"weak password", "a@b.ru", "short", "Ivan", "ivan", "+79001234567", ErrWeakPassword},
-		{"nickname too short", "a@b.ru", "Secret123", "Ivan", "ab", "+79001234567", ErrInvalidNickname},
-		{"nickname cyrillic", "a@b.ru", "Secret123", "Ivan", "иван", "+79001234567", ErrInvalidNickname},
+		{"bad email", "not-an-email", "Secret123", "ivan", "+79001234567", ErrInvalidEmail},
+		{"empty first name", "a@b.ru", "Secret123", "  ", "+79001234567", ErrMissingFirstName},
+		{"bad phone", "a@b.ru", "Secret123", "ivan", "123", ErrInvalidPhone},
+		{"weak password", "a@b.ru", "short", "ivan", "+79001234567", ErrWeakPassword},
+		{"first name too short", "a@b.ru", "Secret123", "И", "+79001234567", ErrInvalidFirstName},
+		{"first name too long", "a@b.ru", "Secret123", strings.Repeat("и", 51), "+79001234567", ErrInvalidFirstName},
+		{"first name with dash", "a@b.ru", "Secret123", "Анна-Мария", "+79001234567", ErrInvalidFirstName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			uc := newTestUsecase()
-			_, _, err := uc.Register(ctx, tt.email, tt.pass, tt.first, tt.nick, tt.phone)
+			_, _, err := uc.Register(ctx, tt.email, tt.pass, tt.first, tt.phone)
 			require.ErrorIs(t, err, tt.wantErr)
 		})
 	}
@@ -141,28 +140,20 @@ func TestRegister_PasswordTooLong(t *testing.T) {
 	uc := newTestUsecase()
 
 	longPassword := "Aa1" + strings.Repeat("x", 100)
-	_, _, err := uc.Register(context.Background(), "a@b.ru", longPassword, "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(context.Background(), "a@b.ru", longPassword, "ivan", "+79001234567")
 	require.ErrorIs(t, err, ErrPasswordTooLong)
 	require.NotErrorIs(t, err, ErrWeakPassword)
-}
-
-func TestRegister_FirstNameTooLong(t *testing.T) {
-	uc := newTestUsecase()
-
-	longName := strings.Repeat("И", 200)
-	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", longName, "ivan", "+79001234567")
-	require.ErrorIs(t, err, ErrFirstNameTooLong)
 }
 
 func TestRegister_Success(t *testing.T) {
 	uc := newTestUsecase()
 
-	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", "Secret123", "Ivan", "ivan", "89001234567")
+	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", "Secret123", "ivan", "89001234567")
 	require.NoError(t, err)
 	require.NotZero(t, user.ID)
 	require.Equal(t, "test@mail.ru", user.Email)
-	require.Equal(t, "Ivan", user.FirstName)
-	require.Equal(t, "ivan", user.Nickname)
+	require.Equal(t, "ivan", user.FirstName)
+	require.Empty(t, user.Nickname)
 	require.Equal(t, "+79001234567", user.Phone)
 	require.Empty(t, user.PasswordHash)
 	require.NotEmpty(t, session.ID)
@@ -173,10 +164,10 @@ func TestRegister_EmailTaken(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
-	_, _, err = uc.Register(ctx, "a@b.ru", "Secret123", "Petr", "petr", "+79007654321")
+	_, _, err = uc.Register(ctx, "a@b.ru", "Secret123", "petr", "+79007654321")
 	require.ErrorIs(t, err, ErrEmailTaken)
 }
 
@@ -184,29 +175,47 @@ func TestRegister_PhoneTaken(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
-	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "petr", "+79001234567")
+	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "petr", "+79001234567")
 	require.ErrorIs(t, err, ErrPhoneTaken)
 }
 
-func TestRegister_NicknameTaken(t *testing.T) {
+func TestRegister_FirstNameAllowedChars(t *testing.T) {
+	for _, name := range []string{"Иван", "ivan", "Ёжик_2026", "ivan.bike", "Ян", "Иван Петров"} {
+		t.Run(name, func(t *testing.T) {
+			uc := newTestUsecase()
+			_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", name, "+79001234567")
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestRegister_FirstNameSpacesNormalized(t *testing.T) {
+	uc := newTestUsecase()
+
+	user, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "  Иван   Петров  ", "+79001234567")
+	require.NoError(t, err)
+	require.Equal(t, "Иван Петров", user.FirstName)
+}
+
+func TestRegister_FirstNameNotUnique(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Иван", "+79001234567")
 	require.NoError(t, err)
 
-	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "IVAN", "+79007654321")
-	require.ErrorIs(t, err, ErrNicknameTaken)
+	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Иван", "+79007654321")
+	require.NoError(t, err)
 }
 
 func TestLogin_ByEmail_Success(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
 	user, session, err := uc.Login(ctx, "a@b.ru", "Secret123")
@@ -220,7 +229,7 @@ func TestLogin_ByPhone_Success(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
 	_, _, err = uc.Login(ctx, "+79001234567", "Secret123")
@@ -238,7 +247,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "Ivan", "ivan", "+79001234567")
+	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "ivan", "+79001234567")
 	require.NoError(t, err)
 
 	_, _, err = uc.Login(ctx, "a@b.ru", "WrongPass1")
@@ -249,7 +258,7 @@ func TestLogout(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	_, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	_, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
 	require.NoError(t, uc.Logout(ctx, session.ID))
@@ -262,7 +271,7 @@ func TestMe_Success(t *testing.T) {
 	uc := newTestUsecase()
 	ctx := context.Background()
 
-	created, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "Ivan", "ivan", "+79001234567")
+	created, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 
 	user, err := uc.Me(ctx, session.ID)
