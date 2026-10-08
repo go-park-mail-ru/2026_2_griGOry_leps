@@ -14,7 +14,7 @@ func TestUserRepo_Create_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int32(1), user.ID)
 	require.Equal(t, "a@b.ru", user.Email)
-	require.Equal(t, "ivan", user.Nickname)
+	require.Equal(t, "ivan", user.FirstName)
 	require.Equal(t, "+79001234567", user.Phone)
 	require.NotZero(t, user.CreatedAt)
 }
@@ -39,17 +39,14 @@ func TestUserRepo_Create_PhoneTaken(t *testing.T) {
 	require.ErrorIs(t, err, ErrPhoneExists)
 }
 
-func TestUserRepo_Create_NicknameTaken_CaseInsensitive(t *testing.T) {
+func TestUserRepo_Create_SameFirstNameAllowed(t *testing.T) {
 	repo := NewUserRepository()
 
-	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "+79001234567")
+	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Иван", "+79001234567")
 	require.NoError(t, err)
 
-	_, err = repo.Create(context.Background(), "c@d.ru", "hash2", "IVAN", "+79007654321")
-	require.ErrorIs(t, err, ErrNicknameExists)
-
-	_, err = repo.Create(context.Background(), "e@f.ru", "hash3", "ivan", "+79009876543")
-	require.ErrorIs(t, err, ErrNicknameExists)
+	_, err = repo.Create(context.Background(), "c@d.ru", "hash2", "Иван", "+79007654321")
+	require.NoError(t, err)
 }
 
 func TestUserRepo_GetByEmail_Success(t *testing.T) {

@@ -70,20 +70,19 @@ paths:
               examples:
                 badBody: { value: { error: invalid request body } }
                 invalidEmail: { value: { error: invalid email, field: email } }
-                missingNickname: { value: { error: nickname is required, field: nickname } }
-                invalidNickname: { value: { error: 'nickname must be 3-32 characters: latin letters, digits, _ and .', field: nickname } }
+                missingFirstName: { value: { error: first name is required, field: first_name } }
+                invalidFirstName: { value: { error: 'first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, _ and .', field: first_name } }
                 invalidPhone: { value: { error: invalid phone number, field: phone } }
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
                 passwordTooLong: { value: { error: password is too long, field: password } }
         '409':
-          description: Email, телефон или никнейм уже заняты
+          description: Email или телефон уже заняты
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               examples:
                 email: { value: { error: email already registered, field: email } }
                 phone: { value: { error: phone already registered, field: phone } }
-                nickname: { value: { error: nickname already taken, field: nickname } }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -256,21 +255,25 @@ components:
         error: { type: string, example: invalid request body }
         field:
           type: string
-          enum: [email, nickname, phone, password]
+          enum: [email, first_name, phone, password]
           description: Есть только у ошибок валидации полей в /register — поле формы, к которому относится ошибка.
 
     User:
       type: object
-      required: [id, email, nickname, phone]
+      required: [id, email, first_name, nickname, phone]
       properties:
         id: { type: integer, example: 42 }
         email: { type: string, format: email, example: ivan@mail.ru }
-        nickname: { type: string, example: ivan_bike }
+        first_name: { type: string, example: Иван }
+        nickname:
+          type: string
+          description: Необязательный, заполняется в настройках профиля. Сразу после регистрации — пустая строка.
+          example: ''
         phone: { type: string, example: '+79001234567' }
 
     RegisterRequest:
       type: object
-      required: [email, password, nickname, phone]
+      required: [email, password, first_name, phone]
       properties:
         email: { type: string, format: email, example: ivan@mail.ru }
         password:
@@ -281,13 +284,13 @@ components:
             Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
             Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
           example: Secret123
-        nickname:
+        first_name:
           type: string
-          minLength: 3
-          maxLength: 32
-          pattern: '^[A-Za-z0-9_.]+$'
-          description: Латиница, цифры, `_` и `.`. Уникален без учёта регистра, при совпадении — 409 nickname already taken.
-          example: ivan_bike
+          minLength: 2
+          maxLength: 50
+          pattern: '^[A-Za-zА-Яа-яЁё0-9_. ]+$'
+          description: Латиница, кириллица, цифры, пробел, `_` и `.`. Пробелы по краям обрезаются, несколько подряд схлопываются в один. Не уникально — одинаковые имена у разных пользователей допустимы.
+          example: Иван
         phone:
           type: string
           description: |
