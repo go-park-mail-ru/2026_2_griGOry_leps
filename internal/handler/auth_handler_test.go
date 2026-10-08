@@ -32,7 +32,7 @@ func TestAuthHandler_Register_BadJSON(t *testing.T) {
 
 func TestAuthHandler_Register_Success(t *testing.T) {
 	h := newAuthHandler()
-	body := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	body := `{"email":"a@b.ru","password":"Secret123","nickname":"ivan","phone":"+79001234567"}`
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 
@@ -52,7 +52,7 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 
 func TestAuthHandler_Register_ValidationError(t *testing.T) {
 	h := newAuthHandler()
-	body := `{"email":"a@b.ru","password":"short","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	body := `{"email":"a@b.ru","password":"short","nickname":"ivan","phone":"+79001234567"}`
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
 
@@ -64,7 +64,7 @@ func TestAuthHandler_Register_ValidationError(t *testing.T) {
 
 func TestAuthHandler_Register_EmailTaken(t *testing.T) {
 	h := newAuthHandler()
-	body := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	body := `{"email":"a@b.ru","password":"Secret123","nickname":"ivan","phone":"+79001234567"}`
 
 	req1 := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
 	h.Register(httptest.NewRecorder(), req1)
@@ -88,7 +88,7 @@ func TestAuthHandler_Login_BadJSON(t *testing.T) {
 
 func TestAuthHandler_Login_Success(t *testing.T) {
 	h := newAuthHandler()
-	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	registerBody := `{"email":"a@b.ru","password":"Secret123","nickname":"ivan","phone":"+79001234567"}`
 	h.Register(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(registerBody)))
 
 	loginBody := `{"login":"a@b.ru","password":"Secret123"}`
@@ -128,7 +128,7 @@ func TestAuthHandler_Logout_NoCookie(t *testing.T) {
 func TestAuthHandler_Logout_WithCookie(t *testing.T) {
 	h := newAuthHandler()
 
-	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	registerBody := `{"email":"a@b.ru","password":"Secret123","nickname":"ivan","phone":"+79001234567"}`
 	regRec := httptest.NewRecorder()
 	h.Register(regRec, httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(registerBody)))
 
@@ -158,7 +158,7 @@ func TestAuthHandler_Me_NoCookie(t *testing.T) {
 func TestAuthHandler_Me_Success(t *testing.T) {
 	h := newAuthHandler()
 
-	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
+	registerBody := `{"email":"a@b.ru","password":"Secret123","nickname":"ivan","phone":"+79001234567"}`
 	regRec := httptest.NewRecorder()
 	h.Register(regRec, httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(registerBody)))
 
@@ -193,7 +193,7 @@ func TestAuthHandler_UsecaseWiring(t *testing.T) {
 	authUC := usecase.NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
 	h := NewAuthHandler(authUC, false)
 
-	body := `{"email":"x@y.ru","password":"Secret123","first_name":"X","nickname":"xxx","phone":"+79005555555"}`
+	body := `{"email":"x@y.ru","password":"Secret123","nickname":"xxx","phone":"+79005555555"}`
 	rec := httptest.NewRecorder()
 	h.Register(rec, httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body)))
 

@@ -35,7 +35,7 @@ func NewUserRepository() *UserRepository {
 	}
 }
 
-func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstName, nickname, phone string) (domain.User, error) {
+func (r *UserRepository) Create(_ context.Context, email, passwordHash, nickname, phone string) (domain.User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -55,7 +55,6 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 		ID:           r.lastID,
 		Email:        email,
 		PasswordHash: passwordHash,
-		FirstName:    firstName,
 		Nickname:     nickname,
 		Phone:        phone,
 		CreatedAt:    time.Now(),

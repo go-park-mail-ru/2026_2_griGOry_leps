@@ -19,25 +19,22 @@ import (
 )
 
 var (
-	ErrInvalidEmail     = errors.New("invalid email")
-	ErrMissingFirstName = errors.New("first name is required")
-	ErrFirstNameTooLong = errors.New("first name is too long")
-	ErrMissingNickname  = errors.New("nickname is required")
-	ErrInvalidNickname  = errors.New("nickname must be 3-32 characters: latin letters, digits, _ and .")
-	ErrInvalidPhone     = errors.New("invalid phone number")
-	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
-	ErrPasswordTooLong  = errors.New("password is too long")
-	ErrEmailTaken       = errors.New("email already registered")
-	ErrPhoneTaken       = errors.New("phone already registered")
-	ErrNicknameTaken    = errors.New("nickname already taken")
-	ErrInvalidLogin     = errors.New("invalid login or password")
-	ErrSessionExpired   = errors.New("session expired")
+	ErrInvalidEmail    = errors.New("invalid email")
+	ErrMissingNickname = errors.New("nickname is required")
+	ErrInvalidNickname = errors.New("nickname must be 3-32 characters: latin letters, digits, _ and .")
+	ErrInvalidPhone    = errors.New("invalid phone number")
+	ErrWeakPassword    = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
+	ErrPasswordTooLong = errors.New("password is too long")
+	ErrEmailTaken      = errors.New("email already registered")
+	ErrPhoneTaken      = errors.New("phone already registered")
+	ErrNicknameTaken   = errors.New("nickname already taken")
+	ErrInvalidLogin    = errors.New("invalid login or password")
+	ErrSessionExpired  = errors.New("session expired")
 )
 
 const (
 	sessionTTL       = 7 * 24 * time.Hour
 	maxPasswordBytes = 72
-	maxFirstNameLen  = 100
 )
 
 var (
@@ -54,20 +51,13 @@ func NewAuthUsecase(users *repository.UserRepository, sessions *repository.Sessi
 	return &AuthUsecase{users: users, sessions: sessions}
 }
 
-func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error) {
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, nickname, phone string) (domain.User, domain.Session, error) {
 	email = normalizeEmail(email)
-	firstName = strings.TrimSpace(firstName)
 	nickname = strings.TrimSpace(nickname)
 	phone = normalizePhone(phone)
 
 	if !isValidEmail(email) {
 		return domain.User{}, domain.Session{}, ErrInvalidEmail
-	}
-	if firstName == "" {
-		return domain.User{}, domain.Session{}, ErrMissingFirstName
-	}
-	if utf8.RuneCountInString(firstName) > maxFirstNameLen {
-		return domain.User{}, domain.Session{}, ErrFirstNameTooLong
 	}
 	if nickname == "" {
 		return domain.User{}, domain.Session{}, ErrMissingNickname
@@ -90,7 +80,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
+	user, err := uc.users.Create(ctx, email, string(hash), nickname, phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrUserExists):

@@ -70,8 +70,6 @@ paths:
               examples:
                 badBody: { value: { error: invalid request body } }
                 invalidEmail: { value: { error: invalid email, field: email } }
-                missingFirstName: { value: { error: first name is required, field: first_name } }
-                firstNameTooLong: { value: { error: first name is too long, field: first_name } }
                 missingNickname: { value: { error: nickname is required, field: nickname } }
                 invalidNickname: { value: { error: 'nickname must be 3-32 characters: latin letters, digits, _ and .', field: nickname } }
                 invalidPhone: { value: { error: invalid phone number, field: phone } }
@@ -164,10 +162,10 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Лента
-  /ads:
+  /listings:
     get:
       tags: [Лента]
-      operationId: listAds
+      operationId: listListings
       summary: Список объявлений
       description: |
         Возвращает только активные объявления. Авторизация не нужна.
@@ -258,22 +256,21 @@ components:
         error: { type: string, example: invalid request body }
         field:
           type: string
-          enum: [email, first_name, nickname, phone, password]
+          enum: [email, nickname, phone, password]
           description: Есть только у ошибок валидации полей в /register — поле формы, к которому относится ошибка.
 
     User:
       type: object
-      required: [id, email, first_name, nickname, phone]
+      required: [id, email, nickname, phone]
       properties:
         id: { type: integer, example: 42 }
         email: { type: string, format: email, example: ivan@mail.ru }
-        first_name: { type: string, example: Иван }
         nickname: { type: string, example: ivan_bike }
         phone: { type: string, example: '+79001234567' }
 
     RegisterRequest:
       type: object
-      required: [email, password, first_name, nickname, phone]
+      required: [email, password, nickname, phone]
       properties:
         email: { type: string, format: email, example: ivan@mail.ru }
         password:
@@ -284,7 +281,6 @@ components:
             Минимум 8 символов, заглавная и строчная буквы, хотя бы одна цифра.
             Не длиннее 72 байт (ограничение bcrypt), иначе 400 `password is too long`.
           example: Secret123
-        first_name: { type: string, maxLength: 100, example: Иван }
         nickname:
           type: string
           minLength: 3
