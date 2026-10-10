@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +32,7 @@ func TestSessionRepo_GetByID_NotFound(t *testing.T) {
 	repo := NewSessionRepository()
 
 	_, err := repo.GetByID(context.Background(), "nope")
-	require.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestSessionRepo_Delete(t *testing.T) {
@@ -41,7 +42,7 @@ func TestSessionRepo_Delete(t *testing.T) {
 	require.NoError(t, repo.Delete(context.Background(), "sess-1"))
 
 	_, err := repo.GetByID(context.Background(), "sess-1")
-	require.ErrorIs(t, err, ErrSessionNotFound)
+	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestSessionRepo_Delete_Nonexistent(t *testing.T) {

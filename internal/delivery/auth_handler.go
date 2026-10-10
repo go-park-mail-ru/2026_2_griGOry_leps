@@ -1,4 +1,4 @@
-package handler
+package delivery
 
 import (
 	"encoding/json"
@@ -8,17 +8,16 @@ import (
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
 const maxRequestBodyBytes = 1 << 20
 
 type AuthHandler struct {
-	auth         *usecase.AuthUsecase
+	auth         AuthUsecase
 	cookieSecure bool
 }
 
-func NewAuthHandler(auth *usecase.AuthUsecase, cookieSecure bool) *AuthHandler {
+func NewAuthHandler(auth AuthUsecase, cookieSecure bool) *AuthHandler {
 	return &AuthHandler{auth: auth, cookieSecure: cookieSecure}
 }
 
@@ -76,9 +75,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 
 		status := http.StatusBadRequest
-		if errors.Is(err, usecase.ErrEmailTaken) ||
-			errors.Is(err, usecase.ErrPhoneTaken) ||
-			errors.Is(err, usecase.ErrNicknameTaken) {
+		if errors.Is(err, domain.ErrEmailTaken) ||
+			errors.Is(err, domain.ErrPhoneTaken) ||
+			errors.Is(err, domain.ErrNicknameTaken) {
 			status = http.StatusConflict
 		}
 
@@ -92,21 +91,21 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 func registerErrorField(err error) string {
 	switch {
-	case errors.Is(err, usecase.ErrInvalidEmail),
-		errors.Is(err, usecase.ErrEmailTaken):
+	case errors.Is(err, domain.ErrInvalidEmail),
+		errors.Is(err, domain.ErrEmailTaken):
 		return "email"
-	case errors.Is(err, usecase.ErrMissingFirstName),
-		errors.Is(err, usecase.ErrFirstNameTooLong):
+	case errors.Is(err, domain.ErrMissingFirstName),
+		errors.Is(err, domain.ErrFirstNameTooLong):
 		return "first_name"
-	case errors.Is(err, usecase.ErrMissingNickname),
-		errors.Is(err, usecase.ErrInvalidNickname),
-		errors.Is(err, usecase.ErrNicknameTaken):
+	case errors.Is(err, domain.ErrMissingNickname),
+		errors.Is(err, domain.ErrInvalidNickname),
+		errors.Is(err, domain.ErrNicknameTaken):
 		return "nickname"
-	case errors.Is(err, usecase.ErrInvalidPhone),
-		errors.Is(err, usecase.ErrPhoneTaken):
+	case errors.Is(err, domain.ErrInvalidPhone),
+		errors.Is(err, domain.ErrPhoneTaken):
 		return "phone"
-	case errors.Is(err, usecase.ErrWeakPassword),
-		errors.Is(err, usecase.ErrPasswordTooLong):
+	case errors.Is(err, domain.ErrWeakPassword),
+		errors.Is(err, domain.ErrPasswordTooLong):
 		return "password"
 	}
 	return ""
@@ -124,7 +123,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	user, session, err := h.auth.Login(r.Context(), req.Login, req.Password)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrInvalidLogin):
+		case errors.Is(err, domain.ErrInvalidLogin):
 			writeError(w, http.StatusUnauthorized, err.Error())
 		default:
 			log.Printf("login error: %v", err)
@@ -169,7 +168,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	user, err := h.auth.Me(r.Context(), cookie.Value)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrSessionExpired):
+		case errors.Is(err, domain.ErrSessionExpired):
 			writeError(w, http.StatusUnauthorized, "not authenticated")
 		default:
 			log.Printf("me error: %v", err)

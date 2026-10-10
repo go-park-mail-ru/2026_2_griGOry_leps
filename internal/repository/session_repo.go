@@ -2,14 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
-
-var ErrSessionNotFound = errors.New("session not found")
 
 type SessionRepository struct {
 	mu       sync.RWMutex
@@ -34,7 +31,7 @@ func (r *SessionRepository) GetByID(_ context.Context, id string) (domain.Sessio
 
 	session, ok := r.sessions[id]
 	if !ok {
-		return domain.Session{}, ErrSessionNotFound
+		return domain.Session{}, domain.ErrSessionNotFound
 	}
 	return session, nil
 }
