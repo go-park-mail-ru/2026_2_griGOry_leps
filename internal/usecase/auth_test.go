@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 )
 
@@ -120,13 +121,13 @@ func TestRegister_ValidationErrors(t *testing.T) {
 		phone   string
 		wantErr error
 	}{
-		{"bad email", "not-an-email", "Secret123", "Ivan", "ivan", "+79001234567", ErrInvalidEmail},
-		{"empty first name", "a@b.ru", "Secret123", "  ", "ivan", "+79001234567", ErrMissingFirstName},
-		{"empty nickname", "a@b.ru", "Secret123", "Ivan", "  ", "+79001234567", ErrMissingNickname},
-		{"bad phone", "a@b.ru", "Secret123", "Ivan", "ivan", "123", ErrInvalidPhone},
-		{"weak password", "a@b.ru", "short", "Ivan", "ivan", "+79001234567", ErrWeakPassword},
-		{"nickname too short", "a@b.ru", "Secret123", "Ivan", "ab", "+79001234567", ErrInvalidNickname},
-		{"nickname cyrillic", "a@b.ru", "Secret123", "Ivan", "иван", "+79001234567", ErrInvalidNickname},
+		{"bad email", "not-an-email", "Secret123", "Ivan", "ivan", "+79001234567", domain.ErrInvalidEmail},
+		{"empty first name", "a@b.ru", "Secret123", "  ", "ivan", "+79001234567", domain.ErrMissingFirstName},
+		{"empty nickname", "a@b.ru", "Secret123", "Ivan", "  ", "+79001234567", domain.ErrMissingNickname},
+		{"bad phone", "a@b.ru", "Secret123", "Ivan", "ivan", "123", domain.ErrInvalidPhone},
+		{"weak password", "a@b.ru", "short", "Ivan", "ivan", "+79001234567", domain.ErrWeakPassword},
+		{"nickname too short", "a@b.ru", "Secret123", "Ivan", "ab", "+79001234567", domain.ErrInvalidNickname},
+		{"nickname cyrillic", "a@b.ru", "Secret123", "Ivan", "иван", "+79001234567", domain.ErrInvalidNickname},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -142,8 +143,8 @@ func TestRegister_PasswordTooLong(t *testing.T) {
 
 	longPassword := "Aa1" + strings.Repeat("x", 100)
 	_, _, err := uc.Register(context.Background(), "a@b.ru", longPassword, "Ivan", "ivan", "+79001234567")
-	require.ErrorIs(t, err, ErrPasswordTooLong)
-	require.NotErrorIs(t, err, ErrWeakPassword)
+	require.ErrorIs(t, err, domain.ErrPasswordTooLong)
+	require.NotErrorIs(t, err, domain.ErrWeakPassword)
 }
 
 func TestRegister_FirstNameTooLong(t *testing.T) {
@@ -151,7 +152,7 @@ func TestRegister_FirstNameTooLong(t *testing.T) {
 
 	longName := strings.Repeat("И", 200)
 	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", longName, "ivan", "+79001234567")
-	require.ErrorIs(t, err, ErrFirstNameTooLong)
+	require.ErrorIs(t, err, domain.ErrFirstNameTooLong)
 }
 
 func TestRegister_Success(t *testing.T) {
@@ -177,7 +178,7 @@ func TestRegister_EmailTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = uc.Register(ctx, "a@b.ru", "Secret123", "Petr", "petr", "+79007654321")
-	require.ErrorIs(t, err, ErrEmailTaken)
+	require.ErrorIs(t, err, domain.ErrEmailTaken)
 }
 
 func TestRegister_PhoneTaken(t *testing.T) {
@@ -188,7 +189,7 @@ func TestRegister_PhoneTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "petr", "+79001234567")
-	require.ErrorIs(t, err, ErrPhoneTaken)
+	require.ErrorIs(t, err, domain.ErrPhoneTaken)
 }
 
 func TestRegister_NicknameTaken(t *testing.T) {
@@ -199,7 +200,7 @@ func TestRegister_NicknameTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "Petr", "IVAN", "+79007654321")
-	require.ErrorIs(t, err, ErrNicknameTaken)
+	require.ErrorIs(t, err, domain.ErrNicknameTaken)
 }
 
 func TestLogin_ByEmail_Success(t *testing.T) {
@@ -231,7 +232,7 @@ func TestLogin_UserNotFound(t *testing.T) {
 	uc := newTestUsecase()
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
-	require.ErrorIs(t, err, ErrInvalidLogin)
+	require.ErrorIs(t, err, domain.ErrInvalidLogin)
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
@@ -242,7 +243,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 	require.NoError(t, err)
 
 	_, _, err = uc.Login(ctx, "a@b.ru", "WrongPass1")
-	require.ErrorIs(t, err, ErrInvalidLogin)
+	require.ErrorIs(t, err, domain.ErrInvalidLogin)
 }
 
 func TestLogout(t *testing.T) {
@@ -255,7 +256,7 @@ func TestLogout(t *testing.T) {
 	require.NoError(t, uc.Logout(ctx, session.ID))
 
 	_, err = uc.Me(ctx, session.ID)
-	require.ErrorIs(t, err, ErrSessionExpired)
+	require.ErrorIs(t, err, domain.ErrSessionExpired)
 }
 
 func TestMe_Success(t *testing.T) {
@@ -274,5 +275,5 @@ func TestMe_SessionNotFound(t *testing.T) {
 	uc := newTestUsecase()
 
 	_, err := uc.Me(context.Background(), "nope")
-	require.ErrorIs(t, err, ErrSessionExpired)
+	require.ErrorIs(t, err, domain.ErrSessionExpired)
 }

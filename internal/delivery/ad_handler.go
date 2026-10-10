@@ -1,4 +1,4 @@
-package handler
+package delivery
 
 import (
 	"errors"
@@ -10,14 +10,13 @@ import (
 	"strconv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
 type AdHandler struct {
-	ads *usecase.AdUsecase
+	ads AdUsecase
 }
 
-func NewAdHandler(ads *usecase.AdUsecase) *AdHandler {
+func NewAdHandler(ads AdUsecase) *AdHandler {
 	return &AdHandler{ads: ads}
 }
 
@@ -42,7 +41,7 @@ func adResponse(ad domain.Ad) map[string]any {
 func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	params := usecase.ListAdsParams{
+	params := domain.ListAdsParams{
 		Query:    q.Get("q"),
 		City:     q.Get("city"),
 		PriceMin: q.Get("price_min"),
@@ -78,9 +77,9 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	page, err := h.ads.List(r.Context(), params)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrInvalidPrice),
-			errors.Is(err, usecase.ErrInvalidPriceRange),
-			errors.Is(err, usecase.ErrInvalidSort):
+		case errors.Is(err, domain.ErrInvalidPrice),
+			errors.Is(err, domain.ErrInvalidPriceRange),
+			errors.Is(err, domain.ErrInvalidSort):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			log.Printf("list ads error: %v", err)

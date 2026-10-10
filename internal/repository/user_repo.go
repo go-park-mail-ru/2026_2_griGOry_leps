@@ -2,19 +2,11 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-)
-
-var (
-	ErrUserNotFound   = errors.New("user not found")
-	ErrUserExists     = errors.New("user already exists")
-	ErrPhoneExists    = errors.New("phone already registered")
-	ErrNicknameExists = errors.New("nickname already taken")
 )
 
 type UserRepository struct {
@@ -40,14 +32,14 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 	defer r.mu.Unlock()
 
 	if _, ok := r.byEmail[email]; ok {
-		return domain.User{}, ErrUserExists
+		return domain.User{}, domain.ErrUserExists
 	}
 	if _, ok := r.byPhone[phone]; ok {
-		return domain.User{}, ErrPhoneExists
+		return domain.User{}, domain.ErrPhoneExists
 	}
 	nicknameKey := strings.ToLower(nickname)
 	if _, ok := r.byNickname[nicknameKey]; ok {
-		return domain.User{}, ErrNicknameExists
+		return domain.User{}, domain.ErrNicknameExists
 	}
 
 	r.lastID++
@@ -75,7 +67,7 @@ func (r *UserRepository) GetByEmail(_ context.Context, email string) (domain.Use
 
 	id, ok := r.byEmail[email]
 	if !ok {
-		return domain.User{}, ErrUserNotFound
+		return domain.User{}, domain.ErrUserNotFound
 	}
 	return r.users[id], nil
 }
@@ -86,7 +78,7 @@ func (r *UserRepository) GetByPhone(_ context.Context, phone string) (domain.Use
 
 	id, ok := r.byPhone[phone]
 	if !ok {
-		return domain.User{}, ErrUserNotFound
+		return domain.User{}, domain.ErrUserNotFound
 	}
 	return r.users[id], nil
 }
@@ -97,7 +89,7 @@ func (r *UserRepository) GetByID(_ context.Context, id int32) (domain.User, erro
 
 	user, ok := r.users[id]
 	if !ok {
-		return domain.User{}, ErrUserNotFound
+		return domain.User{}, domain.ErrUserNotFound
 	}
 	return user, nil
 }
