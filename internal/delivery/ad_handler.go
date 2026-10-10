@@ -10,7 +10,6 @@ import (
 	"strconv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
 type AdHandler struct {
@@ -78,9 +77,9 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	page, err := h.ads.List(r.Context(), params)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrInvalidPrice),
-			errors.Is(err, usecase.ErrInvalidPriceRange),
-			errors.Is(err, usecase.ErrInvalidSort):
+		case errors.Is(err, domain.ErrInvalidPrice),
+			errors.Is(err, domain.ErrInvalidPriceRange),
+			errors.Is(err, domain.ErrInvalidSort):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
 			log.Printf("list ads error: %v", err)

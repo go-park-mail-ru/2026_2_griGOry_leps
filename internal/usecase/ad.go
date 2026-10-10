@@ -2,18 +2,11 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-)
-
-var (
-	ErrInvalidPrice      = errors.New("invalid price")
-	ErrInvalidPriceRange = errors.New("price_max must not be less than price_min")
-	ErrInvalidSort       = errors.New("invalid sort value")
 )
 
 const (
@@ -47,7 +40,7 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 		f.Sort = domain.AdSortNewest
 	case domain.AdSortNewest, domain.AdSortPriceAsc, domain.AdSortPriceDesc:
 	default:
-		return domain.AdPage{}, ErrInvalidSort
+		return domain.AdPage{}, domain.ErrInvalidSort
 	}
 
 	if p.PriceMin != "" {
@@ -65,7 +58,7 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 		f.PriceMax = &v
 	}
 	if f.PriceMin != nil && f.PriceMax != nil && *f.PriceMax < *f.PriceMin {
-		return domain.AdPage{}, ErrInvalidPriceRange
+		return domain.AdPage{}, domain.ErrInvalidPriceRange
 	}
 
 	if f.Limit <= 0 {
@@ -85,7 +78,7 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 func parsePrice(s string) (int64, error) {
 	m := priceFormat.FindStringSubmatch(s)
 	if m == nil {
-		return 0, ErrInvalidPrice
+		return 0, domain.ErrInvalidPrice
 	}
 
 	rubles, _ := strconv.ParseInt(m[1], 10, 64)
