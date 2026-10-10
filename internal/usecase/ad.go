@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 )
 
 var (
@@ -37,10 +36,10 @@ type ListAdsParams struct {
 }
 
 type AdUsecase struct {
-	ads *repository.AdRepository
+	ads AdRepository
 }
 
-func NewAdUsecase(ads *repository.AdRepository) *AdUsecase {
+func NewAdUsecase(ads AdRepository) *AdUsecase {
 	return &AdUsecase{ads: ads}
 }
 

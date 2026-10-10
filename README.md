@@ -114,4 +114,4 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    make run
    ```
 
-Бэкенд будет доступен на `http://localhost:8080`.
+Бэкенд будет доступен на `http://localhost:5173`.

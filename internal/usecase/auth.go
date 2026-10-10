@@ -15,7 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 )
 
 var (
@@ -46,11 +45,11 @@ var (
 )
 
 type AuthUsecase struct {
-	users    *repository.UserRepository
-	sessions *repository.SessionRepository
+	users    UserRepository
+	sessions SessionRepository
 }
 
-func NewAuthUsecase(users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
+func NewAuthUsecase(users UserRepository, sessions SessionRepository) *AuthUsecase {
 	return &AuthUsecase{users: users, sessions: sessions}
 }
 
@@ -93,11 +92,11 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
 	if err != nil {
 		switch {
-		case errors.Is(err, repository.ErrUserExists):
+		case errors.Is(err, domain.ErrUserExists):
 			return domain.User{}, domain.Session{}, ErrEmailTaken
-		case errors.Is(err, repository.ErrPhoneExists):
+		case errors.Is(err, domain.ErrPhoneExists):
 			return domain.User{}, domain.Session{}, ErrPhoneTaken
-		case errors.Is(err, repository.ErrNicknameExists):
+		case errors.Is(err, domain.ErrNicknameExists):
 			return domain.User{}, domain.Session{}, ErrNicknameTaken
 		default:
 			return domain.User{}, domain.Session{}, err
@@ -131,7 +130,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 	}
 
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
+		if errors.Is(err, domain.ErrUserNotFound) {
 			return domain.User{}, domain.Session{}, ErrInvalidLogin
 		}
 		return domain.User{}, domain.Session{}, err
@@ -162,7 +161,7 @@ func (uc *AuthUsecase) Logout(ctx context.Context, sessionID string) error {
 func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, error) {
 	session, err := uc.sessions.GetByID(ctx, sessionID)
 	if err != nil {
-		if errors.Is(err, repository.ErrSessionNotFound) {
+		if errors.Is(err, domain.ErrSessionNotFound) {
 			return domain.User{}, ErrSessionExpired
 		}
 		return domain.User{}, err

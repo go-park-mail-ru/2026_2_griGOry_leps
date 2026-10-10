@@ -1,4 +1,4 @@
-package handler
+package delivery
 
 import (
 	"encoding/json"
@@ -14,11 +14,11 @@ import (
 const maxRequestBodyBytes = 1 << 20
 
 type AuthHandler struct {
-	auth         *usecase.AuthUsecase
+	auth         AuthUsecase
 	cookieSecure bool
 }
 
-func NewAuthHandler(auth *usecase.AuthUsecase, cookieSecure bool) *AuthHandler {
+func NewAuthHandler(auth AuthUsecase, cookieSecure bool) *AuthHandler {
 	return &AuthHandler{auth: auth, cookieSecure: cookieSecure}
 }
 
