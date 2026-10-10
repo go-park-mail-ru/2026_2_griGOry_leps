@@ -14,10 +14,10 @@ import (
 )
 
 type AdHandler struct {
-	ads *usecase.AdUsecase
+	ads AdUsecase
 }
 
-func NewAdHandler(ads *usecase.AdUsecase) *AdHandler {
+func NewAdHandler(ads AdUsecase) *AdHandler {
 	return &AdHandler{ads: ads}
 }
 
@@ -42,7 +42,7 @@ func adResponse(ad domain.Ad) map[string]any {
 func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	params := usecase.ListAdsParams{
+	params := domain.ListAdsParams{
 		Query:    q.Get("q"),
 		City:     q.Get("city"),
 		PriceMin: q.Get("price_min"),

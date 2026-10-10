@@ -23,18 +23,6 @@ const (
 
 var priceFormat = regexp.MustCompile(`^(\d{1,10})(?:\.(\d{1,2}))?$`)
 
-type ListAdsParams struct {
-	Query       string
-	CategoryID  int32
-	City        string
-	PriceMin    string
-	PriceMax    string
-	HasDelivery *bool
-	Sort        string
-	Limit       int
-	Offset      int
-}
-
 type AdUsecase struct {
 	ads AdRepository
 }
@@ -43,7 +31,7 @@ func NewAdUsecase(ads AdRepository) *AdUsecase {
 	return &AdUsecase{ads: ads}
 }
 
-func (uc *AdUsecase) List(ctx context.Context, p ListAdsParams) (domain.AdPage, error) {
+func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error) {
 	f := domain.AdFilter{
 		Query:       strings.TrimSpace(p.Query),
 		CategoryID:  p.CategoryID,

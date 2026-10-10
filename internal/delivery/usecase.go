@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
 type AuthUsecase interface {
@@ -15,5 +14,5 @@ type AuthUsecase interface {
 }
 
 type AdUsecase interface {
-	List(ctx context.Context, p usecase.ListAdsParams) (domain.AdPage, error)
+	List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error)
 }
