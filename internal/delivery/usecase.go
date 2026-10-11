@@ -7,7 +7,7 @@ import (
 )
 
 type AuthUsecase interface {
-	Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error)
+	Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error)
 	Login(ctx context.Context, login, password string) (domain.User, domain.Session, error)
 	Logout(ctx context.Context, sessionID string) error
 	Me(ctx context.Context, sessionID string) (domain.User, error)

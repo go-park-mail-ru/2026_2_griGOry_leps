@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -10,24 +9,22 @@ import (
 )
 
 type UserRepository struct {
-	mu         sync.RWMutex
-	lastID     int32
-	users      map[int32]domain.User
-	byEmail    map[string]int32
-	byPhone    map[string]int32
-	byNickname map[string]int32
+	mu      sync.RWMutex
+	lastID  int32
+	users   map[int32]domain.User
+	byEmail map[string]int32
+	byPhone map[string]int32
 }
 
 func NewUserRepository() *UserRepository {
 	return &UserRepository{
-		users:      make(map[int32]domain.User),
-		byEmail:    make(map[string]int32),
-		byPhone:    make(map[string]int32),
-		byNickname: make(map[string]int32),
+		users:   make(map[int32]domain.User),
+		byEmail: make(map[string]int32),
+		byPhone: make(map[string]int32),
 	}
 }
 
-func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstName, nickname, phone string) (domain.User, error) {
+func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstName, phone string) (domain.User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -37,10 +34,6 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 	if _, ok := r.byPhone[phone]; ok {
 		return domain.User{}, domain.ErrPhoneExists
 	}
-	nicknameKey := strings.ToLower(nickname)
-	if _, ok := r.byNickname[nicknameKey]; ok {
-		return domain.User{}, domain.ErrNicknameExists
-	}
 
 	r.lastID++
 	user := domain.User{
@@ -48,7 +41,6 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 		Email:        email,
 		PasswordHash: passwordHash,
 		FirstName:    firstName,
-		Nickname:     nickname,
 		Phone:        phone,
 		CreatedAt:    time.Now(),
 	}
@@ -56,7 +48,6 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 	r.users[user.ID] = user
 	r.byEmail[email] = user.ID
 	r.byPhone[phone] = user.ID
-	r.byNickname[nicknameKey] = user.ID
 
 	return user, nil
 }

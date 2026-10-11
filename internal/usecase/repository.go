@@ -8,7 +8,7 @@ import (
 )
 
 type UserRepository interface {
-	Create(ctx context.Context, email, passwordHash, firstName, nickname, phone string) (domain.User, error)
+	Create(ctx context.Context, email, passwordHash, firstName, phone string) (domain.User, error)
 	GetByEmail(ctx context.Context, email string) (domain.User, error)
 	GetByPhone(ctx context.Context, phone string) (domain.User, error)
 	GetByID(ctx context.Context, id int32) (domain.User, error)

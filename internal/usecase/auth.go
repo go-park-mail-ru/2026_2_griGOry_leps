@@ -20,12 +20,11 @@ import (
 const (
 	sessionTTL       = 7 * 24 * time.Hour
 	maxPasswordBytes = 72
-	maxFirstNameLen  = 100
 )
 
 var (
-	phoneFormat    = regexp.MustCompile(`^\+7\d{10}$`)
-	nicknameFormat = regexp.MustCompile(`^[A-Za-z0-9_.]{3,32}$`)
+	phoneFormat     = regexp.MustCompile(`^\+7\d{10}$`)
+	firstNameFormat = regexp.MustCompile(`^[A-Za-zА-Яа-яЁё0-9_. -]{2,50}$`)
 )
 
 type AuthUsecase struct {
@@ -37,10 +36,9 @@ func NewAuthUsecase(users UserRepository, sessions SessionRepository) *AuthUseca
 	return &AuthUsecase{users: users, sessions: sessions}
 }
 
-func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, nickname, phone string) (domain.User, domain.Session, error) {
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
 	email = normalizeEmail(email)
-	firstName = strings.TrimSpace(firstName)
-	nickname = strings.TrimSpace(nickname)
+	firstName = strings.Join(strings.Fields(firstName), " ")
 	phone = normalizePhone(phone)
 
 	if !isValidEmail(email) {
@@ -49,14 +47,8 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	if firstName == "" {
 		return domain.User{}, domain.Session{}, domain.ErrMissingFirstName
 	}
-	if utf8.RuneCountInString(firstName) > maxFirstNameLen {
-		return domain.User{}, domain.Session{}, domain.ErrFirstNameTooLong
-	}
-	if nickname == "" {
-		return domain.User{}, domain.Session{}, domain.ErrMissingNickname
-	}
-	if !nicknameFormat.MatchString(nickname) {
-		return domain.User{}, domain.Session{}, domain.ErrInvalidNickname
+	if !firstNameFormat.MatchString(firstName) {
+		return domain.User{}, domain.Session{}, domain.ErrInvalidFirstName
 	}
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, domain.ErrInvalidPhone
@@ -73,15 +65,13 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	user, err := uc.users.Create(ctx, email, string(hash), firstName, nickname, phone)
+	user, err := uc.users.Create(ctx, email, string(hash), firstName, phone)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrUserExists):
 			return domain.User{}, domain.Session{}, domain.ErrEmailTaken
 		case errors.Is(err, domain.ErrPhoneExists):
 			return domain.User{}, domain.Session{}, domain.ErrPhoneTaken
-		case errors.Is(err, domain.ErrNicknameExists):
-			return domain.User{}, domain.Session{}, domain.ErrNicknameTaken
 		default:
 			return domain.User{}, domain.Session{}, err
 		}
