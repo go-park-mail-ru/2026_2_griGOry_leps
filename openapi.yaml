@@ -71,7 +71,7 @@ paths:
                 badBody: { value: { error: invalid request body } }
                 invalidEmail: { value: { error: invalid email, field: email } }
                 missingFirstName: { value: { error: first name is required, field: first_name } }
-                invalidFirstName: { value: { error: 'first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, _ and .', field: first_name } }
+                invalidFirstName: { value: { error: 'first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .', field: first_name } }
                 invalidPhone: { value: { error: invalid phone number, field: phone } }
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
                 passwordTooLong: { value: { error: password is too long, field: password } }
@@ -260,15 +260,11 @@ components:
 
     User:
       type: object
-      required: [id, email, first_name, nickname, phone]
+      required: [id, email, first_name, phone]
       properties:
         id: { type: integer, example: 42 }
         email: { type: string, format: email, example: ivan@mail.ru }
         first_name: { type: string, example: Иван }
-        nickname:
-          type: string
-          description: Необязательный, заполняется в настройках профиля. Сразу после регистрации — пустая строка.
-          example: ''
         phone: { type: string, example: '+79001234567' }
 
     RegisterRequest:
@@ -288,8 +284,8 @@ components:
           type: string
           minLength: 2
           maxLength: 50
-          pattern: '^[A-Za-zА-Яа-яЁё0-9_. ]+$'
-          description: Латиница, кириллица, цифры, пробел, `_` и `.`. Пробелы по краям обрезаются, несколько подряд схлопываются в один. Не уникально — одинаковые имена у разных пользователей допустимы.
+          pattern: '^[A-Za-zА-Яа-яЁё0-9_. -]+$'
+          description: Латиница, кириллица, цифры, пробел, `-`, `_` и `.`. Пробелы по краям обрезаются, несколько подряд схлопываются в один. Не уникально — одинаковые имена у разных пользователей допустимы.
           example: Иван
         phone:
           type: string

@@ -125,7 +125,6 @@ func TestRegister_ValidationErrors(t *testing.T) {
 		{"weak password", "a@b.ru", "short", "ivan", "+79001234567", ErrWeakPassword},
 		{"first name too short", "a@b.ru", "Secret123", "И", "+79001234567", ErrInvalidFirstName},
 		{"first name too long", "a@b.ru", "Secret123", strings.Repeat("и", 51), "+79001234567", ErrInvalidFirstName},
-		{"first name with dash", "a@b.ru", "Secret123", "Анна-Мария", "+79001234567", ErrInvalidFirstName},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -153,7 +152,6 @@ func TestRegister_Success(t *testing.T) {
 	require.NotZero(t, user.ID)
 	require.Equal(t, "test@mail.ru", user.Email)
 	require.Equal(t, "ivan", user.FirstName)
-	require.Empty(t, user.Nickname)
 	require.Equal(t, "+79001234567", user.Phone)
 	require.Empty(t, user.PasswordHash)
 	require.NotEmpty(t, session.ID)
@@ -183,7 +181,7 @@ func TestRegister_PhoneTaken(t *testing.T) {
 }
 
 func TestRegister_FirstNameAllowedChars(t *testing.T) {
-	for _, name := range []string{"Иван", "ivan", "Ёжик_2026", "ivan.bike", "Ян", "Иван Петров"} {
+	for _, name := range []string{"Иван", "ivan", "Ёжик_2026", "ivan.bike", "Ян", "Иван Петров", "Анна-Мария"} {
 		t.Run(name, func(t *testing.T) {
 			uc := newTestUsecase()
 			_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", name, "+79001234567")

@@ -39,7 +39,6 @@ func userResponse(user domain.User) map[string]any {
 		"id":         user.ID,
 		"email":      user.Email,
 		"first_name": user.FirstName,
-		"nickname":   user.Nickname,
 		"phone":      user.Phone,
 	}
 }
