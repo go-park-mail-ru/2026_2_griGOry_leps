@@ -20,7 +20,7 @@ func newAuthHandler() *AuthHandler {
 	return NewAuthHandler(authUC, false)
 }
 
-func TestAuthHandler_Register_BadJSON(t *testing.T) {
+func TestAuth_Register_BadJSON(t *testing.T) {
 	h := newAuthHandler()
 	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader("{not json"))
 	rec := httptest.NewRecorder()
@@ -30,7 +30,7 @@ func TestAuthHandler_Register_BadJSON(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAuthHandler_Register_Success(t *testing.T) {
+func TestAuth_Register_Success(t *testing.T) {
 	h := newAuthHandler()
 	body := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
@@ -50,7 +50,7 @@ func TestAuthHandler_Register_Success(t *testing.T) {
 	require.Equal(t, "a@b.ru", resp["email"])
 }
 
-func TestAuthHandler_Register_ValidationError(t *testing.T) {
+func TestAuth_Register_ValidationError(t *testing.T) {
 	h := newAuthHandler()
 	body := `{"email":"a@b.ru","password":"short","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
@@ -62,7 +62,7 @@ func TestAuthHandler_Register_ValidationError(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "password")
 }
 
-func TestAuthHandler_Register_EmailTaken(t *testing.T) {
+func TestAuth_Register_EmailTaken(t *testing.T) {
 	h := newAuthHandler()
 	body := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
 
@@ -76,7 +76,7 @@ func TestAuthHandler_Register_EmailTaken(t *testing.T) {
 	require.Equal(t, http.StatusConflict, rec2.Code)
 }
 
-func TestAuthHandler_Login_BadJSON(t *testing.T) {
+func TestAuth_Register_Login_BadJSON(t *testing.T) {
 	h := newAuthHandler()
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("nope"))
 	rec := httptest.NewRecorder()
@@ -86,7 +86,7 @@ func TestAuthHandler_Login_BadJSON(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestAuthHandler_Login_Success(t *testing.T) {
+func TestAuth_Login_Success(t *testing.T) {
 	h := newAuthHandler()
 	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
 	h.Register(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(registerBody)))
@@ -102,7 +102,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	require.Contains(t, cookie, "session_id=")
 }
 
-func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
+func TestAuth_Login_InvalidCredentials(t *testing.T) {
 	h := newAuthHandler()
 	body := `{"login":"a@b.ru","password":"Secret123"}`
 	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(body))
@@ -113,7 +113,7 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAuthHandler_Logout_NoCookie(t *testing.T) {
+func TestAuth_Logout_NoCookie(t *testing.T) {
 	h := newAuthHandler()
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	rec := httptest.NewRecorder()
@@ -125,7 +125,7 @@ func TestAuthHandler_Logout_NoCookie(t *testing.T) {
 	require.Contains(t, cookie, "session_id=")
 }
 
-func TestAuthHandler_Logout_WithCookie(t *testing.T) {
+func TestAuth_Logout_WithCookie(t *testing.T) {
 	h := newAuthHandler()
 
 	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
@@ -145,7 +145,7 @@ func TestAuthHandler_Logout_WithCookie(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
-func TestAuthHandler_Me_NoCookie(t *testing.T) {
+func TestAuth_Me_NoCookie(t *testing.T) {
 	h := newAuthHandler()
 	req := httptest.NewRequest(http.MethodGet, "/me", nil)
 	rec := httptest.NewRecorder()
@@ -155,7 +155,7 @@ func TestAuthHandler_Me_NoCookie(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAuthHandler_Me_Success(t *testing.T) {
+func TestAuth_Me_Success(t *testing.T) {
 	h := newAuthHandler()
 
 	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Ivan","nickname":"ivan","phone":"+79001234567"}`
@@ -178,7 +178,7 @@ func TestAuthHandler_Me_Success(t *testing.T) {
 	require.Equal(t, "ivan", resp["nickname"])
 }
 
-func TestAuthHandler_Me_InvalidSession(t *testing.T) {
+func TestAuth_Me_InvalidSession(t *testing.T) {
 	h := newAuthHandler()
 	req := httptest.NewRequest(http.MethodGet, "/me", nil)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: "invalid"})
@@ -189,7 +189,7 @@ func TestAuthHandler_Me_InvalidSession(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAuthHandler_UsecaseWiring(t *testing.T) {
+func TestAuth_UsecaseWiring(t *testing.T) {
 	authUC := usecase.NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
 	h := NewAuthHandler(authUC, false)
 

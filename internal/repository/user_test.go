@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUserRepo_Create_Success(t *testing.T) {
+func TestUser_Create_Success(t *testing.T) {
 	repo := NewUserRepository()
 
 	user, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -21,7 +21,7 @@ func TestUserRepo_Create_Success(t *testing.T) {
 	require.NotZero(t, user.CreatedAt)
 }
 
-func TestUserRepo_Create_EmailTaken(t *testing.T) {
+func TestUser_Create_EmailTaken(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -31,7 +31,7 @@ func TestUserRepo_Create_EmailTaken(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrUserExists)
 }
 
-func TestUserRepo_Create_PhoneTaken(t *testing.T) {
+func TestUser_Create_PhoneTaken(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -41,7 +41,7 @@ func TestUserRepo_Create_PhoneTaken(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrPhoneExists)
 }
 
-func TestUserRepo_Create_NicknameTaken_CaseInsensitive(t *testing.T) {
+func TestUser_Create_NicknameTaken_CaseInsensitive(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "Ivan", "+79001234567")
@@ -54,7 +54,7 @@ func TestUserRepo_Create_NicknameTaken_CaseInsensitive(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrNicknameExists)
 }
 
-func TestUserRepo_GetByEmail_Success(t *testing.T) {
+func TestUser_GetByEmail_Success(t *testing.T) {
 	repo := NewUserRepository()
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -66,14 +66,14 @@ func TestUserRepo_GetByEmail_Success(t *testing.T) {
 	require.Equal(t, "Ivan", user.FirstName)
 }
 
-func TestUserRepo_GetByEmail_NotFound(t *testing.T) {
+func TestUser_GetByEmail_NotFound(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.GetByEmail(context.Background(), "nope@b.ru")
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
-func TestUserRepo_GetByPhone_Success(t *testing.T) {
+func TestUser_GetByPhone_Success(t *testing.T) {
 	repo := NewUserRepository()
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -84,14 +84,14 @@ func TestUserRepo_GetByPhone_Success(t *testing.T) {
 	require.Equal(t, created.ID, user.ID)
 }
 
-func TestUserRepo_GetByPhone_NotFound(t *testing.T) {
+func TestUser_GetByPhone_NotFound(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.GetByPhone(context.Background(), "+70000000000")
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
-func TestUserRepo_GetByID_Success(t *testing.T) {
+func TestUser_GetByID_Success(t *testing.T) {
 	repo := NewUserRepository()
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "Ivan", "ivan", "+79001234567")
@@ -103,7 +103,7 @@ func TestUserRepo_GetByID_Success(t *testing.T) {
 	require.Equal(t, "a@b.ru", user.Email)
 }
 
-func TestUserRepo_GetByID_NotFound(t *testing.T) {
+func TestUser_GetByID_NotFound(t *testing.T) {
 	repo := NewUserRepository()
 
 	_, err := repo.GetByID(context.Background(), 999)
