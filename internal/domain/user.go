@@ -4,7 +4,6 @@ import "time"
 
 type User struct {
 	ID           int32
-	Nickname     string
 	FirstName    string
 	Email        string
 	Phone        string

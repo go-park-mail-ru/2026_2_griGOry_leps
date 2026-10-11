@@ -26,7 +26,6 @@ type registerRequest struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
 	FirstName string `json:"first_name"`
-	Nickname  string `json:"nickname"`
 	Phone     string `json:"phone"`
 }
 
@@ -40,7 +39,6 @@ func userResponse(user domain.User) map[string]any {
 		"id":         user.ID,
 		"email":      user.Email,
 		"first_name": user.FirstName,
-		"nickname":   user.Nickname,
 		"phone":      user.Phone,
 	}
 }
@@ -66,7 +64,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, session, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Nickname, req.Phone)
+	user, session, err := h.auth.Register(r.Context(), req.Email, req.Password, req.FirstName, req.Phone)
 	if err != nil {
 		field := registerErrorField(err)
 		if field == "" {
@@ -77,8 +75,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 		status := http.StatusBadRequest
 		if errors.Is(err, usecase.ErrEmailTaken) ||
-			errors.Is(err, usecase.ErrPhoneTaken) ||
-			errors.Is(err, usecase.ErrNicknameTaken) {
+			errors.Is(err, usecase.ErrPhoneTaken) {
 			status = http.StatusConflict
 		}
 
@@ -96,12 +93,8 @@ func registerErrorField(err error) string {
 		errors.Is(err, usecase.ErrEmailTaken):
 		return "email"
 	case errors.Is(err, usecase.ErrMissingFirstName),
-		errors.Is(err, usecase.ErrFirstNameTooLong):
+		errors.Is(err, usecase.ErrInvalidFirstName):
 		return "first_name"
-	case errors.Is(err, usecase.ErrMissingNickname),
-		errors.Is(err, usecase.ErrInvalidNickname),
-		errors.Is(err, usecase.ErrNicknameTaken):
-		return "nickname"
 	case errors.Is(err, usecase.ErrInvalidPhone),
 		errors.Is(err, usecase.ErrPhoneTaken):
 		return "phone"
