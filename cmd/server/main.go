@@ -13,7 +13,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/handler"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -30,10 +30,10 @@ func main() {
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
-	authHandler := handler.NewAuthHandler(authUsecase, cfg.CookieSecure)
-	adHandler := handler.NewAdHandler(adUsecase)
+	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
+	adHandler := delivery.NewAdHandler(adUsecase)
 
-	router := handler.NewRouter(cfg.FrontendOrigin, authHandler, adHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, authHandler, adHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

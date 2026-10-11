@@ -31,7 +31,7 @@ func TestParsePrice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := parsePrice(tt.in)
 			if tt.wantErr {
-				require.ErrorIs(t, err, ErrInvalidPrice)
+				require.ErrorIs(t, err, domain.ErrInvalidPrice)
 				return
 			}
 			require.NoError(t, err)
@@ -42,48 +42,48 @@ func TestParsePrice(t *testing.T) {
 
 func TestAdUsecase_List_DefaultLimit(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	page, err := uc.List(context.Background(), ListAdsParams{})
+	page, err := uc.List(context.Background(), domain.ListAdsParams{})
 	require.NoError(t, err)
 	require.Equal(t, defaultAdsLimit, page.Limit)
 }
 
 func TestAdUsecase_List_LimitCappedAt60(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	page, err := uc.List(context.Background(), ListAdsParams{Limit: 1000})
+	page, err := uc.List(context.Background(), domain.ListAdsParams{Limit: 1000})
 	require.NoError(t, err)
 	require.Equal(t, maxAdsLimit, page.Limit)
 }
 
 func TestAdUsecase_List_InvalidSort(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	_, err := uc.List(context.Background(), ListAdsParams{Sort: "unknown"})
-	require.ErrorIs(t, err, ErrInvalidSort)
+	_, err := uc.List(context.Background(), domain.ListAdsParams{Sort: "unknown"})
+	require.ErrorIs(t, err, domain.ErrInvalidSort)
 }
 
 func TestAdUsecase_List_DefaultSort(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	_, err := uc.List(context.Background(), ListAdsParams{Sort: ""})
+	_, err := uc.List(context.Background(), domain.ListAdsParams{Sort: ""})
 	require.NoError(t, err)
 }
 
 func TestAdUsecase_List_InvalidPriceMin(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	_, err := uc.List(context.Background(), ListAdsParams{PriceMin: "abc"})
-	require.ErrorIs(t, err, ErrInvalidPrice)
+	_, err := uc.List(context.Background(), domain.ListAdsParams{PriceMin: "abc"})
+	require.ErrorIs(t, err, domain.ErrInvalidPrice)
 }
 
 func TestAdUsecase_List_InvalidPriceMax(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	_, err := uc.List(context.Background(), ListAdsParams{PriceMax: "abc"})
-	require.ErrorIs(t, err, ErrInvalidPrice)
+	_, err := uc.List(context.Background(), domain.ListAdsParams{PriceMax: "abc"})
+	require.ErrorIs(t, err, domain.ErrInvalidPrice)
 }
 
 func TestAdUsecase_List_PriceRangeInvalid(t *testing.T) {
 	uc := NewAdUsecase(repository.NewAdRepository(nil))
-	_, err := uc.List(context.Background(), ListAdsParams{
+	_, err := uc.List(context.Background(), domain.ListAdsParams{
 		PriceMin: "5000", PriceMax: "1000",
 	})
-	require.ErrorIs(t, err, ErrInvalidPriceRange)
+	require.ErrorIs(t, err, domain.ErrInvalidPriceRange)
 }
 
 func TestAdUsecase_List_Success(t *testing.T) {
@@ -95,7 +95,7 @@ func TestAdUsecase_List_Success(t *testing.T) {
 	}
 	uc := NewAdUsecase(repository.NewAdRepository(ads))
 
-	page, err := uc.List(context.Background(), ListAdsParams{Limit: 10})
+	page, err := uc.List(context.Background(), domain.ListAdsParams{Limit: 10})
 	require.NoError(t, err)
 	require.Equal(t, 1, page.Total)
 	require.Len(t, page.Items, 1)

@@ -42,3 +42,15 @@ type AdPage struct {
 	Limit  int
 	Offset int
 }
+
+type ListAdsParams struct {
+	Query       string
+	CategoryID  int32
+	City        string
+	PriceMin    string
+	PriceMax    string
+	HasDelivery *bool
+	Sort        string
+	Limit       int
+	Offset      int
+}

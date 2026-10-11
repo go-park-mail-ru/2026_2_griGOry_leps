@@ -15,20 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
-)
-
-var (
-	ErrInvalidEmail     = errors.New("invalid email")
-	ErrMissingFirstName = errors.New("first name is required")
-	ErrInvalidFirstName = errors.New("first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .")
-	ErrInvalidPhone     = errors.New("invalid phone number")
-	ErrWeakPassword     = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
-	ErrPasswordTooLong  = errors.New("password is too long")
-	ErrEmailTaken       = errors.New("email already registered")
-	ErrPhoneTaken       = errors.New("phone already registered")
-	ErrInvalidLogin     = errors.New("invalid login or password")
-	ErrSessionExpired   = errors.New("session expired")
 )
 
 const (
@@ -42,11 +28,11 @@ var (
 )
 
 type AuthUsecase struct {
-	users    *repository.UserRepository
-	sessions *repository.SessionRepository
+	users    UserRepository
+	sessions SessionRepository
 }
 
-func NewAuthUsecase(users *repository.UserRepository, sessions *repository.SessionRepository) *AuthUsecase {
+func NewAuthUsecase(users UserRepository, sessions SessionRepository) *AuthUsecase {
 	return &AuthUsecase{users: users, sessions: sessions}
 }
 
@@ -56,22 +42,22 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	phone = normalizePhone(phone)
 
 	if !isValidEmail(email) {
-		return domain.User{}, domain.Session{}, ErrInvalidEmail
+		return domain.User{}, domain.Session{}, domain.ErrInvalidEmail
 	}
 	if firstName == "" {
-		return domain.User{}, domain.Session{}, ErrMissingFirstName
+		return domain.User{}, domain.Session{}, domain.ErrMissingFirstName
 	}
 	if !firstNameFormat.MatchString(firstName) {
-		return domain.User{}, domain.Session{}, ErrInvalidFirstName
+		return domain.User{}, domain.Session{}, domain.ErrInvalidFirstName
 	}
 	if !isValidPhone(phone) {
-		return domain.User{}, domain.Session{}, ErrInvalidPhone
+		return domain.User{}, domain.Session{}, domain.ErrInvalidPhone
 	}
 	if len(password) > maxPasswordBytes {
-		return domain.User{}, domain.Session{}, ErrPasswordTooLong
+		return domain.User{}, domain.Session{}, domain.ErrPasswordTooLong
 	}
 	if !isStrongPassword(password) {
-		return domain.User{}, domain.Session{}, ErrWeakPassword
+		return domain.User{}, domain.Session{}, domain.ErrWeakPassword
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -81,14 +67,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 
 	user, err := uc.users.Create(ctx, email, string(hash), firstName, phone)
 	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrUserExists):
-			return domain.User{}, domain.Session{}, ErrEmailTaken
-		case errors.Is(err, repository.ErrPhoneExists):
-			return domain.User{}, domain.Session{}, ErrPhoneTaken
-		default:
-			return domain.User{}, domain.Session{}, err
-		}
+		return domain.User{}, domain.Session{}, err
 	}
 
 	session, err := newSession(user.ID)
@@ -118,14 +97,14 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 	}
 
 	if err != nil {
-		if errors.Is(err, repository.ErrUserNotFound) {
-			return domain.User{}, domain.Session{}, ErrInvalidLogin
+		if errors.Is(err, domain.ErrUserNotFound) {
+			return domain.User{}, domain.Session{}, domain.ErrInvalidLogin
 		}
 		return domain.User{}, domain.Session{}, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
-		return domain.User{}, domain.Session{}, ErrInvalidLogin
+		return domain.User{}, domain.Session{}, domain.ErrInvalidLogin
 	}
 
 	session, err := newSession(user.ID)
@@ -149,8 +128,8 @@ func (uc *AuthUsecase) Logout(ctx context.Context, sessionID string) error {
 func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, error) {
 	session, err := uc.sessions.GetByID(ctx, sessionID)
 	if err != nil {
-		if errors.Is(err, repository.ErrSessionNotFound) {
-			return domain.User{}, ErrSessionExpired
+		if errors.Is(err, domain.ErrSessionNotFound) {
+			return domain.User{}, domain.ErrSessionExpired
 		}
 		return domain.User{}, err
 	}
@@ -159,7 +138,7 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 		if err := uc.sessions.Delete(ctx, sessionID); err != nil {
 			return domain.User{}, err
 		}
-		return domain.User{}, ErrSessionExpired
+		return domain.User{}, domain.ErrSessionExpired
 	}
 
 	return uc.users.GetByID(ctx, session.UserID)

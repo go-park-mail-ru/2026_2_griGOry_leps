@@ -151,8 +151,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 ```
 cmd/server/          точка входа
 internal/config/     чтение переменных окружения
-internal/domain/     модели
-internal/handler/    HTTP-обработчики и роутер
-internal/usecase/    бизнес-логика
+internal/domain/     модели и ошибки
+internal/delivery/   HTTP-обработчики, роутер и интерфейсы usecase
+internal/usecase/    бизнес-логика и интерфейсы репозиториев
 internal/repository/ хранилище в памяти и тестовые объявления
 ```
