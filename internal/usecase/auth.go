@@ -67,14 +67,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 
 	user, err := uc.users.Create(ctx, email, string(hash), firstName, phone)
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrUserExists):
-			return domain.User{}, domain.Session{}, domain.ErrEmailTaken
-		case errors.Is(err, domain.ErrPhoneExists):
-			return domain.User{}, domain.Session{}, domain.ErrPhoneTaken
-		default:
-			return domain.User{}, domain.Session{}, err
-		}
+		return domain.User{}, domain.Session{}, err
 	}
 
 	session, err := newSession(user.ID)

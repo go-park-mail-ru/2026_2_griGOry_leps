@@ -29,10 +29,10 @@ func (r *UserRepository) Create(_ context.Context, email, passwordHash, firstNam
 	defer r.mu.Unlock()
 
 	if _, ok := r.byEmail[email]; ok {
-		return domain.User{}, domain.ErrUserExists
+		return domain.User{}, domain.ErrEmailTaken
 	}
 	if _, ok := r.byPhone[phone]; ok {
-		return domain.User{}, domain.ErrPhoneExists
+		return domain.User{}, domain.ErrPhoneTaken
 	}
 
 	r.lastID++

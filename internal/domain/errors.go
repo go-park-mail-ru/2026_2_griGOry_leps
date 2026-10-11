@@ -18,6 +18,4 @@ var (
 	ErrSessionExpired    = errors.New("session expired")
 	ErrSessionNotFound   = errors.New("session not found")
 	ErrUserNotFound      = errors.New("user not found")
-	ErrUserExists        = errors.New("user already exists")
-	ErrPhoneExists       = errors.New("phone already registered")
 )

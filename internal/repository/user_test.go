@@ -27,7 +27,7 @@ func TestUser_Create_EmailTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.Create(context.Background(), "a@b.ru", "hash2", "petr", "+79007654321")
-	require.ErrorIs(t, err, domain.ErrUserExists)
+	require.ErrorIs(t, err, domain.ErrEmailTaken)
 }
 
 func TestUser_Create_PhoneTaken(t *testing.T) {
@@ -37,7 +37,7 @@ func TestUser_Create_PhoneTaken(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.Create(context.Background(), "c@d.ru", "hash2", "petr", "+79001234567")
-	require.ErrorIs(t, err, domain.ErrPhoneExists)
+	require.ErrorIs(t, err, domain.ErrPhoneTaken)
 }
 
 func TestUser_Create_SameFirstNameAllowed(t *testing.T) {
