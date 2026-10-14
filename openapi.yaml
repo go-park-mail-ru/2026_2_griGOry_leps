@@ -28,6 +28,8 @@ info:
 servers:
   - url: http://localhost:8080/api
     description: Локальный бэкенд
+  - url: http://goget.pw:8000/api
+    description: Прод
 
 tags:
   - name: Служебное
@@ -253,7 +255,7 @@ paths:
           description: Фото загружено
           content:
             application/json:
-              schema: { type: object, required: [avatar_url], properties: { avatar_url: { type: string, format: uri } } }
+              schema: { type: object, required: [avatar_url], properties: { avatar_url: { type: string, format: uri-reference } } }
         '400':
           description: Нет файла, неверный формат или размер больше 5 МБ
           content:
@@ -1852,8 +1854,8 @@ components:
       required: [id, url, thumb_url]
       properties:
         id: { type: integer }
-        url: { type: string, format: uri }
-        thumb_url: { type: string, format: uri }
+        url: { type: string, format: uri-reference }
+        thumb_url: { type: string, format: uri-reference }
 
     City:
       type: object
@@ -1897,7 +1899,7 @@ components:
       properties:
         id: { type: integer, example: 7 }
         first_name: { type: string, example: Анна }
-        avatar_url: { type: string, format: uri, nullable: true }
+        avatar_url: { type: string, format: uri-reference, nullable: true }
         rating: { $ref: '#/components/schemas/Rating' }
 
     # ---------- пользователь и профиль
@@ -1918,7 +1920,7 @@ components:
         - $ref: '#/components/schemas/User'
         - type: object
           properties:
-            avatar_url: { type: string, format: uri, nullable: true }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
             city:
               type: object
               allOf: [{ $ref: '#/components/schemas/City' }]
@@ -2060,7 +2062,7 @@ components:
         price: { type: string, pattern: '^\d{1,10}\.\d{2}$', example: '15000.00' }
         image_url:
           type: string
-          format: uri
+          format: uri-reference
           nullable: true
           description: Главное фото; null, если фото нет.
         city: { type: string, example: Москва }
@@ -2282,7 +2284,7 @@ components:
           type: string
           allOf: [{ $ref: '#/components/schemas/Price' }]
           nullable: true
-        image_url: { type: string, format: uri, nullable: true }
+        image_url: { type: string, format: uri-reference, nullable: true }
         status: { $ref: '#/components/schemas/ListingStatus' }
         status_note:
           type: string
@@ -2349,7 +2351,7 @@ components:
           properties:
             id: { type: integer }
             title: { type: string, example: 'Велосипед городской Stels, 28"' }
-            image_url: { type: string, format: uri, nullable: true }
+            image_url: { type: string, format: uri-reference, nullable: true }
             price: { $ref: '#/components/schemas/Price' }
             city: { type: string, example: Москва }
             metro: { type: string, nullable: true, example: Сокол }
@@ -2426,7 +2428,7 @@ components:
             properties:
               listing_id: { type: integer }
               title: { type: string }
-              image_url: { type: string, format: uri, nullable: true }
+              image_url: { type: string, format: uri-reference, nullable: true }
               price: { $ref: '#/components/schemas/Price' }
         delivery_method:
           type: string
@@ -2536,7 +2538,7 @@ components:
       properties:
         id: { type: integer }
         first_name: { type: string, example: Анна }
-        avatar_url: { type: string, format: uri, nullable: true }
+        avatar_url: { type: string, format: uri-reference, nullable: true }
         rating: { $ref: '#/components/schemas/Rating' }
         member_since: { type: string, format: date-time, description: Дата регистрации. }
         location: { type: string, nullable: true, example: 'Москва, м. Сокол' }
@@ -2572,7 +2574,7 @@ components:
           properties:
             id: { type: integer }
             first_name: { type: string }
-            avatar_url: { type: string, format: uri, nullable: true }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
         rating: { type: integer, minimum: 1, maximum: 5 }
         text: { type: string }
         created_at: { type: string, format: date-time }
