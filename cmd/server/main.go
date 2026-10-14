@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -22,6 +23,8 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+
+	slog.SetDefault(logger.New(os.Stdout, cfg.LogLevel))
 
 	userRepo := repository.NewUserRepository()
 	sessionRepo := repository.NewSessionRepository()
@@ -45,9 +48,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("server starting on port %s", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server failed: %v", err)
+			slog.Error("server failed", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -55,12 +59,12 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	log.Println("shutting down server...")
+	slog.Info("shutting down server")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "err", err)
 	}
 }

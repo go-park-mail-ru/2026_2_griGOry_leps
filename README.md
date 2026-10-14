@@ -109,6 +109,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `PORT` | порт сервера | `8080` |
    | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
+   | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error` | `info` |
 
 3. Установите зависимости:
 
@@ -152,7 +153,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 cmd/server/          точка входа
 internal/config/     чтение переменных окружения
 internal/domain/     модели и ошибки
-internal/delivery/   HTTP-обработчики, роутер и интерфейсы usecase
+internal/delivery/   HTTP-обработчики, роутер, мидлвары и интерфейсы usecase
+internal/logger/     JSON-логгер (slog) с request_id из контекста
 internal/usecase/    бизнес-логика и интерфейсы репозиториев
 internal/repository/ хранилище в памяти и тестовые объявления
 ```

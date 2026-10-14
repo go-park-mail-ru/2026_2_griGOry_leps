@@ -3,7 +3,7 @@ package delivery
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -82,7 +82,7 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, domain.ErrInvalidSort):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
-			log.Printf("list ads error: %v", err)
+			slog.ErrorContext(r.Context(), "list ads", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 		return

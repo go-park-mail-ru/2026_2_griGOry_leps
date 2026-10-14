@@ -3,7 +3,7 @@ package delivery
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -67,7 +67,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		field := registerErrorField(err)
 		if field == "" {
-			log.Printf("register error: %v", err)
+			slog.ErrorContext(r.Context(), "register", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -119,7 +119,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrInvalidLogin):
 			writeError(w, http.StatusUnauthorized, err.Error())
 		default:
-			log.Printf("login error: %v", err)
+			slog.ErrorContext(r.Context(), "login", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 		return
@@ -132,7 +132,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("session_id"); err == nil {
 		if err := h.auth.Logout(r.Context(), cookie.Value); err != nil {
-			log.Printf("logout error: %v", err)
+			slog.ErrorContext(r.Context(), "logout", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -164,7 +164,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrSessionExpired):
 			writeError(w, http.StatusUnauthorized, "not authenticated")
 		default:
-			log.Printf("me error: %v", err)
+			slog.ErrorContext(r.Context(), "me", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 		return
