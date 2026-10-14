@@ -29,7 +29,11 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 }
 
 func newRequestID() string {
-	b := make([]byte, 16)
+	return randomHex(16)
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
 	_, _ = rand.Read(b) // crypto/rand.Read не возвращает ошибок
 	return hex.EncodeToString(b)
 }

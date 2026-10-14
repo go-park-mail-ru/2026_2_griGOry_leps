@@ -13,13 +13,19 @@ info:
     Cookie-сессия `session_id` (httpOnly, 7 дней) выставляется при регистрации
     и при входе. Данные хранятся в памяти процесса и сбрасываются при перезапуске.
 
+    **CSRF**
+    Все POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token`, иначе 403
+    `invalid csrf token`. Токен выдаёт `GET /csrf`, живёт 24 часа и привязан
+    к cookie сессии, а до входа — к анонимной cookie `csrf_id`, поэтому после
+    входа, регистрации и выхода токен нужно запросить заново.
+
 servers:
   - url: http://localhost:8080/api
     description: Локальный бэкенд
 
 tags:
   - name: Служебное
-    description: Health-check
+    description: Health-check и CSRF-токен
   - name: Авторизация
     description: Регистрация, вход, выход, текущий пользователь
   - name: Лента
@@ -39,6 +45,28 @@ paths:
             application/json:
               schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
 
+  /csrf:
+    get:
+      tags: [Служебное]
+      operationId: getCSRFToken
+      summary: CSRF-токен для изменяющих запросов
+      description: |
+        Если нет ни cookie сессии, ни `csrf_id`, выставляет анонимную cookie `csrf_id`
+        и привязывает токен к ней.
+      security: []
+      responses:
+        '200':
+          description: Токен, который нужно передавать в заголовке `X-CSRF-Token`
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetCSRFCookie' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token]
+                properties:
+                  csrf_token: { type: string, example: 1792054800.3f9a1c0e5b7d2a4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d }
+
   # ---------------------------------------------------------------- Авторизация
   /register:
     post:
@@ -49,6 +77,8 @@ paths:
         Создаёт аккаунт и сразу авторизует: выставляет cookie сессии.
         Проверки идут по порядку, отдаётся первая сработавшая ошибка.
       security: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
       requestBody:
         required: true
         content:
@@ -83,6 +113,7 @@ paths:
               examples:
                 email: { value: { error: email already registered, field: email } }
                 phone: { value: { error: phone already registered, field: phone } }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -94,6 +125,8 @@ paths:
         `login`, содержащий `@`, проверяется как email, иначе — как телефон.
         Возвращает пользователя и выставляет cookie сессии.
       security: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
       requestBody:
         required: true
         content:
@@ -120,6 +153,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: invalid login or password }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /logout:
@@ -131,12 +165,15 @@ paths:
         Идемпотентно: работает и без cookie, и с уже протухшей — всегда 200
         и очищает cookie на клиенте.
       security: []
+      parameters:
+        - $ref: '#/components/parameters/CSRFToken'
       responses:
         '200':
           description: Сессия завершена (или её и не было)
           content:
             application/json:
               schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me:
@@ -238,8 +275,25 @@ components:
     SetSessionCookie:
       description: '`session_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true)'
       schema: { type: string }
+    SetCSRFCookie:
+      description: '`csrf_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true). Только если не было ни сессии, ни `csrf_id`.'
+      schema: { type: string }
+
+  parameters:
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      description: Токен из `GET /csrf`
+      schema: { type: string }
 
   responses:
+    InvalidCSRF:
+      description: Нет заголовка `X-CSRF-Token`, токен протух, подделан или выдан для другой сессии
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid csrf token }
     InternalError:
       description: Внутренняя ошибка сервера
       content:

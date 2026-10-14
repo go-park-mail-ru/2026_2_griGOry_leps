@@ -10,7 +10,10 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-const maxRequestBodyBytes = 1 << 20
+const (
+	maxRequestBodyBytes = 1 << 20
+	sessionCookieName   = "session_id"
+)
 
 type AuthHandler struct {
 	auth         AuthUsecase
@@ -44,7 +47,7 @@ func userResponse(user domain.User) map[string]any {
 
 func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, session domain.Session) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
+		Name:     sessionCookieName,
 		Value:    session.ID,
 		Path:     "/",
 		Expires:  session.ExpiresAt,
@@ -130,7 +133,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie("session_id"); err == nil {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		if err := h.auth.Logout(r.Context(), cookie.Value); err != nil {
 			slog.ErrorContext(r.Context(), "logout", "err", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -139,7 +142,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "session_id",
+		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		Expires:  time.Unix(0, 0),
@@ -152,7 +155,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session_id")
+	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
