@@ -62,7 +62,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		field := registerErrorField(err)
 		if field == "" {
 			slog.ErrorContext(r.Context(), "register", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 			return
 		}
 
@@ -81,12 +81,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusConflict
 		}
 
-		writeFieldError(w, status, field, err.Error())
+		writeFieldError(r.Context(), w, status, field, err.Error())
 		return
 	}
 
 	h.setSessionCookie(w, session)
-	writeJSON(w, http.StatusCreated, userResponse(user))
+	writeJSON(r.Context(), w, http.StatusCreated, userResponse(user))
 }
 
 func registerErrorField(err error) string {
@@ -112,7 +112,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
@@ -120,23 +120,23 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrInvalidLogin):
-			writeError(w, http.StatusUnauthorized, err.Error())
+			writeError(r.Context(), w, http.StatusUnauthorized, err.Error())
 		default:
 			slog.ErrorContext(r.Context(), "login", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
 
 	h.setSessionCookie(w, session)
-	writeJSON(w, http.StatusOK, userResponse(user))
+	writeJSON(r.Context(), w, http.StatusOK, userResponse(user))
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		if err := h.auth.Logout(r.Context(), cookie.Value); err != nil {
 			slog.ErrorContext(r.Context(), "logout", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
@@ -151,13 +151,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+		writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
 
@@ -165,13 +165,13 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrSessionExpired):
-			writeError(w, http.StatusUnauthorized, "not authenticated")
+			writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
 		default:
 			slog.ErrorContext(r.Context(), "me", "err", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, userResponse(user))
+	writeJSON(r.Context(), w, http.StatusOK, userResponse(user))
 }

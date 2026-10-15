@@ -46,7 +46,7 @@ func (h *CSRFHandler) Token(w http.ResponseWriter, r *http.Request) {
 		binding = "anon:" + anonID
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"csrf_token": h.tokens.Generate(binding, time.Now())})
+	writeJSON(r.Context(), w, http.StatusOK, map[string]string{"csrf_token": h.tokens.Generate(binding, time.Now())})
 }
 
 func (h *CSRFHandler) Middleware(next http.Handler) http.Handler {
@@ -59,7 +59,7 @@ func (h *CSRFHandler) Middleware(next http.Handler) http.Handler {
 
 		if err := h.verify(r); err != nil {
 			slog.WarnContext(r.Context(), "csrf check failed", "reason", err.Error())
-			writeError(w, http.StatusForbidden, "invalid csrf token")
+			writeError(r.Context(), w, http.StatusForbidden, "invalid csrf token")
 			return
 		}
 
