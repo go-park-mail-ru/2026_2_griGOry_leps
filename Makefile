@@ -14,7 +14,7 @@ test:
 
 tidy:
 	go mod tidy
-	
+
 migrate-up:
 	goose -dir migrations up
 

@@ -9,26 +9,30 @@ CREATE TABLE user_account (
     created_at     timestamptz NOT NULL DEFAULT now(),
     updated_at     timestamptz NOT NULL DEFAULT now(),
     type           varchar(20) NOT NULL DEFAULT 'client'
+                   CHECK (type IN ('client', 'seller', 'both', 'admin'))
 );
 
 CREATE TABLE category (
     category_id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     parent_id integer REFERENCES category(category_id) ON DELETE SET NULL,
     name varchar(100) NOT NULL,
-    slug varchar(120) NOT NULL UNIQUE
+    slug varchar(120) NOT NULL UNIQUE,
+    CHECK (parent_id IS NULL OR parent_id <> category_id)
 );
 
 CREATE TABLE ad (
     id              integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     title           VARCHAR(200) NOT NULL,
     description     TEXT,
-    price           FLOAT(53) NOT NULL,
+    price           BIGINT NOT NULL CHECK (price >= 0),
     user_id         INT NOT NULL REFERENCES user_account(user_id) ON DELETE CASCADE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    status          VARCHAR(20) NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'draft'
+                    CHECK (status IN ('draft', 'moderation', 'active', 'closed', 'sold')),
     category_id     INT REFERENCES category(category_id) ON DELETE SET NULL,
-    type_ad         VARCHAR(20) NOT NULL,
+    type_ad         VARCHAR(20) NOT NULL DEFAULT 'goods'
+                    CHECK (type_ad IN ('goods', 'service')),
     city            VARCHAR(100),
     has_delivery    BOOLEAN NOT NULL DEFAULT false
 );
@@ -57,14 +61,15 @@ CREATE TABLE ad_status_event (
     stat_id         integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ad_id           INT NOT NULL REFERENCES ad(id)                ON DELETE CASCADE,
     actor_id        INT          REFERENCES user_account(user_id) ON DELETE SET NULL,
-    status          VARCHAR(20) NOT NULL,
+    status          VARCHAR(20) NOT NULL
+                    CHECK (status IN ('draft', 'moderation', 'active', 'closed', 'sold')),
     changed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE price_history (
     prh_id          integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ad_id           INT NOT NULL REFERENCES ad(id) ON DELETE CASCADE,
-    price           FLOAT(53) NOT NULL,
+    price           BIGINT NOT NULL CHECK (price >= 0),
     changed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -83,6 +88,7 @@ CREATE TABLE message (
     text            TEXT NOT NULL,
     sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     status          VARCHAR(20) NOT NULL DEFAULT 'sent'
+                    CHECK (status IN ('sent', 'delivered', 'read'))
 );
 
 CREATE TABLE views (
@@ -97,7 +103,7 @@ CREATE TABLE review (
     user_id         INT NOT NULL REFERENCES user_account(user_id) ON DELETE CASCADE,
     ad_id           INT NOT NULL REFERENCES ad(id)                ON DELETE CASCADE,
     text            TEXT,
-    rating          NUMERIC(3,2) NOT NULL,
+    rating          NUMERIC(3,2) NOT NULL CHECK (rating >= 0 AND rating <= 5),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, ad_id)
@@ -107,8 +113,8 @@ CREATE TABLE promotion (
     prom_id         integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ad_id           INT NOT NULL REFERENCES ad(id) ON DELETE CASCADE,
     when_paid       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    end_date        TIMESTAMPTZ NOT NULL,
-    promotion_level INT NOT NULL
+    end_date        TIMESTAMPTZ NOT NULL CHECK (end_date > when_paid),
+    promotion_level INT NOT NULL CHECK (promotion_level >= 0)
 );
 
 CREATE TABLE ad_reaction (
@@ -247,11 +253,16 @@ CREATE TABLE ad_image (
     image_id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     ad_id integer NOT NULL REFERENCES ad(id) ON DELETE CASCADE,
     url text NOT NULL,
-    position integer NOT NULL DEFAULT 0,
+    position integer NOT NULL DEFAULT 0 CHECK (position >= 0),
     alt_text text,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (ad_id, position)
 );
+
+CREATE INDEX idx_session_user_id ON session (user_id);
+CREATE INDEX idx_ad_user_id ON ad (user_id);
+CREATE INDEX idx_ad_category_id ON ad (category_id);
+CREATE INDEX idx_ad_status_category_city ON ad (status, category_id, city);
 
 -- +goose Down
 DROP TABLE ad_image, session, ad_reaction, promotion, review, views,

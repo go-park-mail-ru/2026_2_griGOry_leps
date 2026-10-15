@@ -6,7 +6,7 @@
 
 - user_account — пользователи платформы.
 - category — категории объявлений.
-- ad — объявления, их авторы, категории, цены, статусы, город и доставка.
+- ad — объявления, их авторы, категории, цены (в копейках), статусы (draft, moderation, active, closed, sold), тип (goods — товар, service — услуга), город и доставка.
 - cart — корзины пользователей, не более одной на пользователя.
 - cart_item — объявления в корзине.
 - favorites — избранные объявления.
@@ -52,7 +52,7 @@ erDiagram
         integer id PK
         varchar(200) title
         text description
-        float(53) price
+        bigint price
         int user_id FK
         timestamptz created_at
         timestamptz updated_at
@@ -92,7 +92,7 @@ erDiagram
     price_history {
         integer prh_id PK
         int ad_id FK
-        float(53) price
+        bigint price
         timestamptz changed_at
     }
 
