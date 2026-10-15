@@ -16,8 +16,8 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
 
-	r.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
+		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
@@ -32,12 +32,12 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
 }
 
-func notFound(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotFound, "not found")
+func notFound(w http.ResponseWriter, r *http.Request) {
+	writeError(r.Context(), w, http.StatusNotFound, "not found")
 }
 
-func methodNotAllowed(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	writeError(r.Context(), w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 func corsMiddleware(origin string, next http.Handler) http.Handler {
@@ -69,7 +69,7 @@ func recoverMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if err := recover(); err != nil {
 				slog.ErrorContext(r.Context(), "panic recovered", "panic", err)
-				writeError(w, http.StatusInternalServerError, "internal error")
+				writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 			}
 		}()
 		next.ServeHTTP(w, r)
