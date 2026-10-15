@@ -27,6 +27,8 @@ info:
 servers:
   - url: http://localhost:8080/api
     description: Локальный бэкенд
+  - url: http://goget.pw:8000/api
+    description: Прод
 
 tags:
   - name: Служебное
@@ -178,9 +180,6 @@ paths:
         Меняет только переданные поля, остальные не трогает. Принимаются только
         `first_name`, `phone`, `email`, `city_id`, `about`; любые другие поля игнорируются.
 
-        Новый `email` не применяется сразу: он попадает в `pending_email` и заменит
-        `email` после подтверждения письмом.
-
         При смене `city_id` сервер обновляет город для доставки; новые объявления
         получают город из профиля.
       security:
@@ -239,11 +238,45 @@ paths:
                 type: object
                 required: [avatar_url]
                 properties:
-                  avatar_url: { type: string, format: uri }
+                  avatar_url: { type: string, format: uri-reference }
         '400': { $ref: '#/components/responses/BadFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '413': { $ref: '#/components/responses/FileTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/password:
+    put:
+      tags: [Профиль]
+      operationId: changePassword
+      summary: Сменить пароль
+      description: |
+        Новый пароль проверяется по тем же правилам, что при регистрации.
+        Остальные сессии пользователя завершаются, текущая остаётся.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: Пароль изменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOk' }
+        '400':
+          description: Невалидный JSON или не прошла проверка поля
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                wrongCurrent: { value: { error: wrong current password, field: current_password } }
+                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: new_password } }
+                passwordTooLong: { value: { error: password is too long, field: new_password } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/listings:
@@ -1086,16 +1119,11 @@ components:
       allOf:
         - $ref: '#/components/schemas/User'
         - type: object
-          required: [phone_verified, pending_email, city, about, avatar_url, rating, reviews_count, created_at]
+          required: [phone_verified, city, about, avatar_url, rating, reviews_count, created_at]
           properties:
             first_name:
               description: «Имя или никнейм», виден покупателям и продавцам.
             phone_verified: { type: boolean }
-            pending_email:
-              type: string
-              format: email
-              nullable: true
-              description: Новый email, ждущий подтверждения письмом.
             city:
               type: object
               nullable: true
@@ -1105,7 +1133,7 @@ components:
                 id: { type: integer, example: 1 }
                 name: { type: string, example: Москва }
             about: { type: string, maxLength: 500, example: 'Продаю вещи после переезда' }
-            avatar_url: { type: string, format: uri, nullable: true }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
             rating: { type: number, format: float, minimum: 0, maximum: 5, example: 4.9 }
             reviews_count: { type: integer, example: 23 }
             created_at: { type: string, format: date-time, description: Дата регистрации. }
@@ -1125,6 +1153,13 @@ components:
         email: { type: string, format: email, example: timur@mail.ru }
         city_id: { type: integer, example: 1 }
         about: { type: string, maxLength: 500, description: Может быть пустой строкой. }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, description: 'Те же правила, что при регистрации.' }
 
     RegisterRequest:
       type: object
@@ -1206,7 +1241,7 @@ components:
         is_free: { type: boolean, description: «Отдам даром». }
         image_url:
           type: string
-          format: uri
+          format: uri-reference
           nullable: true
           description: Главное фото; null, если фото нет.
         city: { type: string, example: Москва }
@@ -1304,8 +1339,8 @@ components:
       required: [id, url, thumb_url]
       properties:
         id: { type: integer, example: 501 }
-        url: { type: string, format: uri }
-        thumb_url: { type: string, format: uri }
+        url: { type: string, format: uri-reference }
+        thumb_url: { type: string, format: uri-reference }
 
     ListingPhoto:
       allOf:
@@ -1321,7 +1356,7 @@ components:
       properties:
         id: { type: integer, example: 42 }
         first_name: { type: string, example: Анна }
-        avatar_url: { type: string, format: uri, nullable: true }
+        avatar_url: { type: string, format: uri-reference, nullable: true }
         rating: { type: number, format: float, example: 4.8 }
         reviews_count: { type: integer, example: 56 }
         created_at: { type: string, format: date-time, description: Дата регистрации. }
@@ -1495,7 +1530,7 @@ components:
           example: '15000.00'
           nullable: true
           description: null у недоступной позиции.
-        image_url: { type: string, format: uri, nullable: true }
+        image_url: { type: string, format: uri-reference, nullable: true }
         address: { type: string, nullable: true, example: 'Москва, м. Сокол' }
         delivery_from:
           type: string
@@ -1526,7 +1561,7 @@ components:
                 properties:
                   id: { type: integer }
                   first_name: { type: string, example: Анна }
-                  avatar_url: { type: string, format: uri, nullable: true }
+                  avatar_url: { type: string, format: uri-reference, nullable: true }
                   rating: { type: number, format: float, example: 4.8 }
               items:
                 type: array
@@ -1550,7 +1585,7 @@ components:
         seller_id: { type: integer }
         title: { type: string }
         price: { $ref: '#/components/schemas/Price' }
-        image_url: { type: string, format: uri, nullable: true }
+        image_url: { type: string, format: uri-reference, nullable: true }
 
     Recipient:
       type: object
