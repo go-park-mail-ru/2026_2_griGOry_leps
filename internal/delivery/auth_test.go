@@ -8,16 +8,58 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-func newAuthHandler() *AuthHandler {
-	authUC := usecase.NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
-	return NewAuthHandler(authUC, false)
+type authStub struct {
+	err      error
+	register func(context.Context, string, string, string, string) (domain.User, domain.Session, error)
+}
+
+func (s authStub) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
+	if s.register != nil {
+		return s.register(ctx, email, password, firstName, phone)
+	}
+	return domain.User{ID: 1, Email: email, FirstName: firstName, Phone: phone},
+		domain.Session{ID: "test-session", UserID: 1, ExpiresAt: time.Now().Add(time.Hour)}, s.err
+}
+
+func (s authStub) Login(ctx context.Context, login, password string) (domain.User, domain.Session, error) {
+	return domain.User{ID: 1, Email: login},
+		domain.Session{ID: "test-session", UserID: 1, ExpiresAt: time.Now().Add(time.Hour)}, s.err
+}
+
+func (s authStub) Logout(ctx context.Context, id string) error {
+	return s.err
+}
+
+func (s authStub) Me(ctx context.Context, id string) (domain.User, error) {
+	return domain.User{ID: 1, FirstName: "Иван"}, s.err
+}
+
+func newAuthHandler() *AuthHandler { return NewAuthHandler(authStub{}, false) }
+
+func TestAuth_Register_PassesArguments(t *testing.T) {
+	called := false
+	h := NewAuthHandler(authStub{register: func(ctx context.Context, email, password, name, phone string) (domain.User, domain.Session, error) {
+		called = true
+		require.Equal(t, "x@y.ru", email)
+		require.Equal(t, "Secret123", password)
+		require.Equal(t, "Ян", name)
+		require.Equal(t, "+79005555555", phone)
+		return domain.User{FirstName: name}, domain.Session{}, nil
+	}}, false)
+
+	body := `{"email":"x@y.ru","password":"Secret123","first_name":"Ян","phone":"+79005555555"}`
+	rec := httptest.NewRecorder()
+	h.Register(rec, httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body)))
+
+	require.True(t, called)
+	require.Equal(t, http.StatusCreated, rec.Code)
 }
 
 func TestAuth_Register_BadJSON(t *testing.T) {
@@ -51,7 +93,7 @@ func TestAuth_Register_Success(t *testing.T) {
 }
 
 func TestAuth_Register_ValidationError(t *testing.T) {
-	h := newAuthHandler()
+	h := NewAuthHandler(authStub{err: domain.ErrWeakPassword}, false)
 	body := `{"email":"a@b.ru","password":"short","first_name":"Иван","phone":"+79001234567"}`
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -63,7 +105,7 @@ func TestAuth_Register_ValidationError(t *testing.T) {
 }
 
 func TestAuth_Register_EmailTaken(t *testing.T) {
-	h := newAuthHandler()
+	h := NewAuthHandler(authStub{err: domain.ErrEmailTaken}, false)
 	body := `{"email":"a@b.ru","password":"Secret123","first_name":"Иван","phone":"+79001234567"}`
 
 	req1 := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
@@ -103,7 +145,7 @@ func TestAuth_Login_Success(t *testing.T) {
 }
 
 func TestAuth_Login_InvalidCredentials(t *testing.T) {
-	h := newAuthHandler()
+	h := NewAuthHandler(authStub{err: domain.ErrInvalidLogin}, false)
 	body := `{"login":"a@b.ru","password":"Secret123"}`
 	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(body))
 	rec := httptest.NewRecorder()
@@ -179,7 +221,7 @@ func TestAuth_Me_Success(t *testing.T) {
 }
 
 func TestAuth_Me_InvalidSession(t *testing.T) {
-	h := newAuthHandler()
+	h := NewAuthHandler(authStub{err: domain.ErrSessionExpired}, false)
 	req := httptest.NewRequest(http.MethodGet, "/me", nil)
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: "invalid"})
 	rec := httptest.NewRecorder()
@@ -187,19 +229,4 @@ func TestAuth_Me_InvalidSession(t *testing.T) {
 	h.Me(rec, req)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
-}
-
-func TestAuth_UsecaseWiring(t *testing.T) {
-	authUC := usecase.NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
-	h := NewAuthHandler(authUC, false)
-
-	body := `{"email":"x@y.ru","password":"Secret123","first_name":"Ян","phone":"+79005555555"}`
-	rec := httptest.NewRecorder()
-	h.Register(rec, httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body)))
-
-	require.Equal(t, http.StatusCreated, rec.Code)
-	ctx := context.Background()
-	user, _, err := authUC.Login(ctx, "x@y.ru", "Secret123")
-	require.NoError(t, err)
-	require.Equal(t, "Ян", user.FirstName)
 }

@@ -8,11 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 )
 
 func newTestUsecase() *AuthUsecase {
-	return NewAuthUsecase(repository.NewUserRepository(), repository.NewSessionRepository())
+	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake())
 }
 
 func TestNormalizeEmail(t *testing.T) {

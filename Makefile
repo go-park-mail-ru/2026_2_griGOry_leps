@@ -10,7 +10,7 @@ build:
 	go build -o bin/server ./cmd/server
 
 test:
-	go test ./...
+	go test -tags=integration ./...
 
 tidy:
 	go mod tidy

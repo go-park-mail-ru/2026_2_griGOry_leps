@@ -2,44 +2,49 @@ package repository
 
 import (
 	"context"
-	"sync"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/jackc/pgx/v5"
 )
 
 type SessionRepository struct {
-	mu       sync.RWMutex
-	sessions map[string]domain.Session
+	db DB
 }
 
-func NewSessionRepository() *SessionRepository {
-	return &SessionRepository{sessions: make(map[string]domain.Session)}
+func NewSessionRepository(db DB) *SessionRepository {
+	return &SessionRepository{db: db}
 }
 
-func (r *SessionRepository) Create(_ context.Context, id string, userID int32, expiresAt time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.sessions[id] = domain.Session{ID: id, UserID: userID, ExpiresAt: expiresAt}
+func (r *SessionRepository) Create(ctx context.Context, id string, userID int32, expiresAt time.Time) error {
+	_, err := r.db.Exec(ctx, createSessionQuery, id, userID, expiresAt)
+	if err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
 	return nil
 }
 
-func (r *SessionRepository) GetByID(_ context.Context, id string) (domain.Session, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	session, ok := r.sessions[id]
-	if !ok {
+func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Session, error) {
+	var session domain.Session
+	err := r.db.QueryRow(ctx, getSessionQuery, id).Scan(&session.ID, &session.UserID, &session.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Session{}, domain.ErrSessionNotFound
+	}
+	if err != nil {
+		return domain.Session{}, fmt.Errorf("get session: %w", err)
 	}
 	return session, nil
 }
 
-func (r *SessionRepository) Delete(_ context.Context, id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	delete(r.sessions, id)
+func (r *SessionRepository) Delete(ctx context.Context, id string) error {
+	_, err := r.db.Exec(ctx, deleteSessionQuery, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrSessionNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
 	return nil
 }

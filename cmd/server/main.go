@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
@@ -23,9 +24,32 @@ func main() {
 
 	cfg := config.Load()
 
-	userRepo := repository.NewUserRepository()
-	sessionRepo := repository.NewSessionRepository()
-	adRepo := repository.NewAdRepository(repository.SeedAds())
+	connectCtx, cancel := context.WithTimeout(
+		context.Background(),
+		5*time.Second,
+	)
+
+	pool, err := pgxpool.New(connectCtx, cfg.DatabaseURL)
+	if err != nil {
+		cancel()
+		log.Fatalf("create database pool: %v", err)
+	}
+
+	if err := pool.Ping(connectCtx); err != nil {
+		cancel()
+		pool.Close()
+		log.Fatalf("connect to database: %v", err)
+	}
+
+	cancel()
+
+	defer pool.Close()
+
+	log.Println("connected to PostgreSQL")
+
+	userRepo := repository.NewUserRepository(pool)
+	sessionRepo := repository.NewSessionRepository(pool)
+	adRepo := repository.NewAdRepository(pool)
 
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
 	adUsecase := usecase.NewAdUsecase(adRepo)
