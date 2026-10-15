@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: run build test tidy
+.PHONY: migrate-up migrate-status migrate-down run build test tidy
 
 run:
 	go run ./cmd/server
@@ -14,3 +14,13 @@ test:
 
 tidy:
 	go mod tidy
+
+migrate-up:
+	goose -dir migrations up
+
+migrate-status:
+	goose -dir migrations status
+
+migrate-down:
+	goose -dir migrations down
+
