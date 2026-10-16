@@ -29,6 +29,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 - **Язык:** Go
 - **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
 - **Хранение данных:** в памяти процесса (map + sync.RWMutex), после перезапуска данные сбрасываются
+- **База данных:** PostgreSQL, миграции через [goose](https://github.com/pressly/goose) в папке `migrations/` (код на неё переходит в GOS-111)
 - **Авторизация:** cookie-сессии
 - **Документация API:** OpenAPI ([`openapi.yaml`](openapi.yaml))
 
@@ -88,6 +89,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 ### Системные требования
 
 - [Go](https://go.dev/dl/) 1.26+
+- [PostgreSQL](https://www.postgresql.org/download/) 16+
+- goose: `go install github.com/pressly/goose/v3/cmd/goose@latest`
 
 ### Пошаговая инструкция
 
@@ -111,6 +114,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
    | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error` | `info` |
    | `CSRF_SECRET` | ключ подписи CSRF-токенов. Если не задан, генерируется при старте и токены сбрасываются при перезапуске | случайный |
+   | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
+   | `GOOSE_DBSTRING` | адрес базы для миграций | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
 
 3. Установите зависимости:
 
@@ -118,7 +123,14 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    go mod download
    ```
 
-4. Запустите сервер:
+4. Создайте базу и накатите миграции (логин, пароль и имя базы — как в `GOOSE_DBSTRING`):
+
+   ```bash
+   createdb -U postgres goget
+   make migrate-up
+   ```
+
+5. Запустите сервер:
 
    ```bash
    make run
@@ -134,6 +146,9 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 | `make build` | сборка бинарника в `bin/server` |
 | `make test` | запуск тестов |
 | `make tidy` | обновление `go.mod` и `go.sum` |
+| `make migrate-up` | накатить все миграции |
+| `make migrate-down` | откатить последнюю миграцию |
+| `make migrate-status` | какие миграции уже применены |
 
 ## API
 
