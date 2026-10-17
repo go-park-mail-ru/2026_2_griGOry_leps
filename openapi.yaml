@@ -1,29 +1,54 @@
 openapi: 3.0.3
 info:
   title: GO&GET API
-  version: 1.0.0
+  version: 1.1.0
   description: |
     **Соглашения**
     - Все пути начинаются с `/api` (без версии).
-    - JSON, поля в snake_case.
-    - Цена — строка с двумя знаками после точки (`"15000.00"`), валюта всегда RUB.
+    - JSON, поля в snake_case. Даты — ISO 8601 (UTC).
+    - Идентификаторы — целые числа (как в БД).
+    - Цена и любые суммы — строка с двумя знаками после точки (`"15000.00"`), валюта всегда RUB.
     - Ошибки — плоский объект `{"error": "текст"}`, без RFC 9457 и машиночитаемых кодов.
+      У ошибок валидации есть `field` — имя поля запроса; проверки идут по порядку,
+      отдаётся первая сработавшая ошибка. У некоторых 409 есть дополнительные поля
+      (см. схему `Error`).
+    - Пагинация — `limit` (по умолчанию 24, больше 60 обрезается до 60) и `offset`.
+      Ответ списка: `{"items": [], "total": 0, "limit": 24, "offset": 0}`.
 
     **Авторизация**
     Cookie-сессия `session_id` (httpOnly, 7 дней) выставляется при регистрации
-    и при входе. Данные хранятся в памяти процесса и сбрасываются при перезапуске.
+    и при входе. Без сессии доступны только лента, справочники, страница продавца
+    и просмотр объявления; остальное — 401 `not authenticated`.
+
+    **Статусы объявления**
+    `draft` → `moderation` → `active` → `closed` / `sold`. Статус меняет только
+    сервер и метод `POST /listings/{id}/close`.
 
 servers:
   - url: http://localhost:8080/api
     description: Локальный бэкенд
+  - url: http://goget.pw:8000/api
+    description: Прод
 
 tags:
   - name: Служебное
     description: Health-check
   - name: Авторизация
-    description: Регистрация, вход, выход, текущий пользователь
+    description: Регистрация, вход, выход
+  - name: Профиль
+    description: Свой профиль, аватарка, мои объявления
+  - name: Справочники
+    description: Города и категории для выпадающих списков форм
   - name: Лента
     description: Список объявлений с фильтрами
+  - name: Объявления
+    description: Создание, просмотр, редактирование, закрытие и удаление объявлений
+  - name: Продавцы
+    description: Публичная страница продавца
+  - name: Корзина
+    description: Корзина текущего пользователя
+  - name: Заказы
+    description: Оформление покупки и оплата
 
 paths:
   /health:
@@ -37,7 +62,7 @@ paths:
           description: Сервис отвечает
           content:
             application/json:
-              schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+              schema: { $ref: '#/components/schemas/StatusOk' }
 
   # ---------------------------------------------------------------- Авторизация
   /register:
@@ -75,14 +100,7 @@ paths:
                 invalidPhone: { value: { error: invalid phone number, field: phone } }
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
                 passwordTooLong: { value: { error: password is too long, field: password } }
-        '409':
-          description: Email или телефон уже заняты
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-              examples:
-                email: { value: { error: email already registered, field: email } }
-                phone: { value: { error: phone already registered, field: phone } }
+        '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -107,11 +125,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
-        '400':
-          description: Невалидный JSON
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+        '400': { $ref: '#/components/responses/BadRequestBody' }
         '401':
           description: |
             Неверный логин или пароль. Ответ одинаковый и для несуществующего
@@ -136,28 +150,208 @@ paths:
           description: Сессия завершена (или её и не было)
           content:
             application/json:
-              schema: { type: object, required: [status], properties: { status: { type: string, example: ok } } }
+              schema: { $ref: '#/components/schemas/StatusOk' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  # ---------------------------------------------------------------- Профиль
   /me:
     get:
-      tags: [Авторизация]
+      tags: [Профиль]
       operationId: getMe
-      summary: Текущий пользователь
+      summary: Свой профиль
+      description: |
+        Поля `User` (`id`, `email`, `first_name`, `phone`) остаются на месте,
+        к ним добавлены поля профиля.
       security:
         - sessionCookie: []
       responses:
         '200':
-          description: Пользователь
+          description: Профиль текущего пользователя
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/User' }
-        '401':
-          description: Cookie нет, она протухла или сессия удалена — во всех случаях один и тот же текст
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Профиль]
+      operationId: updateMe
+      summary: Изменить профиль
+      description: |
+        Меняет только переданные поля, остальные не трогает. Принимаются только
+        `first_name`, `phone`, `email`, `city_id`, `about`; любые другие поля игнорируются.
+
+        При смене `city_id` сервер обновляет город для доставки; новые объявления
+        получают город из профиля.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProfileRequest' }
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '400':
+          description: Невалидный JSON или не прошла валидация поля
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { error: not authenticated }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                missingFirstName: { value: { error: first name is required, field: first_name } }
+                invalidFirstName: { value: { error: 'first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .', field: first_name } }
+                invalidPhone: { value: { error: invalid phone number, field: phone } }
+                invalidEmail: { value: { error: invalid email, field: email } }
+                invalidCity: { value: { error: invalid city_id, field: city_id } }
+                aboutTooLong: { value: { error: about must be at most 500 characters, field: about } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/avatar:
+    post:
+      tags: [Профиль]
+      operationId: uploadAvatar
+      summary: Загрузить аватарку
+      description: |
+        Заменяет прежнюю аватарку; старый файл сервер удаляет сам.
+        Удаления аватарки без замены нет.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/FileUpload' }
+            encoding:
+              file: { contentType: 'image/jpeg, image/png' }
+      responses:
+        '200':
+          description: Аватарка заменена
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [avatar_url]
+                properties:
+                  avatar_url: { type: string, format: uri-reference }
+        '400': { $ref: '#/components/responses/BadFile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/FileTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/password:
+    put:
+      tags: [Профиль]
+      operationId: changePassword
+      summary: Сменить пароль
+      description: |
+        Новый пароль проверяется по тем же правилам, что при регистрации.
+        Остальные сессии пользователя завершаются, текущая остаётся.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200':
+          description: Пароль изменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOk' }
+        '400':
+          description: Невалидный JSON или не прошла проверка поля
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                wrongCurrent: { value: { error: wrong current password, field: current_password } }
+                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: new_password } }
+                passwordTooLong: { value: { error: password is too long, field: new_password } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/listings:
+    get:
+      tags: [Профиль]
+      operationId: listMyListings
+      summary: Мои объявления
+      description: |
+        Объявления текущего пользователя в любом статусе, сначала недавно изменённые.
+        Правка, закрытие и удаление — теми же методами `/listings/{id}`.
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          description: Без параметра — все статусы.
+          schema: { $ref: '#/components/schemas/ListingStatus' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница моих объявлений
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyListingPage' }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                status: { value: { error: invalid status } }
+                limit: { value: { error: invalid limit } }
+                offset: { value: { error: invalid offset } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Справочники
+  /cities:
+    get:
+      tags: [Справочники]
+      operationId: listCities
+      summary: Поиск города
+      security: []
+      parameters:
+        - name: query
+          in: query
+          description: Начало названия без учёта регистра. Без параметра — популярные города.
+          schema: { type: string }
+          example: Мос
+      responses:
+        '200':
+          description: Подходящие города
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/City' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /categories:
+    get:
+      tags: [Справочники]
+      operationId: listCategories
+      summary: Дерево категорий
+      description: В объявление пишется id листа дерева.
+      security: []
+      responses:
+        '200':
+          description: Корневые категории с вложенными
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CategoryNode' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Лента
@@ -184,27 +378,17 @@ paths:
           example: Москва
         - name: price_min
           in: query
-          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+          schema: { $ref: '#/components/schemas/PriceFilter' }
         - name: price_max
           in: query
           description: Должен быть не меньше price_min, иначе 400.
-          schema: { type: string, pattern: '^\d{1,10}(\.\d{1,2})?$' }
+          schema: { $ref: '#/components/schemas/PriceFilter' }
         - name: has_delivery
           in: query
           schema: { type: boolean }
-        - name: sort
-          in: query
-          description: |
-            - `newest` — сначала новые (по умолчанию, как и при пустом параметре)
-            - `price_asc` / `price_desc`
-          schema: { type: string, enum: [newest, price_asc, price_desc], default: newest }
-        - name: limit
-          in: query
-          description: По умолчанию 24, значения выше 60 обрезаются до 60.
-          schema: { type: integer, minimum: 1, default: 24 }
-        - name: offset
-          in: query
-          schema: { type: integer, minimum: 0, default: 0 }
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
       responses:
         '200':
           description: Страница объявлений
@@ -226,6 +410,514 @@ paths:
                 sort: { value: { error: invalid sort value } }
         '500': { $ref: '#/components/responses/InternalError' }
 
+    # ---------------------------------------------------------------- Объявления
+    post:
+      tags: [Объявления]
+      operationId: createListing
+      summary: Создать объявление
+      description: |
+        Автор — текущий пользователь, город берётся из его профиля.
+        Сначала клиент загружает каждое фото через `POST /listing-photos`,
+        потом отправляет форму с их id.
+
+        `publish` = true (по умолчанию) — объявление уходит в `moderation`,
+        после проверки сервер переводит его в `active`. Все правила ниже обязательны.
+
+        `publish` = false — сохраняется черновик (`draft`), проверяются только
+        переданные поля.
+
+        | Поле | Обязательно при publish | Правило |
+        | --- | --- | --- |
+        | `category_id` | да | существующий лист дерева категорий |
+        | `title` | да | 1–80 символов |
+        | `photo_ids` | да | минимум 1 |
+        | `price` | да, кроме `is_free` = true | ≥ 0 |
+        | `condition` | да | одно из значений `Condition` |
+        | `address` | да | непустая строка |
+        | `description` | нет | до 3000 символов |
+        | `is_negotiable`, `is_free`, `has_delivery` | нет | по умолчанию false |
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateListingRequest' }
+      responses:
+        '201':
+          description: Объявление создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '400': { $ref: '#/components/responses/ListingValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listing-photos:
+    post:
+      tags: [Объявления]
+      operationId: uploadListingPhoto
+      summary: Загрузить фото объявления
+      description: |
+        Одно фото за запрос, до отправки формы. Фото, не привязанное к объявлению
+        в течение 24 часов, сервер удаляет. Привязать можно только свои фото.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/FileUpload' }
+            encoding:
+              file: { contentType: 'image/jpeg, image/png' }
+      responses:
+        '201':
+          description: Фото загружено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadedPhoto' }
+        '400': { $ref: '#/components/responses/BadFile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/FileTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listing_id}:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    get:
+      tags: [Объявления]
+      operationId: getListing
+      summary: Просмотр объявления
+      description: |
+        | Кто и статус | Ответ |
+        | --- | --- |
+        | Любой, `active` | 200 |
+        | Не автор, `closed` или `sold` | 200 со статусом; купить нельзя |
+        | Не автор, `draft` или `moderation` | 404 |
+        | Автор, любой статус | 200, `is_owner` = true, виден `close_reason` |
+        | Удалённое | 404 |
+
+        Сессия необязательна: без неё `is_owner` и `in_cart` — false.
+      security:
+        - {}
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Объявление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Объявления]
+      operationId: updateListing
+      summary: Редактировать объявление
+      description: |
+        Только автор. Принимает те же поля, что и создание (кроме `publish`),
+        любое подмножество, с теми же правилами для переданных полей.
+        `photo_ids` заменяет список целиком: первое фото — главное, пропущенные
+        удаляются. Статус при правке не меняется.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateListingRequest' }
+      responses:
+        '200':
+          description: Обновлённое объявление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '400': { $ref: '#/components/responses/ListingValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409':
+          description: Проданное объявление править нельзя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: listing is sold }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Объявления]
+      operationId: deleteListing
+      summary: Удалить объявление
+      description: |
+        Только автор. Стирает объявление навсегда вместе со статистикой и убирает
+        его из корзин всех пользователей. Нельзя, если по объявлению есть
+        оформленный заказ.
+      security:
+        - sessionCookie: []
+      responses:
+        '204':
+          description: Объявление удалено
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409':
+          description: По объявлению есть активный заказ; `order_id` нужен кнопке «Перейти к заказу»
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: listing has active order, order_id: 77, order_number: 10245 }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listing_id}/close:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    post:
+      tags: [Объявления]
+      operationId: closeListing
+      summary: Снять с продажи
+      description: |
+        Только автор. Статус становится `closed`, причину видит только автор.
+        Объявление пропадает из ленты и со страницы продавца, а в чужих корзинах
+        становится недоступным (`unavailable_reason` = `closed`).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CloseListingRequest' }
+      responses:
+        '200':
+          description: Объявление закрыто
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Listing' }
+        '400':
+          description: Невалидный JSON, причины нет или она неизвестна
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                reason: { value: { error: invalid close reason, field: reason } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409':
+          description: Закрыть можно только активное объявление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: listing is not active }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Продавцы
+  /sellers/{seller_id}:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    get:
+      tags: [Продавцы]
+      operationId: getSeller
+      summary: Профиль продавца
+      description: Публично; телефон и email продавца не передаются.
+      security: []
+      responses:
+        '200':
+          description: Профиль продавца
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SellerProfile' }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /sellers/{seller_id}/listings:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    get:
+      tags: [Продавцы]
+      operationId: listSellerListings
+      summary: Активные объявления продавца
+      description: |
+        Только статус `active`. `total` учитывает `category_id`, а `categories`
+        всегда содержит все разделы продавца без этого фильтра — сумма `count`
+        и есть число на чипе «Все». Нет объявлений — 200 с `items: []`.
+      security: []
+      parameters:
+        - name: category_id
+          in: query
+          description: Без параметра — «Все».
+          schema: { type: integer, minimum: 1 }
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница объявлений продавца
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SellerAdPage' }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                categoryId: { value: { error: invalid category_id } }
+                sort: { value: { error: invalid sort value } }
+                limit: { value: { error: invalid limit } }
+                offset: { value: { error: invalid offset } }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Корзина
+  /cart:
+    get:
+      tags: [Корзина]
+      operationId: getCart
+      summary: Посмотреть корзину
+      description: |
+        Позиции сгруппированы по продавцам, внутри группы — новые сверху.
+        Выбор позиций хранится на клиенте, итоги по выбранным клиент считает сам.
+        Пустая корзина — 200 с `items_count: 0` и `groups: []`.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Корзина
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /cart/items:
+    post:
+      tags: [Корзина]
+      operationId: addCartItem
+      summary: Добавить объявление в корзину
+      description: |
+        Идемпотентно: если объявление уже в корзине, 200 без дубля.
+        Тот же метод используется для «Вернуть» после удаления.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listing_id]
+              properties:
+                listing_id: { type: integer, example: 1024 }
+      responses:
+        '200': { $ref: '#/components/responses/CartCount' }
+        '400': { $ref: '#/components/responses/BadRequestBody' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Своё объявление в корзину добавить нельзя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: cannot add own listing }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409':
+          description: Объявление не активно
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: listing is unavailable }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /cart/items/{listing_id}:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    delete:
+      tags: [Корзина]
+      operationId: removeCartItem
+      summary: Убрать объявление из корзины
+      description: Идемпотентно — если объявления в корзине нет, тоже 200.
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/CartCount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /cart/items/bulk-delete:
+    post:
+      tags: [Корзина]
+      operationId: bulkRemoveCartItems
+      summary: Удалить выбранные
+      description: Идемпотентно; id, которых нет в корзине, пропускаются.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingIdsRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/CartCount' }
+        '400': { $ref: '#/components/responses/BadRequestBody' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  # ---------------------------------------------------------------- Заказы
+  /checkout/quote:
+    post:
+      tags: [Заказы]
+      operationId: checkoutQuote
+      summary: Данные для страницы оформления
+      description: |
+        Принимает выбранные доступные позиции корзины. Способ получения
+        выбирается отдельно для каждого продавца: если продавец не отправляет
+        (`has_delivery` = false), у `courier` и `pickup_point` стоит
+        `available: false`, доступен только `self_pickup`.
+        Адреса — только чтение из профиля.
+
+        «Купить сейчас» — это `POST /cart/items` и затем этот метод с одним объявлением.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingIdsRequest' }
+      responses:
+        '200':
+          description: Всё для страницы «Оформление заказа»
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutQuote' }
+        '400': { $ref: '#/components/responses/BadRequestBody' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/CartItemsUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders:
+    post:
+      tags: [Заказы]
+      operationId: createOrder
+      summary: Оформить покупку
+      description: |
+        Повтор запроса с тем же `Idempotency-Key` возвращает уже созданный заказ.
+        После успеха товары заказа убираются из корзины.
+
+        - `cod` — заказ сразу `placed`, `payment.status` = `on_delivery`.
+        - `card` и `sbp` — заказ `awaiting_payment`, клиент переходит на
+          `payment.confirmation_url`; `placed` сервер ставит сам после
+          подтверждения платежа. Без оплаты в течение часа — `cancelled`.
+
+        | Поле | Правило |
+        | --- | --- |
+        | `delivery.by_seller` | по записи на каждого продавца заказа; способ должен быть `available` в `quote` |
+        | `delivery.address_id` или `delivery.address` | нужен, если хотя бы у одного продавца `courier`; `address` — новый адрес, в профиль не сохраняется |
+        | `delivery.date`, `delivery.time_slot` | обязательны при `courier`, из `quote.delivery_slots` |
+        | `delivery.comment` | до 200 символов |
+        | `recipient` | имя и телефон по правилам профиля; профиль не меняется |
+        | `payment_method` | `card`, `sbp`, `cod` |
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: UUID, сгенерированный клиентом на одну попытку оформления.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOrderRequest' }
+      responses:
+        '201':
+          description: Заказ создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: Невалидный JSON, нет `Idempotency-Key` или не прошла валидация поля
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                idempotencyKey: { value: { error: invalid Idempotency-Key header } }
+                bySeller: { value: { error: delivery method is not available, field: delivery.by_seller } }
+                address: { value: { error: delivery address is required, field: delivery.address } }
+                timeSlot: { value: { error: delivery time slot is required, field: delivery.time_slot } }
+                comment: { value: { error: comment must be at most 200 characters, field: delivery.comment } }
+                recipientName: { value: { error: first name is required, field: recipient.first_name } }
+                recipientPhone: { value: { error: invalid phone number, field: recipient.phone } }
+                paymentMethod: { value: { error: invalid payment method, field: payment_method } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/CartItemsUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{order_id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [Заказы]
+      operationId: getOrder
+      summary: Статус заказа и оплаты
+      description: |
+        Заказ видит только покупатель. Пока `payment.status` = `processing`,
+        клиент опрашивает этот метод.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Заказ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{order_id}/payment:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [Заказы]
+      operationId: retryOrderPayment
+      summary: Оплатить снова или другим способом
+      description: Новая попытка оплаты («Попробовать снова», «Выбрать другой способ»).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { $ref: '#/components/schemas/PaymentMethod' }
+      responses:
+        '200':
+          description: Заказ с новой попыткой оплаты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: Невалидный JSON или неизвестный способ оплаты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                method: { value: { error: invalid payment method, field: method } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '409':
+          description: Заказ уже оформлен или отменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: order is not payable }
+        '500': { $ref: '#/components/responses/InternalError' }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -239,6 +931,40 @@ components:
       description: '`session_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true)'
       schema: { type: string }
 
+  parameters:
+    ListingId:
+      name: listing_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    SellerId:
+      name: seller_id
+      in: path
+      required: true
+      description: user_id продавца
+      schema: { type: integer, minimum: 1 }
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Sort:
+      name: sort
+      in: query
+      description: |
+        - `newest` — сначала новые (по умолчанию, как и при пустом параметре)
+        - `price_asc` / `price_desc`
+      schema: { type: string, enum: [newest, price_asc, price_desc], default: newest }
+    Limit:
+      name: limit
+      in: query
+      description: По умолчанию 24, значения выше 60 обрезаются до 60.
+      schema: { type: integer, minimum: 1, default: 24 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+
   responses:
     InternalError:
       description: Внутренняя ошибка сервера
@@ -246,6 +972,100 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: internal error }
+    BadRequestBody:
+      description: Невалидный JSON
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid request body }
+    Unauthorized:
+      description: Cookie нет, она протухла или сессия удалена — во всех случаях один и тот же текст
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: not authenticated }
+    Forbidden:
+      description: Действие доступно только автору объявления
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: forbidden }
+    ListingNotFound:
+      description: Объявления нет, оно удалено или скрыто от текущего пользователя
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: listing not found }
+    SellerNotFound:
+      description: Продавца нет или он заблокирован
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: seller not found }
+    OrderNotFound:
+      description: Заказа нет или он чужой
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: order not found }
+    EmailOrPhoneTaken:
+      description: Email или телефон уже заняты другим аккаунтом
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            email: { value: { error: email already registered, field: email } }
+            phone: { value: { error: phone already registered, field: phone } }
+    BadFile:
+      description: Нет части `file` или файл повреждён
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            missing: { value: { error: file is required, field: file } }
+            broken: { value: { error: invalid image, field: file } }
+    FileTooLarge:
+      description: Файл больше 5 МБ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: file is too large }
+    UnsupportedMediaType:
+      description: Файл не JPG и не PNG
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: unsupported media type }
+    ListingValidation:
+      description: Невалидный JSON или не прошла валидация поля
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            badBody: { value: { error: invalid request body } }
+            category: { value: { error: invalid category_id, field: category_id } }
+            title: { value: { error: title must be 1-80 characters, field: title } }
+            photos: { value: { error: at least one photo is required, field: photo_ids } }
+            photoId: { value: { error: invalid photo id, field: photo_ids } }
+            description: { value: { error: description must be at most 3000 characters, field: description } }
+            price: { value: { error: invalid price, field: price } }
+            condition: { value: { error: invalid condition, field: condition } }
+            address: { value: { error: address is required, field: address } }
+    CartCount:
+      description: Число позиций в корзине после операции
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items_count]
+            properties:
+              items_count: { type: integer, example: 3 }
+    CartItemsUnavailable:
+      description: Часть объявлений уже недоступна; их id в `listing_ids`
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: cart items are unavailable, listing_ids: [1024, 1031] }
 
   schemas:
     Error:
@@ -255,9 +1075,37 @@ components:
         error: { type: string, example: invalid request body }
         field:
           type: string
-          enum: [email, first_name, phone, password]
-          description: Есть только у ошибок валидации полей в /register — поле формы, к которому относится ошибка.
+          description: |
+            Есть только у ошибок валидации — имя поля запроса, к которому относится
+            ошибка. Вложенные поля через точку: `delivery.time_slot`, `recipient.phone`.
+          example: email
+        listing_ids:
+          type: array
+          items: { type: integer }
+          description: Только у 409 `cart items are unavailable` — недоступные объявления.
+        order_id:
+          type: integer
+          description: Только у 409 `listing has active order`.
+        order_number:
+          type: integer
+          description: Только у 409 `listing has active order`.
 
+    StatusOk:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, example: ok }
+
+    Price:
+      type: string
+      pattern: '^\d{1,10}\.\d{2}$'
+      example: '15000.00'
+
+    PriceFilter:
+      type: string
+      pattern: '^\d{1,10}(\.\d{1,2})?$'
+
+    # ------------------------------------------------ Пользователь и профиль
     User:
       type: object
       required: [id, email, first_name, phone]
@@ -266,6 +1114,52 @@ components:
         email: { type: string, format: email, example: ivan@mail.ru }
         first_name: { type: string, example: Иван }
         phone: { type: string, example: '+79001234567' }
+
+    Profile:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [phone_verified, city, about, avatar_url, rating, reviews_count, created_at]
+          properties:
+            first_name:
+              description: «Имя или никнейм», виден покупателям и продавцам.
+            phone_verified: { type: boolean }
+            city:
+              type: object
+              nullable: true
+              description: null, пока пользователь не выбрал город.
+              required: [id, name]
+              properties:
+                id: { type: integer, example: 1 }
+                name: { type: string, example: Москва }
+            about: { type: string, maxLength: 500, example: 'Продаю вещи после переезда' }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
+            rating: { type: number, format: float, minimum: 0, maximum: 5, example: 4.9 }
+            reviews_count: { type: integer, example: 23 }
+            created_at: { type: string, format: date-time, description: Дата регистрации. }
+
+    UpdateProfileRequest:
+      type: object
+      description: Любое подмножество полей.
+      properties:
+        first_name:
+          type: string
+          description: Те же правила, что при регистрации.
+          example: timur_v
+        phone:
+          type: string
+          description: Те же правила, что при регистрации.
+          example: '+79001234567'
+        email: { type: string, format: email, example: timur@mail.ru }
+        city_id: { type: integer, example: 1 }
+        about: { type: string, maxLength: 500, description: Может быть пустой строкой. }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password: { type: string, format: password, description: 'Те же правила, что при регистрации.' }
 
     RegisterRequest:
       type: object
@@ -304,16 +1198,50 @@ components:
           example: '+7 900 123-45-67'
         password: { type: string, format: password, example: Secret123 }
 
+    FileUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: JPG или PNG, до 5 МБ.
+
+    # ------------------------------------------------ Справочники
+    City:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Москва }
+
+    CategoryNode:
+      type: object
+      required: [id, name, slug, children]
+      properties:
+        id: { type: integer, example: 3 }
+        name: { type: string, example: Спорт и отдых }
+        slug: { type: string, example: sport }
+        children:
+          type: array
+          description: Пустой массив у листа.
+          items: { $ref: '#/components/schemas/CategoryNode' }
+
+    # ------------------------------------------------ Лента и карточки
     AdCard:
       type: object
-      required: [id, title, price, image_url, city, has_delivery, category_id, created_at]
+      description: Карточка объявления в ленте, на странице продавца и в «Моих объявлениях».
+      required: [id, title, price, is_free, image_url, city, has_delivery, category_id, created_at]
       properties:
         id: { type: integer, example: 1024 }
         title: { type: string, example: 'Велосипед горный, состояние отличное' }
-        price: { type: string, pattern: '^\d{1,10}\.\d{2}$', example: '15000.00' }
+        price:
+          allOf: [{ $ref: '#/components/schemas/Price' }]
+          description: '"0.00" при `is_free`.'
+        is_free: { type: boolean, description: «Отдам даром». }
         image_url:
           type: string
-          format: uri
+          format: uri-reference
           nullable: true
           description: Главное фото; null, если фото нет.
         city: { type: string, example: Москва }
@@ -328,6 +1256,493 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/AdCard' }
-        total: { type: integer, description: Всего объявлений по фильтру, без учёта limit/offset. }
+        total: { type: integer, description: 'Всего объявлений по фильтру, без учёта limit/offset.' }
         limit: { type: integer }
         offset: { type: integer }
+
+    SellerAdPage:
+      allOf:
+        - $ref: '#/components/schemas/AdPage'
+        - type: object
+          required: [categories]
+          properties:
+            categories:
+              type: array
+              description: Все разделы продавца без учёта `category_id`, для чипов.
+              items:
+                type: object
+                required: [id, name, count]
+                properties:
+                  id: { type: integer, example: 3 }
+                  name: { type: string, example: Спорт и отдых }
+                  count: { type: integer, example: 10 }
+
+    MyAdCard:
+      allOf:
+        - $ref: '#/components/schemas/AdCard'
+        - type: object
+          required: [status, close_reason, updated_at]
+          properties:
+            status: { $ref: '#/components/schemas/ListingStatus' }
+            close_reason:
+              type: string
+              enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
+              nullable: true
+            updated_at: { type: string, format: date-time }
+
+    MyListingPage:
+      type: object
+      required: [items, total, limit, offset, counts]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MyAdCard' }
+        total: { type: integer, description: С учётом фильтра `status`. }
+        limit: { type: integer }
+        offset: { type: integer }
+        counts:
+          type: object
+          description: Числа на вкладках, не зависят от `status`.
+          required: [all, draft, moderation, active, closed, sold]
+          properties:
+            all: { type: integer, example: 7 }
+            draft: { type: integer, example: 1 }
+            moderation: { type: integer, example: 1 }
+            active: { type: integer, example: 4 }
+            closed: { type: integer, example: 1 }
+            sold: { type: integer, example: 0 }
+
+    # ------------------------------------------------ Объявление
+    ListingStatus:
+      type: string
+      enum: [draft, moderation, active, closed, sold]
+      description: |
+        «Черновик», «На проверке», «Активно», «Закрыто», «Продано».
+        `sold` ставит система после завершения сделки.
+
+    CloseReason:
+      type: string
+      enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
+      description: |
+        - `sold_on_goget` — Продал на GoGET
+        - `sold_elsewhere` — Продал в другом месте
+        - `changed_mind` — Передумал продавать
+        - `other` — Другая причина
+
+    Condition:
+      type: string
+      enum: [new, used_good, used_repair]
+      description: «Новое», «Б/у, состояние хорошее», «Б/у, требует ремонта».
+
+    UploadedPhoto:
+      type: object
+      required: [id, url, thumb_url]
+      properties:
+        id: { type: integer, example: 501 }
+        url: { type: string, format: uri-reference }
+        thumb_url: { type: string, format: uri-reference }
+
+    ListingPhoto:
+      allOf:
+        - $ref: '#/components/schemas/UploadedPhoto'
+        - type: object
+          required: [is_main]
+          properties:
+            is_main: { type: boolean, description: true у первого фото. }
+
+    SellerShort:
+      type: object
+      required: [id, first_name, avatar_url, rating, reviews_count, created_at]
+      properties:
+        id: { type: integer, example: 42 }
+        first_name: { type: string, example: Анна }
+        avatar_url: { type: string, format: uri-reference, nullable: true }
+        rating: { type: number, format: float, example: 4.8 }
+        reviews_count: { type: integer, example: 56 }
+        created_at: { type: string, format: date-time, description: Дата регистрации. }
+
+    Listing:
+      type: object
+      required:
+        - id
+        - title
+        - category
+        - description
+        - photos
+        - price
+        - is_free
+        - is_negotiable
+        - condition
+        - city
+        - address
+        - has_delivery
+        - attributes
+        - status
+        - close_reason
+        - seller
+        - is_owner
+        - in_cart
+        - published_at
+        - created_at
+        - updated_at
+      description: |
+        У черновика поля, которые ещё не заполнены, приходят null
+        (`category`, `price`, `condition`, `address`) или пустыми.
+      properties:
+        id: { type: integer, example: 1024 }
+        title: { type: string, minLength: 1, maxLength: 80, example: 'Велосипед горный Stels Navigator 29"' }
+        category:
+          type: object
+          nullable: true
+          required: [id, name, path]
+          properties:
+            id: { type: integer, example: 12 }
+            name: { type: string, example: Велосипеды }
+            path: { type: string, example: 'Спорт и отдых › Велосипеды' }
+        description: { type: string, maxLength: 3000 }
+        photos:
+          type: array
+          description: Первое фото — главное.
+          items: { $ref: '#/components/schemas/ListingPhoto' }
+        price:
+          type: string
+          pattern: '^\d{1,10}\.\d{2}$'
+          example: '15000.00'
+          nullable: true
+          description: '"0.00" при `is_free`.'
+        is_free: { type: boolean }
+        is_negotiable: { type: boolean, description: «Торг уместен». }
+        condition:
+          type: string
+          enum: [new, used_good, used_repair]
+          nullable: true
+        city: { type: string, example: Москва, description: Из профиля автора на момент создания. }
+        address: { type: string, nullable: true, example: 'Москва, м. Сокол' }
+        has_delivery: { type: boolean, description: «Готов отправить через доставку». }
+        attributes:
+          type: array
+          description: Характеристики по категории, только чтение.
+          items:
+            type: object
+            required: [key, name, value]
+            properties:
+              key: { type: string, example: brand }
+              name: { type: string, example: Бренд }
+              value: { type: string, example: Stels }
+        status: { $ref: '#/components/schemas/ListingStatus' }
+        close_reason:
+          type: string
+          enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
+          nullable: true
+          description: Видна только автору, остальным всегда null.
+        seller: { $ref: '#/components/schemas/SellerShort' }
+        is_owner: { type: boolean, description: 'true, если запрос от автора.' }
+        in_cart: { type: boolean, description: 'true, если объявление в корзине текущего пользователя; без сессии false.' }
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: null, пока объявление не стало активным.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UpdateListingRequest:
+      type: object
+      description: Любое подмножество полей.
+      properties:
+        category_id: { type: integer, example: 12 }
+        title: { type: string, minLength: 1, maxLength: 80 }
+        photo_ids:
+          type: array
+          minItems: 1
+          description: Порядок задаёт порядок фото, первое — главное. Заменяет список целиком.
+          items: { type: integer }
+          example: [501, 502, 503]
+        description: { type: string, maxLength: 3000 }
+        price: { $ref: '#/components/schemas/PriceFilter' }
+        is_free: { type: boolean, description: 'Если true, сервер ставит price = 0.' }
+        is_negotiable: { type: boolean }
+        condition: { $ref: '#/components/schemas/Condition' }
+        address: { type: string, minLength: 1 }
+        has_delivery: { type: boolean }
+
+    CreateListingRequest:
+      allOf:
+        - $ref: '#/components/schemas/UpdateListingRequest'
+        - type: object
+          properties:
+            publish:
+              type: boolean
+              default: true
+              description: true — на модерацию, false — черновик.
+      example:
+        category_id: 12
+        title: 'Велосипед горный Stels Navigator 29"'
+        photo_ids: [501, 502, 503]
+        description: Велосипед в отличном состоянии…
+        price: '15000'
+        is_negotiable: true
+        is_free: false
+        condition: used_good
+        address: 'Москва, м. Сокол'
+        has_delivery: true
+        publish: true
+
+    CloseListingRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { $ref: '#/components/schemas/CloseReason' }
+
+    # ------------------------------------------------ Продавец
+    SellerProfile:
+      allOf:
+        - $ref: '#/components/schemas/SellerShort'
+        - type: object
+          required: [location, phone_verified, completed_sales_count, active_listings_count]
+          properties:
+            location: { type: string, example: 'Москва, м. Сокол' }
+            phone_verified: { type: boolean }
+            completed_sales_count: { type: integer, example: 140 }
+            active_listings_count: { type: integer, example: 12 }
+
+    # ------------------------------------------------ Корзина
+    ListingIdsRequest:
+      type: object
+      required: [listing_ids]
+      properties:
+        listing_ids:
+          type: array
+          minItems: 1
+          items: { type: integer }
+          example: [1024, 1031]
+
+    CartItem:
+      type: object
+      required: [listing_id, title, price, image_url, address, delivery_from, availability, unavailable_reason]
+      description: У удалённого объявления заполнены только `listing_id`, `availability` и `unavailable_reason`, остальное null.
+      properties:
+        listing_id: { type: integer, example: 1024 }
+        title: { type: string, nullable: true }
+        price:
+          type: string
+          pattern: '^\d{1,10}\.\d{2}$'
+          example: '15000.00'
+          nullable: true
+          description: null у недоступной позиции.
+        image_url: { type: string, format: uri-reference, nullable: true }
+        address: { type: string, nullable: true, example: 'Москва, м. Сокол' }
+        delivery_from:
+          type: string
+          pattern: '^\d{1,10}\.\d{2}$'
+          example: '15000.00'
+          nullable: true
+          description: Минимальная цена доставки; null, если продавец не отправляет или позиция недоступна.
+        availability: { type: string, enum: [available, unavailable] }
+        unavailable_reason:
+          type: string
+          enum: [sold, closed, deleted]
+          nullable: true
+
+    Cart:
+      type: object
+      required: [items_count, groups]
+      properties:
+        items_count: { type: integer, example: 3 }
+        groups:
+          type: array
+          items:
+            type: object
+            required: [seller, items]
+            properties:
+              seller:
+                type: object
+                required: [id, first_name, avatar_url, rating]
+                properties:
+                  id: { type: integer }
+                  first_name: { type: string, example: Анна }
+                  avatar_url: { type: string, format: uri-reference, nullable: true }
+                  rating: { type: number, format: float, example: 4.8 }
+              items:
+                type: array
+                items: { $ref: '#/components/schemas/CartItem' }
+
+    # ------------------------------------------------ Оформление и заказ
+    DeliveryMethod:
+      type: string
+      enum: [courier, pickup_point, self_pickup]
+
+    PaymentMethod:
+      type: string
+      enum: [card, sbp, cod]
+      description: '`card` — картой онлайн, `sbp` — СБП, `cod` — при получении.'
+
+    OrderItem:
+      type: object
+      required: [listing_id, seller_id, title, price, image_url]
+      properties:
+        listing_id: { type: integer }
+        seller_id: { type: integer }
+        title: { type: string }
+        price: { $ref: '#/components/schemas/Price' }
+        image_url: { type: string, format: uri-reference, nullable: true }
+
+    Recipient:
+      type: object
+      required: [first_name, phone]
+      properties:
+        first_name: { type: string, example: Тимур }
+        phone: { type: string, example: '+79001234567' }
+
+    CheckoutQuote:
+      type: object
+      required: [items, items_total, sellers, addresses, delivery_slots, recipient, payment_methods]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        items_total: { $ref: '#/components/schemas/Price' }
+        sellers:
+          type: array
+          items:
+            type: object
+            required: [seller_id, first_name, items_count, delivery_methods]
+            properties:
+              seller_id: { type: integer }
+              first_name: { type: string, example: Анна }
+              items_count: { type: integer, example: 2 }
+              delivery_methods:
+                type: array
+                items:
+                  type: object
+                  required: [method, price, available, hint]
+                  properties:
+                    method: { $ref: '#/components/schemas/DeliveryMethod' }
+                    price: { $ref: '#/components/schemas/Price' }
+                    available: { type: boolean }
+                    hint: { type: string, example: Курьер привезёт по адресу }
+        addresses:
+          type: array
+          description: Адреса из профиля, только чтение.
+          items:
+            type: object
+            required: [id, label, text, is_default]
+            properties:
+              id: { type: integer }
+              label: { type: string, example: Дом · основной }
+              text: { type: string, example: 'Москва, ул. Тверская, 12, кв. 34' }
+              is_default: { type: boolean }
+        delivery_slots:
+          type: object
+          required: [dates, times]
+          properties:
+            dates:
+              type: array
+              items: { type: string, format: date }
+              example: ['2026-10-15', '2026-10-16', '2026-10-17']
+            times:
+              type: array
+              items: { type: string }
+              example: ['10:00-14:00', '14:00-18:00', '18:00-22:00']
+        recipient:
+          allOf: [{ $ref: '#/components/schemas/Recipient' }]
+          description: Подставляется из профиля.
+        payment_methods:
+          type: array
+          items:
+            type: object
+            required: [method]
+            properties:
+              method: { $ref: '#/components/schemas/PaymentMethod' }
+
+    OrderDelivery:
+      type: object
+      required: [by_seller]
+      properties:
+        by_seller:
+          type: array
+          items:
+            type: object
+            required: [seller_id, method]
+            properties:
+              seller_id: { type: integer }
+              method: { $ref: '#/components/schemas/DeliveryMethod' }
+        address_id: { type: integer, nullable: true, description: Адрес из `quote.addresses`. }
+        address:
+          type: object
+          nullable: true
+          description: Новый адрес, в профиль не сохраняется. Передаётся вместо `address_id`.
+          required: [text]
+          properties:
+            text: { type: string }
+        date: { type: string, format: date, nullable: true, example: '2026-10-15' }
+        time_slot: { type: string, nullable: true, example: '10:00-14:00' }
+        comment: { type: string, maxLength: 200, example: Позвоните за 20 минут }
+
+    CreateOrderRequest:
+      type: object
+      required: [listing_ids, delivery, recipient, payment_method]
+      properties:
+        listing_ids:
+          type: array
+          minItems: 1
+          items: { type: integer }
+        delivery: { $ref: '#/components/schemas/OrderDelivery' }
+        recipient: { $ref: '#/components/schemas/Recipient' }
+        payment_method: { $ref: '#/components/schemas/PaymentMethod' }
+
+    Order:
+      type: object
+      required: [id, number, status, pay_until, items, totals, delivery, payment, created_at]
+      properties:
+        id: { type: integer, example: 77 }
+        number: { type: integer, example: 10245, description: «Заказ № 10245». }
+        status:
+          type: string
+          enum: [awaiting_payment, placed, cancelled]
+          description: |
+            `placed` — заказ оформлен, продавцам ушло уведомление.
+            `awaiting_payment` ждёт оплаты 1 час, после — `cancelled`.
+        pay_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: До какого момента можно оплатить.
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderItem' }
+        totals:
+          type: object
+          required: [items, delivery, total]
+          description: Считает сервер.
+          properties:
+            items: { $ref: '#/components/schemas/Price' }
+            delivery: { $ref: '#/components/schemas/Price' }
+            total: { $ref: '#/components/schemas/Price' }
+        delivery:
+          allOf:
+            - $ref: '#/components/schemas/OrderDelivery'
+            - type: object
+              required: [address_text]
+              properties:
+                address_text:
+                  type: string
+                  nullable: true
+                  description: Текст выбранного адреса; null без курьера.
+        payment:
+          type: object
+          required: [method, status, confirmation_url]
+          properties:
+            method: { $ref: '#/components/schemas/PaymentMethod' }
+            status:
+              type: string
+              enum: [pending, processing, paid, failed, on_delivery]
+              description: |
+                `processing` — экран «Оплата в процессе», `failed` — «Оплата не прошла»,
+                `on_delivery` — оплата при получении.
+            confirmation_url:
+              type: string
+              format: uri
+              nullable: true
+              description: Куда перенаправить для `card` и `sbp`; null для `cod`.
+        created_at: { type: string, format: date-time }
