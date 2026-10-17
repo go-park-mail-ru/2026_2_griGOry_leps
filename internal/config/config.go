@@ -1,11 +1,17 @@
 package config
 
-import "os"
+import (
+	"log/slog"
+	"os"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
+)
 
 type Config struct {
 	Port           string
 	FrontendOrigin string
 	CookieSecure   bool
+	LogLevel       slog.Level
 	DatabaseURL    string
 }
 
@@ -14,7 +20,8 @@ func Load() *Config {
 		Port:           getEnv("PORT", "8080"),
 		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
 		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
-		DatabaseURL:    getEnv("GOOSE_DBSTRING", "host=127.0.0.1 port=5432 user=postgres password=12345 dbname=goget sslmode=disable"),
+		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
+		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable"),
 	}
 }
 

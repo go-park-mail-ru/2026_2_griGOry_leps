@@ -30,10 +30,11 @@ var (
 type AuthUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
+	tx       Transactor
 }
 
-func NewAuthUsecase(users UserRepository, sessions SessionRepository) *AuthUsecase {
-	return &AuthUsecase{users: users, sessions: sessions}
+func NewAuthUsecase(users UserRepository, sessions SessionRepository, tx Transactor) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions, tx: tx}
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
@@ -65,17 +66,23 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		return domain.User{}, domain.Session{}, err
 	}
 
-	user, err := uc.users.Create(ctx, email, string(hash), firstName, phone)
-	if err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
+	var user domain.User
+	var session domain.Session
+	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		user, err = uc.users.Create(ctx, email, string(hash), firstName, phone)
+		if err != nil {
+			return err
+		}
 
-	session, err := newSession(user.ID)
-	if err != nil {
-		return domain.User{}, domain.Session{}, err
-	}
+		session, err = newSession(user.ID)
+		if err != nil {
+			return err
+		}
 
-	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
+		return uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt)
+	})
+	if err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
 

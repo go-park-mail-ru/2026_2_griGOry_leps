@@ -1,7 +1,7 @@
 package delivery
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -16,8 +16,8 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
 
-	r.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
+		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
@@ -29,15 +29,15 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
-	return corsMiddleware(frontendOrigin, jsonContentType(timed))
+	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
 }
 
-func notFound(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusNotFound, "not found")
+func notFound(w http.ResponseWriter, r *http.Request) {
+	writeError(r.Context(), w, http.StatusNotFound, "not found")
 }
 
-func methodNotAllowed(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+func methodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	writeError(r.Context(), w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
 func corsMiddleware(origin string, next http.Handler) http.Handler {
@@ -45,7 +45,8 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader)
+		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader)
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -67,8 +68,8 @@ func recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				log.Printf("panic: %v", err)
-				writeError(w, http.StatusInternalServerError, "internal error")
+				slog.ErrorContext(r.Context(), "panic recovered", "panic", err)
+				writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 			}
 		}()
 		next.ServeHTTP(w, r)

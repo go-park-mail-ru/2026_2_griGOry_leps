@@ -25,8 +25,7 @@ func scanUser(row pgx.Row) (domain.User, error) {
 }
 
 func (r *UserRepository) Create(ctx context.Context, email, passwordHash, firstName, phone string) (domain.User, error) {
-	var user domain.User
-	user, err := scanUser(r.db.QueryRow(ctx, createUserQuery, email, passwordHash, firstName, phone))
+	user, err := scanUser(conn(ctx, r.db).QueryRow(ctx, createUserQuery, email, passwordHash, firstName, phone))
 
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -56,14 +55,12 @@ func (r *UserRepository) GetByID(ctx context.Context, id int32) (domain.User, er
 }
 
 func (r *UserRepository) get(ctx context.Context, query string, arg any) (domain.User, error) {
-	var user domain.User
-	user, err := scanUser(r.db.QueryRow(ctx, query, arg))
-
+	user, err := scanUser(conn(ctx, r.db).QueryRow(ctx, query, arg))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.User{}, domain.ErrUserNotFound
 	}
 	if err != nil {
 		return domain.User{}, fmt.Errorf("get user: %w", err)
 	}
-	return user, err
+	return user, nil
 }

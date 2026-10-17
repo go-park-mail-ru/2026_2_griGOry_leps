@@ -20,6 +20,10 @@ type SessionRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
+type Transactor interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type AdRepository interface {
 	List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error)
 }

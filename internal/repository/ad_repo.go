@@ -52,7 +52,7 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 	rows, err := tx.Query(ctx, listAdsQuery, args...)
 
 	if err != nil {
-		return nil, 0, fmt.Errorf("count list: %w", err)
+		return nil, 0, fmt.Errorf("list ads: %w", err)
 	}
 
 	defer rows.Close()
@@ -76,5 +76,4 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 		return nil, 0, fmt.Errorf("commit list ads: %w", err)
 	}
 	return ads, total, nil
-
 }

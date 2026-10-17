@@ -19,7 +19,7 @@ func NewSessionRepository(db DB) *SessionRepository {
 }
 
 func (r *SessionRepository) Create(ctx context.Context, id string, userID int32, expiresAt time.Time) error {
-	_, err := r.db.Exec(ctx, createSessionQuery, id, userID, expiresAt)
+	_, err := conn(ctx, r.db).Exec(ctx, createSessionQuery, id, userID, expiresAt)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
@@ -28,7 +28,7 @@ func (r *SessionRepository) Create(ctx context.Context, id string, userID int32,
 
 func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Session, error) {
 	var session domain.Session
-	err := r.db.QueryRow(ctx, getSessionQuery, id).Scan(&session.ID, &session.UserID, &session.ExpiresAt)
+	err := conn(ctx, r.db).QueryRow(ctx, getSessionQuery, id).Scan(&session.ID, &session.UserID, &session.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Session{}, domain.ErrSessionNotFound
 	}
@@ -38,11 +38,9 @@ func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Sess
 	return session, nil
 }
 
+// Delete ничего не возвращает, если сессии уже нет: выход идемпотентный.
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.db.Exec(ctx, deleteSessionQuery, id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ErrSessionNotFound
-	}
+	_, err := conn(ctx, r.db).Exec(ctx, deleteSessionQuery, id)
 	if err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}

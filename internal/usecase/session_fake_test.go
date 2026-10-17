@@ -43,3 +43,9 @@ func (r *sessionRepoFake) Delete(_ context.Context, id string) error {
 	delete(r.sessions, id)
 	return nil
 }
+
+type txFake struct{}
+
+func (txFake) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
+}

@@ -3,18 +3,18 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -24,34 +24,24 @@ func main() {
 
 	cfg := config.Load()
 
-	connectCtx, cancel := context.WithTimeout(
-		context.Background(),
-		5*time.Second,
-	)
+	slog.SetDefault(logger.New(os.Stdout, cfg.LogLevel))
 
-	pool, err := pgxpool.New(connectCtx, cfg.DatabaseURL)
-	if err != nil {
-		cancel()
-		log.Fatalf("create database pool: %v", err)
-	}
-
-	if err := pool.Ping(connectCtx); err != nil {
-		cancel()
-		pool.Close()
-		log.Fatalf("connect to database: %v", err)
-	}
-
+	connectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pool, err := repository.NewPool(connectCtx, cfg.DatabaseURL)
 	cancel()
-
+	if err != nil {
+		slog.Error("connect to database", "err", err)
+		os.Exit(1)
+	}
 	defer pool.Close()
 
-	log.Println("connected to PostgreSQL")
+	slog.Info("connected to PostgreSQL")
 
 	userRepo := repository.NewUserRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 	adRepo := repository.NewAdRepository(pool)
 
-	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
+	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, repository.NewTransactor(pool))
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
@@ -69,9 +59,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("server starting on port %s", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server failed: %v", err)
+			slog.Error("server failed", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -79,12 +70,12 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
-	log.Println("shutting down server...")
+	slog.Info("shutting down server")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "err", err)
 	}
 }

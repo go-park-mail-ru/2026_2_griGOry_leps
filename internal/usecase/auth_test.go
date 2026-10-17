@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func newTestUsecase() *AuthUsecase {
-	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake())
+	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), txFake{})
 }
 
 func TestNormalizeEmail(t *testing.T) {
@@ -282,4 +283,21 @@ func TestMe_SessionNotFound(t *testing.T) {
 
 	_, err := uc.Me(context.Background(), "nope")
 	require.ErrorIs(t, err, domain.ErrSessionExpired)
+}
+
+type failingTx struct{ err error }
+
+func (f failingTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if err := fn(ctx); err != nil {
+		return err
+	}
+	return f.err
+}
+
+func TestRegister_TxError(t *testing.T) {
+	commitErr := errors.New("commit failed")
+	uc := NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), failingTx{err: commitErr})
+
+	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Иван", "+79001234567")
+	require.ErrorIs(t, err, commitErr)
 }
