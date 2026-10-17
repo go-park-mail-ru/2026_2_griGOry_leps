@@ -113,6 +113,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
    | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error` | `info` |
+   | `CSRF_SECRET` | ключ подписи CSRF-токенов. Если не задан, генерируется при старте и токены сбрасываются при перезапуске | случайный |
    | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
    | `GOOSE_DBSTRING` | адрес базы для миграций | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
 
@@ -153,9 +154,12 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 Все ручки начинаются с `/api`, полное описание — в [`openapi.yaml`](openapi.yaml).
 
+POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с токеном из `GET /api/csrf`, иначе 403. Токен привязан к сессии, поэтому после входа, регистрации и выхода его нужно запросить заново.
+
 | Метод | Путь | Что делает |
 |---|---|---|
 | `GET` | `/api/health` | проверка, что сервер жив |
+| `GET` | `/api/csrf` | CSRF-токен для изменяющих запросов |
 | `POST` | `/api/register` | регистрация, сразу создаёт сессию |
 | `POST` | `/api/login` | вход |
 | `POST` | `/api/logout` | выход, удаляет сессию |
@@ -170,6 +174,7 @@ internal/config/     чтение переменных окружения
 internal/domain/     модели и ошибки
 internal/delivery/   HTTP-обработчики, роутер, мидлвары и интерфейсы usecase
 internal/logger/     JSON-логгер (slog) с request_id из контекста
+internal/csrf/       выпуск и проверка CSRF-токенов (HMAC)
 internal/usecase/    бизнес-логика и интерфейсы репозиториев
 internal/repository/ хранилище в памяти и тестовые объявления
 ```

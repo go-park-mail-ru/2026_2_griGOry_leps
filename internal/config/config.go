@@ -12,6 +12,7 @@ type Config struct {
 	FrontendOrigin string
 	CookieSecure   bool
 	LogLevel       slog.Level
+	CSRFSecret     string
 }
 
 func Load() *Config {
@@ -20,6 +21,7 @@ func Load() *Config {
 		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
 		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
 		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
+		CSRFSecret:     os.Getenv("CSRF_SECRET"),
 	}
 }
 

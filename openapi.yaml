@@ -24,6 +24,12 @@ info:
     `draft` → `moderation` → `active` → `closed` / `sold`. Статус меняет только
     сервер и метод `POST /listings/{id}/close`.
 
+    **CSRF**
+    Все POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token`, иначе 403
+    `invalid csrf token`. Токен выдаёт `GET /csrf`, живёт 24 часа и привязан
+    к cookie сессии, а до входа — к анонимной cookie `csrf_id`, поэтому после
+    входа, регистрации и выхода токен нужно запросить заново.
+
 servers:
   - url: http://localhost:8080/api
     description: Локальный бэкенд
@@ -32,7 +38,7 @@ servers:
 
 tags:
   - name: Служебное
-    description: Health-check
+    description: Health-check и CSRF-токен
   - name: Авторизация
     description: Регистрация, вход, выход
   - name: Профиль
@@ -64,6 +70,28 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StatusOk' }
 
+  /csrf:
+    get:
+      tags: [Служебное]
+      operationId: getCSRFToken
+      summary: CSRF-токен для изменяющих запросов
+      description: |
+        Если нет ни cookie сессии, ни `csrf_id`, выставляет анонимную cookie `csrf_id`
+        и привязывает токен к ней.
+      security: []
+      responses:
+        '200':
+          description: Токен, который нужно передавать в заголовке `X-CSRF-Token`
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SetCSRFCookie' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token]
+                properties:
+                  csrf_token: { type: string, example: 1792054800.3f9a1c0e5b7d2a4c6e8f0a1b3c5d7e9f1a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d }
+
   # ---------------------------------------------------------------- Авторизация
   /register:
     post:
@@ -73,7 +101,8 @@ paths:
       description: |
         Создаёт аккаунт и сразу авторизует: выставляет cookie сессии.
         Проверки идут по порядку, отдаётся первая сработавшая ошибка.
-      security: []
+      security:
+        - csrfToken: []
       requestBody:
         required: true
         content:
@@ -101,6 +130,7 @@ paths:
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
                 passwordTooLong: { value: { error: password is too long, field: password } }
         '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -111,7 +141,8 @@ paths:
       description: |
         `login`, содержащий `@`, проверяется как email, иначе — как телефон.
         Возвращает пользователя и выставляет cookie сессии.
-      security: []
+      security:
+        - csrfToken: []
       requestBody:
         required: true
         content:
@@ -134,6 +165,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: invalid login or password }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /logout:
@@ -144,13 +176,15 @@ paths:
       description: |
         Идемпотентно: работает и без cookie, и с уже протухшей — всегда 200
         и очищает cookie на клиенте.
-      security: []
+      security:
+        - csrfToken: []
       responses:
         '200':
           description: Сессия завершена (или её и не было)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StatusOk' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Профиль
@@ -184,6 +218,7 @@ paths:
         получают город из профиля.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -210,6 +245,7 @@ paths:
                 aboutTooLong: { value: { error: about must be at most 500 characters, field: about } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/avatar:
@@ -222,6 +258,7 @@ paths:
         Удаления аватарки без замены нет.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -243,6 +280,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '413': { $ref: '#/components/responses/FileTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/password:
@@ -255,6 +293,7 @@ paths:
         Остальные сессии пользователя завершаются, текущая остаётся.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -277,6 +316,7 @@ paths:
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: new_password } }
                 passwordTooLong: { value: { error: password is too long, field: new_password } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/listings:
@@ -438,6 +478,7 @@ paths:
         | `is_negotiable`, `is_free`, `has_delivery` | нет | по умолчанию false |
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -451,6 +492,7 @@ paths:
               schema: { $ref: '#/components/schemas/Listing' }
         '400': { $ref: '#/components/responses/ListingValidation' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /listing-photos:
@@ -463,6 +505,7 @@ paths:
         в течение 24 часов, сервер удаляет. Привязать можно только свои фото.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -480,6 +523,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '413': { $ref: '#/components/responses/FileTooLarge' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /listings/{listing_id}:
@@ -521,6 +565,7 @@ paths:
         удаляются. Статус при правке не меняется.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -553,6 +598,7 @@ paths:
         оформленный заказ.
       security:
         - sessionCookie: []
+          csrfToken: []
       responses:
         '204':
           description: Объявление удалено
@@ -580,6 +626,7 @@ paths:
         становится недоступным (`unavailable_reason` = `closed`).
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -699,6 +746,7 @@ paths:
         Тот же метод используется для «Вернуть» после удаления.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -737,9 +785,11 @@ paths:
       description: Идемпотентно — если объявления в корзине нет, тоже 200.
       security:
         - sessionCookie: []
+          csrfToken: []
       responses:
         '200': { $ref: '#/components/responses/CartCount' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /cart/items/bulk-delete:
@@ -750,6 +800,7 @@ paths:
       description: Идемпотентно; id, которых нет в корзине, пропускаются.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -759,6 +810,7 @@ paths:
         '200': { $ref: '#/components/responses/CartCount' }
         '400': { $ref: '#/components/responses/BadRequestBody' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Заказы
@@ -777,6 +829,7 @@ paths:
         «Купить сейчас» — это `POST /cart/items` и затем этот метод с одним объявлением.
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -791,6 +844,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequestBody' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders:
@@ -817,6 +871,7 @@ paths:
         | `payment_method` | `card`, `sbp`, `cod` |
       security:
         - sessionCookie: []
+          csrfToken: []
       parameters:
         - name: Idempotency-Key
           in: header
@@ -851,6 +906,7 @@ paths:
                 paymentMethod: { value: { error: invalid payment method, field: payment_method } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders/{order_id}:
@@ -885,6 +941,7 @@ paths:
       description: Новая попытка оплаты («Попробовать снова», «Выбрать другой способ»).
       security:
         - sessionCookie: []
+          csrfToken: []
       requestBody:
         required: true
         content:
@@ -916,6 +973,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: order is not payable }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
 components:
@@ -925,8 +983,16 @@ components:
       in: cookie
       name: session_id
       description: httpOnly cookie, выставляется сервером в /register и /login.
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Токен из `GET /csrf`, нужен на всех POST/PUT/PATCH/DELETE.
 
   headers:
+    SetCSRFCookie:
+      description: '`csrf_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true). Только если не было ни сессии, ни `csrf_id`.'
+      schema: { type: string }
     SetSessionCookie:
       description: '`session_id=<hex>; Path=/; HttpOnly; SameSite=Lax` (+ `Secure`, если COOKIE_SECURE=true)'
       schema: { type: string }
@@ -966,6 +1032,12 @@ components:
       schema: { type: integer, minimum: 0, default: 0 }
 
   responses:
+    InvalidCSRF:
+      description: Нет заголовка `X-CSRF-Token`, токен протух, подделан или выдан для другой сессии
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: invalid csrf token }
     InternalError:
       description: Внутренняя ошибка сервера
       content:

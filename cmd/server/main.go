@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -13,11 +14,14 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
+
+const csrfTokenTTL = 24 * time.Hour
 
 func main() {
 	_ = godotenv.Load()
@@ -35,8 +39,9 @@ func main() {
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	adHandler := delivery.NewAdHandler(adUsecase)
+	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
-	router := delivery.NewRouter(cfg.FrontendOrigin, authHandler, adHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, authHandler, adHandler, csrfHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -67,4 +72,15 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "err", err)
 	}
+}
+
+func csrfSecret(fromEnv string) []byte {
+	if fromEnv != "" {
+		return []byte(fromEnv)
+	}
+
+	slog.Warn("CSRF_SECRET is not set, using a random secret: csrf tokens reset on restart")
+	secret := make([]byte, 32)
+	_, _ = rand.Read(secret)
+	return secret
 }
