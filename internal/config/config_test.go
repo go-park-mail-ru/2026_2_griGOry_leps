@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,14 @@ func TestLoad_FromEnv(t *testing.T) {
 	require.Equal(t, "9999", cfg.Port)
 	require.Equal(t, "https://example.com", cfg.FrontendOrigin)
 	require.True(t, cfg.CookieSecure)
+}
+
+func TestLoad_LogLevel(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "")
+	require.Equal(t, slog.LevelInfo, Load().LogLevel)
+
+	t.Setenv("LOG_LEVEL", "debug")
+	require.Equal(t, slog.LevelDebug, Load().LogLevel)
 }
 
 func TestLoad_CookieSecure_False(t *testing.T) {

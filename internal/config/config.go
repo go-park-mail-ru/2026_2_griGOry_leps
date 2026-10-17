@@ -1,11 +1,17 @@
 package config
 
-import "os"
+import (
+	"log/slog"
+	"os"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
+)
 
 type Config struct {
 	Port           string
 	FrontendOrigin string
 	CookieSecure   bool
+	LogLevel       slog.Level
 }
 
 func Load() *Config {
@@ -13,6 +19,7 @@ func Load() *Config {
 		Port:           getEnv("PORT", "8080"),
 		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
 		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
+		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
 	}
 }
 
