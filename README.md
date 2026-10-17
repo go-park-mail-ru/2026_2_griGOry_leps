@@ -28,8 +28,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 - **Язык:** Go
 - **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
-- **Хранение данных:** в памяти процесса (map + sync.RWMutex), после перезапуска данные сбрасываются
-- **База данных:** PostgreSQL, миграции через [goose](https://github.com/pressly/goose) в папке `migrations/` (код на неё переходит в GOS-111)
+- **База данных:** PostgreSQL ([pgx](https://github.com/jackc/pgx)), миграции через [goose](https://github.com/pressly/goose) в папке `migrations/`
 - **Авторизация:** cookie-сессии
 - **Документация API:** OpenAPI ([`openapi.yaml`](openapi.yaml))
 
@@ -112,9 +111,11 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `PORT` | порт сервера | `8080` |
    | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
-   | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error` | `info` |
+   | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error`. На `debug` в лог пишутся и запросы к базе | `info` |
+   | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `TEST_DATABASE_URL` | отдельная база для интеграционных тестов, только для `make test-integration` | — |
    | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
-   | `GOOSE_DBSTRING` | адрес базы для миграций | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `GOOSE_DBSTRING` | адрес базы для миграций, по умолчанию тот же, что `DATABASE_URL` | `${DATABASE_URL}` |
 
 3. Установите зависимости:
 
@@ -122,12 +123,15 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    go mod download
    ```
 
-4. Создайте базу и накатите миграции (логин, пароль и имя базы — как в `GOOSE_DBSTRING`):
+4. Создайте базу, накатите миграции и тестовые объявления (логин, пароль и имя базы — как в `DATABASE_URL`):
 
    ```bash
    createdb -U postgres goget
    make migrate-up
+   make seed
    ```
+
+   `make seed` запускается один раз: он добавляет категории, продавца `seller@goget.pw` с паролем `Seller123` и 12 объявлений.
 
 5. Запустите сервер:
 
@@ -143,11 +147,24 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 |---|---|
 | `make run` | запуск сервера |
 | `make build` | сборка бинарника в `bin/server` |
-| `make test` | запуск тестов |
+| `make test` | юнит-тесты, база не нужна |
+| `make test-integration` | тесты репозиториев на настоящей базе из `TEST_DATABASE_URL` |
 | `make tidy` | обновление `go.mod` и `go.sum` |
 | `make migrate-up` | накатить все миграции |
 | `make migrate-down` | откатить последнюю миграцию |
 | `make migrate-status` | какие миграции уже применены |
+| `make seed` | тестовые категории, продавец и объявления |
+
+### Тесты
+
+Юнит-тесты (`make test`) работают без базы. Тесты репозиториев помечены тегом `integration` и ходят в настоящий PostgreSQL. Каждый тест создаёт себе отдельную схему, накатывает в неё миграцию и удаляет схему после себя, поэтому данные в базе не пересекаются. Для них нужна отдельная пустая база:
+
+```bash
+createdb -U postgres goget_test
+make test-integration
+```
+
+В CI такая база поднимается в контейнере, см. `.github/workflows/ci.yml`.
 
 ## API
 
@@ -171,5 +188,7 @@ internal/domain/     модели и ошибки
 internal/delivery/   HTTP-обработчики, роутер, мидлвары и интерфейсы usecase
 internal/logger/     JSON-логгер (slog) с request_id из контекста
 internal/usecase/    бизнес-логика и интерфейсы репозиториев
-internal/repository/ хранилище в памяти и тестовые объявления
+internal/repository/ репозитории на PostgreSQL, транзакции, лог запросов к базе
+migrations/          миграции goose
+db/                  описание схемы и тестовые данные (seed.sql)
 ```

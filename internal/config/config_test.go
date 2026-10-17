@@ -66,3 +66,11 @@ func TestGetEnv_Present(t *testing.T) {
 
 	require.Equal(t, "custom", getEnv("SOME_VAR", "default"))
 }
+
+func TestLoad_DatabaseURL(t *testing.T) {
+	t.Setenv("DATABASE_URL", "")
+	require.Contains(t, Load().DatabaseURL, "127.0.0.1:5432/goget")
+
+	t.Setenv("DATABASE_URL", "postgres://u:p@db:5432/x")
+	require.Equal(t, "postgres://u:p@db:5432/x", Load().DatabaseURL)
+}
