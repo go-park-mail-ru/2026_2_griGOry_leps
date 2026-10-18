@@ -84,6 +84,9 @@ paths:
           description: Токен, который нужно передавать в заголовке `X-CSRF-Token`
           headers:
             Set-Cookie: { $ref: '#/components/headers/SetCSRFCookie' }
+            Cache-Control:
+              description: Всегда `no-store`, чтобы браузер и прокси не отдавали токен из кэша
+              schema: { type: string, example: no-store }
           content:
             application/json:
               schema:

@@ -32,6 +32,9 @@ func NewCSRFHandler(tokens *csrf.Tokens, cookieSecure bool) *CSRFHandler {
 }
 
 func (h *CSRFHandler) Token(w http.ResponseWriter, r *http.Request) {
+	// Закэшированный ответ отдал бы токен от прежней сессии или чужую cookie csrf_id.
+	w.Header().Set("Cache-Control", "no-store")
+
 	binding := csrfBinding(r)
 	if binding == "" {
 		anonID := randomHex(32)

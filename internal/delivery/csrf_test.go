@@ -70,6 +70,19 @@ func TestCSRF_Token_SetsAnonCookie(t *testing.T) {
 	require.Equal(t, "/", cookie.Path)
 }
 
+func TestCSRF_Token_NotCached(t *testing.T) {
+	h := newCSRFHandler()
+
+	for _, cookies := range [][]*http.Cookie{
+		nil,
+		{{Name: sessionCookieName, Value: "session-a"}},
+	} {
+		_, rec := fetchCSRFToken(t, h, cookies...)
+
+		require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	}
+}
+
 func TestCSRF_Token_ReusesAnonCookie(t *testing.T) {
 	h := newCSRFHandler()
 	anon := &http.Cookie{Name: csrfCookieName, Value: "existing"}
