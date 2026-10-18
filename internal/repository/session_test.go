@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -10,35 +12,35 @@ import (
 )
 
 func TestSession_Create_Success(t *testing.T) {
-	repo := NewSessionRepository()
+	repo, userID := newTestSessionRepository(t)
 
-	err := repo.Create(context.Background(), "sess-1", 1, time.Now().Add(time.Hour))
+	err := repo.Create(context.Background(), "sess-1", userID, time.Now().Add(time.Hour))
 	require.NoError(t, err)
 }
 
 func TestSession_GetByID_Success(t *testing.T) {
-	repo := NewSessionRepository()
+	repo, userID := newTestSessionRepository(t)
 
 	expires := time.Now().Add(time.Hour).Truncate(time.Second)
-	require.NoError(t, repo.Create(context.Background(), "sess-1", 1, expires))
+	require.NoError(t, repo.Create(context.Background(), "sess-1", userID, expires))
 
 	session, err := repo.GetByID(context.Background(), "sess-1")
 	require.NoError(t, err)
 	require.Equal(t, "sess-1", session.ID)
-	require.Equal(t, int32(1), session.UserID)
+	require.Equal(t, userID, session.UserID)
 }
 
 func TestSession_GetByID_NotFound(t *testing.T) {
-	repo := NewSessionRepository()
+	repo, _ := newTestSessionRepository(t)
 
 	_, err := repo.GetByID(context.Background(), "nope")
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestSession_Delete(t *testing.T) {
-	repo := NewSessionRepository()
+	repo, userID := newTestSessionRepository(t)
 
-	require.NoError(t, repo.Create(context.Background(), "sess-1", 1, time.Now().Add(time.Hour)))
+	require.NoError(t, repo.Create(context.Background(), "sess-1", userID, time.Now().Add(time.Hour)))
 	require.NoError(t, repo.Delete(context.Background(), "sess-1"))
 
 	_, err := repo.GetByID(context.Background(), "sess-1")
@@ -46,7 +48,7 @@ func TestSession_Delete(t *testing.T) {
 }
 
 func TestSession_Delete_Nonexistent(t *testing.T) {
-	repo := NewSessionRepository()
+	repo, _ := newTestSessionRepository(t)
 
 	require.NoError(t, repo.Delete(context.Background(), "nope"))
 }

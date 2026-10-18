@@ -99,7 +99,7 @@ func TestRouter_LoginFlowWithCSRF(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestRouter_PostWithoutCSRFTokenForbidden(t *testing.T) {

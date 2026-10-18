@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -35,14 +37,14 @@ func sampleAds() []domain.Ad {
 		{
 			ID: 4, Title: "Снятое", Description: "",
 			Price: 100000, CategoryID: 1, City: "Москва",
-			HasDelivery: false, Status: "archived",
+			HasDelivery: false, Status: "closed",
 			CreatedAt: now,
 		},
 	}
 }
 
 func TestAdRepo_List_OnlyActive(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{Limit: 10})
 	require.NoError(t, err)
@@ -54,7 +56,7 @@ func TestAdRepo_List_OnlyActive(t *testing.T) {
 }
 
 func TestAdRepo_List_FilterByCategory(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{CategoryID: 1, Limit: 10})
 	require.NoError(t, err)
@@ -63,7 +65,7 @@ func TestAdRepo_List_FilterByCategory(t *testing.T) {
 }
 
 func TestAdRepo_List_FilterByCity(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{City: "москва", Limit: 10})
 	require.NoError(t, err)
@@ -72,7 +74,7 @@ func TestAdRepo_List_FilterByCity(t *testing.T) {
 }
 
 func TestAdRepo_List_FilterByPrice(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	min := int64(100000)
 	max := int64(1000000)
@@ -85,7 +87,7 @@ func TestAdRepo_List_FilterByPrice(t *testing.T) {
 }
 
 func TestAdRepo_List_FilterByDelivery(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	withDelivery := true
 	items, total, err := repo.List(context.Background(), domain.AdFilter{
@@ -105,7 +107,7 @@ func TestAdRepo_List_FilterByDelivery(t *testing.T) {
 }
 
 func TestAdRepo_List_SearchQuery(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{Query: "велосипед", Limit: 10})
 	require.NoError(t, err)
@@ -119,7 +121,7 @@ func TestAdRepo_List_SearchQuery(t *testing.T) {
 }
 
 func TestAdRepo_List_SortPriceAsc(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, _, err := repo.List(context.Background(), domain.AdFilter{
 		Sort: domain.AdSortPriceAsc, Limit: 10,
@@ -131,7 +133,7 @@ func TestAdRepo_List_SortPriceAsc(t *testing.T) {
 }
 
 func TestAdRepo_List_SortPriceDesc(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, _, err := repo.List(context.Background(), domain.AdFilter{
 		Sort: domain.AdSortPriceDesc, Limit: 10,
@@ -142,7 +144,7 @@ func TestAdRepo_List_SortPriceDesc(t *testing.T) {
 }
 
 func TestAdRepo_List_SortNewest(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, _, err := repo.List(context.Background(), domain.AdFilter{
 		Sort: domain.AdSortNewest, Limit: 10,
@@ -154,7 +156,7 @@ func TestAdRepo_List_SortNewest(t *testing.T) {
 }
 
 func TestAdRepo_List_Pagination(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{Limit: 2, Offset: 0})
 	require.NoError(t, err)
@@ -168,7 +170,7 @@ func TestAdRepo_List_Pagination(t *testing.T) {
 }
 
 func TestAdRepo_List_OffsetBeyondTotal(t *testing.T) {
-	repo := NewAdRepository(sampleAds())
+	repo := newTestAdRepository(t, sampleAds())
 
 	items, total, err := repo.List(context.Background(), domain.AdFilter{Limit: 10, Offset: 100})
 	require.NoError(t, err)

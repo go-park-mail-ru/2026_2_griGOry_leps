@@ -1,3 +1,5 @@
+//go:build integration
+
 package repository
 
 import (
@@ -9,11 +11,11 @@ import (
 )
 
 func TestUser_Create_Success(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	user, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
-	require.Equal(t, int32(1), user.ID)
+	require.Positive(t, user.ID)
 	require.Equal(t, "a@b.ru", user.Email)
 	require.Equal(t, "ivan", user.FirstName)
 	require.Equal(t, "+79001234567", user.Phone)
@@ -21,7 +23,7 @@ func TestUser_Create_Success(t *testing.T) {
 }
 
 func TestUser_Create_EmailTaken(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
@@ -31,7 +33,7 @@ func TestUser_Create_EmailTaken(t *testing.T) {
 }
 
 func TestUser_Create_PhoneTaken(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
@@ -41,7 +43,7 @@ func TestUser_Create_PhoneTaken(t *testing.T) {
 }
 
 func TestUser_Create_SameFirstNameAllowed(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.Create(context.Background(), "a@b.ru", "hash", "Иван", "+79001234567")
 	require.NoError(t, err)
@@ -51,7 +53,7 @@ func TestUser_Create_SameFirstNameAllowed(t *testing.T) {
 }
 
 func TestUser_GetByEmail_Success(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
@@ -62,14 +64,14 @@ func TestUser_GetByEmail_Success(t *testing.T) {
 }
 
 func TestUser_GetByEmail_NotFound(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.GetByEmail(context.Background(), "nope@b.ru")
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
 func TestUser_GetByPhone_Success(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
@@ -80,14 +82,14 @@ func TestUser_GetByPhone_Success(t *testing.T) {
 }
 
 func TestUser_GetByPhone_NotFound(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.GetByPhone(context.Background(), "+70000000000")
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
 func TestUser_GetByID_Success(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	created, err := repo.Create(context.Background(), "a@b.ru", "hash", "ivan", "+79001234567")
 	require.NoError(t, err)
@@ -99,7 +101,7 @@ func TestUser_GetByID_Success(t *testing.T) {
 }
 
 func TestUser_GetByID_NotFound(t *testing.T) {
-	repo := NewUserRepository()
+	repo := NewUserRepository(newTestPool(t))
 
 	_, err := repo.GetByID(context.Background(), 999)
 	require.ErrorIs(t, err, domain.ErrUserNotFound)

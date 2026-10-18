@@ -30,11 +30,22 @@ func main() {
 
 	slog.SetDefault(logger.New(os.Stdout, cfg.LogLevel))
 
-	userRepo := repository.NewUserRepository()
-	sessionRepo := repository.NewSessionRepository()
-	adRepo := repository.NewAdRepository(repository.SeedAds())
+	connectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pool, err := repository.NewPool(connectCtx, cfg.DatabaseURL)
+	cancel()
+	if err != nil {
+		slog.Error("connect to database", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
 
-	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo)
+	slog.Info("connected to PostgreSQL")
+
+	userRepo := repository.NewUserRepository(pool)
+	sessionRepo := repository.NewSessionRepository(pool)
+	adRepo := repository.NewAdRepository(pool)
+
+	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, repository.NewTransactor(pool))
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)

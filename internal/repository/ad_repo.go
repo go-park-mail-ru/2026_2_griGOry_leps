@@ -1,80 +1,79 @@
 package repository
 
 import (
-	"cmp"
 	"context"
-	"slices"
-	"strings"
-	"sync"
+	"fmt"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AdRepository struct {
-	mu  sync.RWMutex
-	ads []domain.Ad
+	pool *pgxpool.Pool
 }
 
-func NewAdRepository(ads []domain.Ad) *AdRepository {
-	return &AdRepository{ads: ads}
+func NewAdRepository(pool *pgxpool.Pool) *AdRepository {
+	return &AdRepository{pool: pool}
 }
 
-func (r *AdRepository) List(_ context.Context, f domain.AdFilter) ([]domain.Ad, int, error) {
-	r.mu.RLock()
-	found := make([]domain.Ad, 0, len(r.ads))
-	for _, ad := range r.ads {
-		if matchesFilter(ad, f) {
-			found = append(found, ad)
-		}
-	}
-	r.mu.RUnlock()
-
-	sortAds(found, f.Sort)
-
-	total := len(found)
-	if f.Offset >= total {
-		return []domain.Ad{}, total, nil
-	}
-	end := min(f.Offset+f.Limit, total)
-
-	return found[f.Offset:end], total, nil
-}
-
-func matchesFilter(ad domain.Ad, f domain.AdFilter) bool {
-	if ad.Status != domain.AdStatusActive {
-		return false
-	}
-	if f.CategoryID != 0 && ad.CategoryID != f.CategoryID {
-		return false
-	}
-	if f.City != "" && !strings.EqualFold(ad.City, f.City) {
-		return false
-	}
-	if f.PriceMin != nil && ad.Price < *f.PriceMin {
-		return false
-	}
-	if f.PriceMax != nil && ad.Price > *f.PriceMax {
-		return false
-	}
-	if f.HasDelivery != nil && ad.HasDelivery != *f.HasDelivery {
-		return false
-	}
-	if f.Query != "" {
-		q := strings.ToLower(f.Query)
-		if !strings.Contains(strings.ToLower(ad.Title), q) && !strings.Contains(strings.ToLower(ad.Description), q) {
-			return false
-		}
-	}
-	return true
-}
-
-func sortAds(ads []domain.Ad, by string) {
-	switch by {
-	case domain.AdSortPriceAsc:
-		slices.SortStableFunc(ads, func(a, b domain.Ad) int { return cmp.Compare(a.Price, b.Price) })
-	case domain.AdSortPriceDesc:
-		slices.SortStableFunc(ads, func(a, b domain.Ad) int { return cmp.Compare(b.Price, a.Price) })
+func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error) {
+	switch {
+	case f.Offset < 0 || f.Limit < 0:
+		return nil, 0, fmt.Errorf("negative pagination")
+	case f.Sort == "":
+		f.Sort = domain.AdSortNewest
+	case f.Sort == domain.AdSortPriceAsc || f.Sort == domain.AdSortPriceDesc || f.Sort == domain.AdSortNewest:
 	default:
-		slices.SortStableFunc(ads, func(a, b domain.Ad) int { return b.CreatedAt.Compare(a.CreatedAt) })
+		return nil, 0, domain.ErrInvalidSort
 	}
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, 0, fmt.Errorf("begin list ads: %w", err)
+	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = tx.Rollback(cleanupCtx)
+	}()
+
+	args := []any{f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery}
+	var total int
+
+	err = tx.QueryRow(ctx, countAdsQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count ads: %w", err)
+	}
+
+	args = append(args, f.Sort, f.Limit, f.Offset)
+	rows, err := tx.Query(ctx, listAdsQuery, args...)
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("list ads: %w", err)
+	}
+
+	defer rows.Close()
+	ads := make([]domain.Ad, 0)
+	for rows.Next() {
+		var ad domain.Ad
+		err := rows.Scan(&ad.ID, &ad.UserID, &ad.CategoryID, &ad.Title, &ad.Description, &ad.Price, &ad.City, &ad.HasDelivery, &ad.ImageURL, &ad.Status, &ad.CreatedAt)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan ad: %w", err)
+		}
+		ads = append(ads, ad)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, 0, fmt.Errorf("read ad: %w", err)
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("commit list ads: %w", err)
+	}
+	return ads, total, nil
 }
