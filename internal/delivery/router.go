@@ -10,15 +10,17 @@ import (
 
 const requestTimeout = 5 * time.Second
 
-func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler) http.Handler {
+func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
 	r := mux.NewRouter()
-	r.Use(recoverMiddleware)
+	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
 	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
 
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok"})
 	}).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/csrf", csrfHandler.Token).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", authHandler.Login).Methods(http.MethodPost)
@@ -45,7 +47,7 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader)
 		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader)
 
 		if r.Method == http.MethodOptions {
@@ -60,6 +62,7 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 func jsonContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		next.ServeHTTP(w, r)
 	})
 }

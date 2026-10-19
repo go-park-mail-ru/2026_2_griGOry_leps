@@ -39,6 +39,14 @@ func TestLoad_LogLevel(t *testing.T) {
 	require.Equal(t, slog.LevelDebug, Load().LogLevel)
 }
 
+func TestLoad_CSRFSecret(t *testing.T) {
+	t.Setenv("CSRF_SECRET", "")
+	require.Empty(t, Load().CSRFSecret)
+
+	t.Setenv("CSRF_SECRET", "top-secret")
+	require.Equal(t, "top-secret", Load().CSRFSecret)
+}
+
 func TestLoad_CookieSecure_False(t *testing.T) {
 	t.Setenv("COOKIE_SECURE", "false")
 
