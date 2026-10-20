@@ -46,3 +46,11 @@ func (r *SessionRepository) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (r *SessionRepository) DeleteOthers(ctx context.Context, userID int32, keepID string) error {
+	_, err := conn(ctx, r.db).Exec(ctx, deleteOtherSessionsQuery, userID, keepID)
+	if err != nil {
+		return fmt.Errorf("delete other sessions: %w", err)
+	}
+	return nil
+}

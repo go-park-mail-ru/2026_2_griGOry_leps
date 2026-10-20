@@ -1,10 +1,11 @@
 # Структура базы данных GO&GET
 
-Документация соответствует [текущей миграции](../../migrations/1_init.sql).
+Документация соответствует [миграциям](../../migrations/).
 
 В схеме используются следующие таблицы:
 
-- user_account — пользователи платформы.
+- user_account — пользователи платформы, их город, текст «о себе», файл аватарки и подтверждён ли телефон.
+- city — справочник городов для профиля.
 - category — категории объявлений.
 - ad — объявления, их авторы, категории, цены (в копейках), статусы (draft, moderation, active, closed, sold), тип (goods — товар, service — услуга), город и доставка.
 - cart — корзины пользователей, не более одной на пользователя.
@@ -39,6 +40,15 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
         varchar(20) type
+        integer city_id FK
+        varchar(500) about
+        varchar(100) avatar
+        boolean phone_verified
+    }
+
+    city {
+        integer city_id PK
+        varchar(100) name UK
     }
 
     category {
@@ -161,6 +171,7 @@ erDiagram
     }
 
     category |o..o{ category : parent_id
+    city |o..o{ user_account : city_id
     user_account ||..o{ ad : user_id
     category |o..o{ ad : category_id
     user_account ||..o| cart : user_id

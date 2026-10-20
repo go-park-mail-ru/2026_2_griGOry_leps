@@ -39,26 +39,20 @@ func NewAuthUsecase(users UserRepository, sessions SessionRepository, tx Transac
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
 	email = normalizeEmail(email)
-	firstName = strings.Join(strings.Fields(firstName), " ")
+	firstName = normalizeFirstName(firstName)
 	phone = normalizePhone(phone)
 
 	if !isValidEmail(email) {
 		return domain.User{}, domain.Session{}, domain.ErrInvalidEmail
 	}
-	if firstName == "" {
-		return domain.User{}, domain.Session{}, domain.ErrMissingFirstName
-	}
-	if !firstNameFormat.MatchString(firstName) {
-		return domain.User{}, domain.Session{}, domain.ErrInvalidFirstName
+	if err := checkFirstName(firstName); err != nil {
+		return domain.User{}, domain.Session{}, err
 	}
 	if !isValidPhone(phone) {
 		return domain.User{}, domain.Session{}, domain.ErrInvalidPhone
 	}
-	if len(password) > maxPasswordBytes {
-		return domain.User{}, domain.Session{}, domain.ErrPasswordTooLong
-	}
-	if !isStrongPassword(password) {
-		return domain.User{}, domain.Session{}, domain.ErrWeakPassword
+	if err := checkPassword(password); err != nil {
+		return domain.User{}, domain.Session{}, err
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -162,6 +156,30 @@ func newSession(userID int32) (domain.Session, error) {
 		UserID:    userID,
 		ExpiresAt: time.Now().Add(sessionTTL),
 	}, nil
+}
+
+func checkPassword(password string) error {
+	if len(password) > maxPasswordBytes {
+		return domain.ErrPasswordTooLong
+	}
+	if !isStrongPassword(password) {
+		return domain.ErrWeakPassword
+	}
+	return nil
+}
+
+func normalizeFirstName(name string) string {
+	return strings.Join(strings.Fields(name), " ")
+}
+
+func checkFirstName(name string) error {
+	if name == "" {
+		return domain.ErrMissingFirstName
+	}
+	if !firstNameFormat.MatchString(name) {
+		return domain.ErrInvalidFirstName
+	}
+	return nil
 }
 
 func isStrongPassword(password string) bool {

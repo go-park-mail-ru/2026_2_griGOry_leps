@@ -26,20 +26,30 @@ func scanUser(row pgx.Row) (domain.User, error) {
 
 func (r *UserRepository) Create(ctx context.Context, email, passwordHash, firstName, phone string) (domain.User, error) {
 	user, err := scanUser(conn(ctx, r.db).QueryRow(ctx, createUserQuery, email, passwordHash, firstName, phone))
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		switch pgErr.ConstraintName {
-		case "user_account_email_key":
-			return domain.User{}, domain.ErrEmailTaken
-		case "user_account_phone_number_key":
-			return domain.User{}, domain.ErrPhoneTaken
-		}
-	}
 	if err != nil {
+		if domainErr := constraintError(err); domainErr != nil {
+			return domain.User{}, domainErr
+		}
 		return domain.User{}, fmt.Errorf("create user: %w", err)
 	}
 	return user, nil
+}
+
+func constraintError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return nil
+	}
+
+	switch pgErr.ConstraintName {
+	case "user_account_email_key":
+		return domain.ErrEmailTaken
+	case "user_account_phone_number_key":
+		return domain.ErrPhoneTaken
+	case "user_account_city_id_fkey":
+		return domain.ErrInvalidCity
+	}
+	return nil
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (domain.User, error) {
@@ -63,4 +73,66 @@ func (r *UserRepository) get(ctx context.Context, query string, arg any) (domain
 		return domain.User{}, fmt.Errorf("get user: %w", err)
 	}
 	return user, nil
+}
+
+func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profile, error) {
+	var (
+		p        domain.Profile
+		cityID   *int32
+		cityName *string
+	)
+	err := conn(ctx, r.db).QueryRow(ctx, getProfileQuery, id).Scan(
+		&p.ID, &p.FirstName, &p.Email, &p.Phone, &p.CreatedAt,
+		&p.PhoneVerified, &cityID, &cityName, &p.About, &p.Avatar,
+		&p.Rating, &p.ReviewsCount,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Profile{}, domain.ErrUserNotFound
+	}
+	if err != nil {
+		return domain.Profile{}, fmt.Errorf("get profile: %w", err)
+	}
+
+	if cityID != nil && cityName != nil {
+		p.City = &domain.City{ID: *cityID, Name: *cityName}
+	}
+	return p, nil
+}
+
+func (r *UserRepository) UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, updateProfileQuery,
+		id, upd.FirstName, upd.Phone, upd.Email, upd.CityID, upd.About)
+	if err != nil {
+		if domainErr := constraintError(err); domainErr != nil {
+			return domainErr
+		}
+		return fmt.Errorf("update profile: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) UpdatePassword(ctx context.Context, id int32, passwordHash string) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, updatePasswordQuery, id, passwordHash)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) UpdateAvatar(ctx context.Context, id int32, avatar string) (string, error) {
+	var old string
+	err := conn(ctx, r.db).QueryRow(ctx, updateAvatarQuery, id, avatar).Scan(&old)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrUserNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("update avatar: %w", err)
+	}
+	return old, nil
 }

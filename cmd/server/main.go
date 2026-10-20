@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -45,14 +46,23 @@ func main() {
 	sessionRepo := repository.NewSessionRepository(pool)
 	adRepo := repository.NewAdRepository(pool)
 
-	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, repository.NewTransactor(pool))
+	avatarStorage, err := repository.NewFileStorage(filepath.Join(cfg.UploadDir, "avatars"))
+	if err != nil {
+		slog.Error("init avatar storage", "err", err)
+		os.Exit(1)
+	}
+
+	tx := repository.NewTransactor(pool)
+	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, tx)
+	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, avatarStorage, tx)
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
+	profileHandler := delivery.NewProfileHandler(profileUsecase)
 	adHandler := delivery.NewAdHandler(adUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
-	router := delivery.NewRouter(cfg.FrontendOrigin, authHandler, adHandler, csrfHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, profileHandler, adHandler, csrfHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

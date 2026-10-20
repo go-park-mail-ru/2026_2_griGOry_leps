@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,7 +22,11 @@ func (panicAdUsecase) List(context.Context, domain.ListAdsParams) (domain.AdPage
 }
 
 func newTestRouter() http.Handler {
-	return NewRouter("http://front.test", newAuthHandler(), NewAdHandler(panicAdUsecase{}), newCSRFHandler())
+	return newTestRouterWithUploads("")
+}
+
+func newTestRouterWithUploads(dir string) http.Handler {
+	return NewRouter("http://front.test", dir, newAuthHandler(), NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), newCSRFHandler())
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -120,4 +126,38 @@ func TestRouter_SecurityHeaders(t *testing.T) {
 
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), csrfHeader)
+}
+
+func TestRouter_MeRequiresSession(t *testing.T) {
+	captureLogs(t)
+	rec := httptest.NewRecorder()
+
+	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/me", nil))
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestRouter_ServesUploads(t *testing.T) {
+	captureLogs(t)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "avatars"), 0o755))
+	png := []byte("\x89PNG\r\n\x1a\n")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "avatars", "a.png"), png, 0o644))
+	router := newTestRouterWithUploads(dir)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/uploads/avatars/a.png", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "image/png", rec.Header().Get("Content-Type"))
+	require.Contains(t, rec.Header().Get("Cache-Control"), "immutable")
+	require.Equal(t, png, rec.Body.Bytes())
+
+	for _, path := range []string{"/uploads/avatars/", "/uploads/avatars/missing.png"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+		require.Equal(t, http.StatusNotFound, rec.Code, path)
+		require.Empty(t, rec.Header().Get("Cache-Control"), path)
+	}
 }

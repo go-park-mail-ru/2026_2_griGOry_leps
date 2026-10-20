@@ -14,6 +14,7 @@ type Config struct {
 	LogLevel       slog.Level
 	CSRFSecret     string
 	DatabaseURL    string
+	UploadDir      string
 }
 
 func Load() *Config {
@@ -24,6 +25,7 @@ func Load() *Config {
 		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
 		CSRFSecret:     os.Getenv("CSRF_SECRET"),
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable"),
+		UploadDir:      getEnv("UPLOAD_DIR", "uploads"),
 	}
 }
 

@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -154,24 +155,33 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil {
-		writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
-
-	user, err := h.auth.Me(r.Context(), cookie.Value)
-	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrSessionExpired):
+func (h *AuthHandler) RequireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookieName)
+		if err != nil {
 			writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-		default:
-			slog.ErrorContext(r.Context(), "me", "err", err)
-			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
+			return
 		}
-		return
-	}
 
-	writeJSON(r.Context(), w, http.StatusOK, userResponse(user))
+		user, err := h.auth.Me(r.Context(), cookie.Value)
+		if err != nil {
+			if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
+				writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
+				return
+			}
+			slog.ErrorContext(r.Context(), "check session", "err", err)
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+type userIDKey struct{}
+
+func userIDFromContext(ctx context.Context) int32 {
+	id, _ := ctx.Value(userIDKey{}).(int32)
+	return id
 }

@@ -239,5 +239,6 @@ tmbootpicker.efi
 # Binaries
 
 bin/*
+uploads/
 cookies.txt
 coverage

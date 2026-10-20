@@ -25,8 +25,9 @@ ON CONFLICT DO NOTHING;
 SELECT setval(pg_get_serial_sequence('category', 'category_id'), (SELECT max(category_id) FROM category));
 
 WITH seller AS (
-    INSERT INTO user_account (first_name, email, phone_number, password_hash)
-    VALUES ('Анна', 'seller@goget.pw', '+79990000001', '$2a$10$gRYWtxyjUoUpvKEaBkyAduv598hcAGBmKSPThGDEDORdFfW.WKv7i')
+    INSERT INTO user_account (first_name, email, phone_number, password_hash, city_id, about)
+    VALUES ('Анна', 'seller@goget.pw', '+79990000001', '$2a$10$gRYWtxyjUoUpvKEaBkyAduv598hcAGBmKSPThGDEDORdFfW.WKv7i',
+            (SELECT city_id FROM city WHERE name = 'Москва'), 'Продаю вещи после переезда')
     ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
     RETURNING user_id
 ),
