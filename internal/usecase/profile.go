@@ -106,6 +106,13 @@ func (uc *ProfileUsecase) ChangePassword(ctx context.Context, userID int32, sess
 	}
 
 	return uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		actual, err := uc.users.GetPasswordHashForUpdate(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if actual != user.PasswordHash {
+			return domain.ErrWrongPassword
+		}
 		if err := uc.users.UpdatePassword(ctx, userID, string(hash)); err != nil {
 			return err
 		}

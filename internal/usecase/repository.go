@@ -14,6 +14,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id int32) (domain.User, error)
 	GetProfile(ctx context.Context, id int32) (domain.Profile, error)
 	UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error
+	GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error)
 	UpdatePassword(ctx context.Context, id int32, passwordHash string) error
 	GetAvatarForUpdate(ctx context.Context, id int32) (string, error)
 	UpdateAvatar(ctx context.Context, id int32, avatar string) error

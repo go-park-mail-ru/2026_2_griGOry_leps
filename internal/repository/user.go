@@ -114,6 +114,18 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, id int32, upd domain
 	return nil
 }
 
+func (r *UserRepository) GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error) {
+	var hash string
+	err := conn(ctx, r.db).QueryRow(ctx, getPasswordHashForUpdateQuery, id).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrUserNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("get password hash: %w", err)
+	}
+	return hash, nil
+}
+
 func (r *UserRepository) UpdatePassword(ctx context.Context, id int32, passwordHash string) error {
 	tag, err := conn(ctx, r.db).Exec(ctx, updatePasswordQuery, id, passwordHash)
 	if err != nil {

@@ -364,3 +364,21 @@ func TestUploadAvatar_TxErrorRemovesNewFile(t *testing.T) {
 	require.ErrorIs(t, err, txErr)
 	require.Empty(t, env.storage.files)
 }
+
+func TestChangePassword_PasswordChangedConcurrently(t *testing.T) {
+	env := newProfileEnv(t)
+	addSession(t, env, "current", env.userID)
+	addSession(t, env, "phone", env.userID)
+	before, err := env.users.GetByID(context.Background(), env.userID)
+	require.NoError(t, err)
+	uc := NewProfileUsecase(passwordChangedRepo{env.users}, env.sessions, env.storage, txFake{})
+
+	err = uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1")
+
+	require.ErrorIs(t, err, domain.ErrWrongPassword)
+	after, err := env.users.GetByID(context.Background(), env.userID)
+	require.NoError(t, err)
+	require.Equal(t, before.PasswordHash, after.PasswordHash)
+	_, err = env.sessions.GetByID(context.Background(), "phone")
+	require.NoError(t, err)
+}

@@ -113,7 +113,17 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 		return domain.User{}, domain.Session{}, err
 	}
 
-	if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
+	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		hash, err := uc.users.GetPasswordHashForUpdate(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		if hash != user.PasswordHash {
+			return domain.ErrInvalidLogin
+		}
+		return uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt)
+	})
+	if err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
 

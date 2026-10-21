@@ -301,3 +301,26 @@ func TestRegister_TxError(t *testing.T) {
 	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Иван", "+79001234567")
 	require.ErrorIs(t, err, commitErr)
 }
+
+type passwordChangedRepo struct {
+	*userRepoFake
+}
+
+func (passwordChangedRepo) GetPasswordHashForUpdate(context.Context, int32) (string, error) {
+	return "hash-after-change", nil
+}
+
+func TestLogin_PasswordChangedBeforeSessionCreated(t *testing.T) {
+	users := newUserRepoFake()
+	sessions := newSessionRepoFake()
+	ctx := context.Background()
+	_, _, err := NewAuthUsecase(users, sessions, txFake{}).Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
+	require.NoError(t, err)
+	sessions.sessions = make(map[string]domain.Session)
+
+	uc := NewAuthUsecase(passwordChangedRepo{users}, sessions, txFake{})
+	_, _, err = uc.Login(ctx, "a@b.ru", "Secret123")
+
+	require.ErrorIs(t, err, domain.ErrInvalidLogin)
+	require.Empty(t, sessions.sessions)
+}

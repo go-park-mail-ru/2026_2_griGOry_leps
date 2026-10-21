@@ -56,6 +56,13 @@ const updateProfileQuery = `
     WHERE user_id = $1
 `
 
+const getPasswordHashForUpdateQuery = `
+    SELECT password_hash
+    FROM user_account
+    WHERE user_id = $1
+    FOR UPDATE
+`
+
 const updatePasswordQuery = `
     UPDATE user_account
     SET password_hash = $2

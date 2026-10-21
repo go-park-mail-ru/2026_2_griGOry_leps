@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -207,4 +208,58 @@ func TestProfile_ConcurrentAvatarUploadsSeeEachOther(t *testing.T) {
 	require.NoError(t, <-firstDone)
 	require.Equal(t, "first.png", <-secondOld)
 	require.NoError(t, <-secondDone)
+}
+
+func TestProfile_PasswordHashLockWaitsForChange(t *testing.T) {
+	repo, pool, userID := newTestProfileRepository(t)
+	tx := NewTransactor(pool)
+	ctx := context.Background()
+
+	_, err := repo.GetPasswordHashForUpdate(ctx, 999)
+	require.ErrorIs(t, err, domain.ErrUserNotFound)
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	changeDone := make(chan error, 1)
+	go func() {
+		changeDone <- tx.WithinTx(ctx, func(ctx context.Context) error {
+			hash, err := repo.GetPasswordHashForUpdate(ctx, userID)
+			if err != nil {
+				return err
+			}
+			if hash != "hash" {
+				return fmt.Errorf("unexpected hash %q", hash)
+			}
+			close(locked)
+			<-release
+			return repo.UpdatePassword(ctx, userID, "new-hash")
+		})
+	}()
+
+	select {
+	case <-locked:
+	case err := <-changeDone:
+		t.Fatal(err)
+	}
+
+	loginHash := make(chan string, 1)
+	loginDone := make(chan error, 1)
+	go func() {
+		loginDone <- tx.WithinTx(ctx, func(ctx context.Context) error {
+			hash, err := repo.GetPasswordHashForUpdate(ctx, userID)
+			loginHash <- hash
+			return err
+		})
+	}()
+
+	select {
+	case <-loginHash:
+		t.Fatal("login read the password hash while it was being changed")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-changeDone)
+	require.Equal(t, "new-hash", <-loginHash)
+	require.NoError(t, <-loginDone)
 }
