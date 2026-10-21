@@ -3,7 +3,9 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -263,8 +265,33 @@ func TestUploadAvatar_JPEGExtension(t *testing.T) {
 	require.True(t, strings.HasSuffix(name, ".jpg"))
 }
 
+func pngHeader(width, height uint32) []byte {
+	ihdr := make([]byte, 17)
+	copy(ihdr, "IHDR")
+	binary.BigEndian.PutUint32(ihdr[4:], width)
+	binary.BigEndian.PutUint32(ihdr[8:], height)
+	ihdr[12] = 8
+	ihdr[13] = 2
+
+	data := []byte("\x89PNG\r\n\x1a\n")
+	data = binary.BigEndian.AppendUint32(data, 13)
+	data = append(data, ihdr...)
+	return binary.BigEndian.AppendUint32(data, crc32.ChecksumIEEE(ihdr))
+}
+
+func noisyPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewGray(image.Rect(0, 0, 64, 64))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 31)
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
 func TestUploadAvatar_RejectsBadFiles(t *testing.T) {
-	broken := pngBytes(t)[:12]
+	full := noisyPNG(t)
 
 	tests := []struct {
 		name string
@@ -273,7 +300,10 @@ func TestUploadAvatar_RejectsBadFiles(t *testing.T) {
 	}{
 		{"text", []byte("hello, it's not an image"), domain.ErrUnsupportedImage},
 		{"gif", []byte("GIF89a\x01\x00\x01\x00\x00\x00\x00"), domain.ErrUnsupportedImage},
-		{"broken png", broken, domain.ErrInvalidImage},
+		{"broken header", full[:12], domain.ErrInvalidImage},
+		{"only header", pngHeader(10, 10), domain.ErrInvalidImage},
+		{"cut in the middle", full[:len(full)/2], domain.ErrInvalidImage},
+		{"too many pixels", pngHeader(5000, 5000), domain.ErrImageTooLarge},
 	}
 
 	for _, tt := range tests {
@@ -286,6 +316,21 @@ func TestUploadAvatar_RejectsBadFiles(t *testing.T) {
 			require.Empty(t, env.storage.files)
 		})
 	}
+}
+
+func TestUploadAvatar_BrokenFileKeepsOldAvatar(t *testing.T) {
+	env := newProfileEnv(t)
+	old, err := env.uc.UploadAvatar(context.Background(), env.userID, pngBytes(t))
+	require.NoError(t, err)
+
+	full := noisyPNG(t)
+	_, err = env.uc.UploadAvatar(context.Background(), env.userID, full[:len(full)/2])
+	require.ErrorIs(t, err, domain.ErrInvalidImage)
+
+	p, err := env.uc.Profile(context.Background(), env.userID)
+	require.NoError(t, err)
+	require.Equal(t, old, p.Avatar)
+	require.Contains(t, env.storage.files, old)
 }
 
 func TestUploadAvatar_RemovesFileWhenUserMissing(t *testing.T) {

@@ -269,6 +269,7 @@ func TestProfile_UploadAvatar_Errors(t *testing.T) {
 	}{
 		{domain.ErrUnsupportedImage, http.StatusUnsupportedMediaType},
 		{domain.ErrInvalidImage, http.StatusBadRequest},
+		{domain.ErrImageTooLarge, http.StatusBadRequest},
 	}
 
 	for _, tt := range tests {

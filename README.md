@@ -208,21 +208,3 @@ internal/repository/ репозитории на PostgreSQL, транзакци�
 migrations/          миграции goose
 db/                  описание схемы и тестовые данные (seed.sql)
 ```
-
-## Деплой
-
-Прод крутится на VPS: бэк на порту 8000, фронт на 8001, PostgreSQL слушает только localhost. Код лежит в `~/backend` и `~/frontend`, оба запущены как systemd-сервисы `gogetbackend` и `gogetfrontend`. Бэк читает переменные из `~/backend/.env`, аватарки складывает в `~/backend/uploads`.
-
-Обновить бэк:
-
-```bash
-cd ~/backend
-git pull
-set -a; . ./.env; set +a
-goose -dir migrations postgres "$DATABASE_URL" up
-go build -o bin/server ./cmd/server
-sudo systemctl restart gogetbackend
-curl -s localhost:8000/api/health
-```
-
-Логи: `journalctl -u gogetbackend -n 50 --no-pager`.

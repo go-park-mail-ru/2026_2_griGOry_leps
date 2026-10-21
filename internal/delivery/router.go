@@ -42,7 +42,6 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, profi
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
-	// аватарка на медленном интернете грузится дольше requestTimeout
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == avatarPath {
 			r.ServeHTTP(w, req)
@@ -71,8 +70,7 @@ func uploads(dir string) http.Handler {
 			return
 		}
 
-		w.Header().Del("Content-Type") // ServeContent определит по расширению
-		// имена файлов случайные и не меняются
+		w.Header().Del("Content-Type")
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 	})

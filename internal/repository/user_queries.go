@@ -30,7 +30,6 @@ const getUserByPhoneQuery = `
     WHERE phone_number = $1
 `
 
-// рейтинг — по отзывам на объявления пользователя
 const getProfileQuery = `
     SELECT u.user_id, u.first_name, u.email, u.phone_number, u.created_at,
            u.phone_verified, c.city_id, c.name, u.about, COALESCE(u.avatar, ''),

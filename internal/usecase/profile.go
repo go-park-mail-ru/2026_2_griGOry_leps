@@ -16,7 +16,10 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-const maxAboutLength = 500
+const (
+	maxAboutLength  = 500
+	maxAvatarPixels = 4096 * 4096
+)
 
 type ProfileUsecase struct {
 	users    UserRepository
@@ -69,7 +72,6 @@ func normalizeProfileUpdate(upd *domain.ProfileUpdate) error {
 		upd.Email = &email
 	}
 
-	// что такой город есть, проверит внешний ключ
 	if upd.CityID != nil && *upd.CityID <= 0 {
 		return domain.ErrInvalidCity
 	}
@@ -146,16 +148,25 @@ func (uc *ProfileUsecase) removeAvatar(ctx context.Context, name string) {
 }
 
 func imageExt(data []byte) (string, error) {
-	_, format, err := image.DecodeConfig(bytes.NewReader(data))
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	switch {
 	case errors.Is(err, image.ErrFormat):
 		return "", domain.ErrUnsupportedImage
 	case err != nil:
 		return "", domain.ErrInvalidImage
-	case format == "jpeg":
-		return ".jpg", nil
-	case format == "png":
+	case format != "jpeg" && format != "png":
+		return "", domain.ErrUnsupportedImage
+	}
+
+	if cfg.Width*cfg.Height > maxAvatarPixels {
+		return "", domain.ErrImageTooLarge
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return "", domain.ErrInvalidImage
+	}
+
+	if format == "png" {
 		return ".png", nil
 	}
-	return "", domain.ErrUnsupportedImage
+	return ".jpg", nil
 }

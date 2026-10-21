@@ -8,7 +8,7 @@ var (
 	ErrInvalidSort       = errors.New("invalid sort value")
 	ErrInvalidEmail      = errors.New("invalid email")
 	ErrMissingFirstName  = errors.New("first name is required")
-	ErrInvalidFirstName  = errors.New("first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .") //nolint:staticcheck // текст зафиксирован в openapi.yaml
+	ErrInvalidFirstName  = errors.New("first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .") //nolint:staticcheck
 	ErrInvalidPhone      = errors.New("invalid phone number")
 	ErrWeakPassword      = errors.New("password must be at least 8 characters and contain uppercase, lowercase letters and a digit")
 	ErrPasswordTooLong   = errors.New("password is too long")
@@ -23,4 +23,5 @@ var (
 	ErrWrongPassword     = errors.New("wrong current password")
 	ErrUnsupportedImage  = errors.New("unsupported media type")
 	ErrInvalidImage      = errors.New("invalid image")
+	ErrImageTooLarge     = errors.New("image resolution must be at most 4096x4096")
 )

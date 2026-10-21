@@ -21,12 +21,11 @@ type Profile struct {
 	PhoneVerified bool
 	City          *City
 	About         string
-	Avatar        string // имя файла, пусто — аватарки нет
+	Avatar        string
 	Rating        float64
 	ReviewsCount  int
 }
 
-// nil — поле не меняется
 type ProfileUpdate struct {
 	FirstName *string
 	Phone     *string

@@ -1096,13 +1096,14 @@ components:
             email: { value: { error: email already registered, field: email } }
             phone: { value: { error: phone already registered, field: phone } }
     BadFile:
-      description: Нет части `file` или файл повреждён
+      description: Нет части `file`, файл повреждён или картинка больше 4096×4096 пикселей
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             missing: { value: { error: file is required, field: file } }
             broken: { value: { error: invalid image, field: file } }
+            tooBig: { value: { error: image resolution must be at most 4096x4096, field: file } }
     FileTooLarge:
       description: Файл больше 5 МБ
       content:

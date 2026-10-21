@@ -147,7 +147,7 @@ func (h *ProfileHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	cookie, _ := r.Cookie(sessionCookieName) // проверена в RequireAuth
+	cookie, _ := r.Cookie(sessionCookieName)
 
 	err := h.profile.ChangePassword(r.Context(), userIDFromContext(r.Context()), cookie.Value, req.CurrentPassword, req.NewPassword)
 	switch {
@@ -164,7 +164,7 @@ func (h *ProfileHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *ProfileHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+64<<10) // +64 КБ на заголовки multipart
+	r.Body = http.MaxBytesReader(w, r.Body, maxAvatarBytes+64<<10)
 
 	data, err := readFilePart(r)
 	if err != nil {
@@ -184,7 +184,7 @@ func (h *ProfileHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		writeJSON(r.Context(), w, http.StatusOK, map[string]string{"avatar_url": avatarURL(name)})
 	case errors.Is(err, domain.ErrUnsupportedImage):
 		writeError(r.Context(), w, http.StatusUnsupportedMediaType, err.Error())
-	case errors.Is(err, domain.ErrInvalidImage):
+	case errors.Is(err, domain.ErrInvalidImage), errors.Is(err, domain.ErrImageTooLarge):
 		writeFieldError(r.Context(), w, http.StatusBadRequest, "file", err.Error())
 	default:
 		slog.ErrorContext(r.Context(), "upload avatar", "err", err)

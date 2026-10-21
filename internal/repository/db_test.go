@@ -53,7 +53,6 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	// Up всех миграций по порядку номеров
 	files, err := filepath.Glob("../../migrations/*.sql")
 	require.NoError(t, err)
 	sort.Slice(files, func(i, j int) bool { return migrationNumber(t, files[i]) < migrationNumber(t, files[j]) })
