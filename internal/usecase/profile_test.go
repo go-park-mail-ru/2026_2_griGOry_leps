@@ -353,3 +353,14 @@ func TestUploadAvatar_StorageError(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, p.Avatar)
 }
+
+func TestUploadAvatar_TxErrorRemovesNewFile(t *testing.T) {
+	env := newProfileEnv(t)
+	txErr := errors.New("commit failed")
+	uc := NewProfileUsecase(env.users, env.sessions, env.storage, failingTx{err: txErr})
+
+	_, err := uc.UploadAvatar(context.Background(), env.userID, pngBytes(t))
+
+	require.ErrorIs(t, err, txErr)
+	require.Empty(t, env.storage.files)
+}

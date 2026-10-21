@@ -125,14 +125,25 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id int32, passwordH
 	return nil
 }
 
-func (r *UserRepository) UpdateAvatar(ctx context.Context, id int32, avatar string) (string, error) {
-	var old string
-	err := conn(ctx, r.db).QueryRow(ctx, updateAvatarQuery, id, avatar).Scan(&old)
+func (r *UserRepository) GetAvatarForUpdate(ctx context.Context, id int32) (string, error) {
+	var avatar string
+	err := conn(ctx, r.db).QueryRow(ctx, getAvatarForUpdateQuery, id).Scan(&avatar)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", domain.ErrUserNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("update avatar: %w", err)
+		return "", fmt.Errorf("get avatar: %w", err)
 	}
-	return old, nil
+	return avatar, nil
+}
+
+func (r *UserRepository) UpdateAvatar(ctx context.Context, id int32, avatar string) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, updateAvatarQuery, id, avatar)
+	if err != nil {
+		return fmt.Errorf("update avatar: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
 }

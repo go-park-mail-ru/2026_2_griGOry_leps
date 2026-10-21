@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -139,22 +140,71 @@ func TestProfile_UpdatePassword(t *testing.T) {
 	require.ErrorIs(t, repo.UpdatePassword(ctx, 999, "x"), domain.ErrUserNotFound)
 }
 
-func TestProfile_UpdateAvatarReturnsOld(t *testing.T) {
+func TestProfile_UpdateAvatar(t *testing.T) {
 	repo, _, userID := newTestProfileRepository(t)
 	ctx := context.Background()
 
-	old, err := repo.UpdateAvatar(ctx, userID, "first.png")
+	old, err := repo.GetAvatarForUpdate(ctx, userID)
 	require.NoError(t, err)
 	require.Empty(t, old)
 
-	old, err = repo.UpdateAvatar(ctx, userID, "second.jpg")
+	require.NoError(t, repo.UpdateAvatar(ctx, userID, "first.png"))
+
+	old, err = repo.GetAvatarForUpdate(ctx, userID)
 	require.NoError(t, err)
 	require.Equal(t, "first.png", old)
 
-	p, err := repo.GetProfile(ctx, userID)
-	require.NoError(t, err)
-	require.Equal(t, "second.jpg", p.Avatar)
-
-	_, err = repo.UpdateAvatar(ctx, 999, "x.png")
+	_, err = repo.GetAvatarForUpdate(ctx, 999)
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
+	require.ErrorIs(t, repo.UpdateAvatar(ctx, 999, "x.png"), domain.ErrUserNotFound)
+}
+
+func TestProfile_ConcurrentAvatarUploadsSeeEachOther(t *testing.T) {
+	repo, pool, userID := newTestProfileRepository(t)
+	tx := NewTransactor(pool)
+	ctx := context.Background()
+
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- tx.WithinTx(ctx, func(ctx context.Context) error {
+			if _, err := repo.GetAvatarForUpdate(ctx, userID); err != nil {
+				return err
+			}
+			close(locked)
+			<-release
+			return repo.UpdateAvatar(ctx, userID, "first.png")
+		})
+	}()
+
+	select {
+	case <-locked:
+	case err := <-firstDone:
+		t.Fatal(err)
+	}
+
+	secondOld := make(chan string, 1)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- tx.WithinTx(ctx, func(ctx context.Context) error {
+			old, err := repo.GetAvatarForUpdate(ctx, userID)
+			if err != nil {
+				return err
+			}
+			secondOld <- old
+			return repo.UpdateAvatar(ctx, userID, "second.png")
+		})
+	}()
+
+	select {
+	case <-secondOld:
+		t.Fatal("second upload read the avatar while the first one held the lock")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(release)
+	require.NoError(t, <-firstDone)
+	require.Equal(t, "first.png", <-secondOld)
+	require.NoError(t, <-secondDone)
 }

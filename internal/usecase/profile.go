@@ -129,7 +129,15 @@ func (uc *ProfileUsecase) UploadAvatar(ctx context.Context, userID int32, data [
 		return "", err
 	}
 
-	old, err := uc.users.UpdateAvatar(ctx, userID, name)
+	var old string
+	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		old, err = uc.users.GetAvatarForUpdate(ctx, userID)
+		if err != nil {
+			return err
+		}
+		return uc.users.UpdateAvatar(ctx, userID, name)
+	})
 	if err != nil {
 		uc.removeAvatar(ctx, name)
 		return "", err

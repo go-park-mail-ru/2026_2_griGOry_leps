@@ -15,7 +15,8 @@ type UserRepository interface {
 	GetProfile(ctx context.Context, id int32) (domain.Profile, error)
 	UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error
 	UpdatePassword(ctx context.Context, id int32, passwordHash string) error
-	UpdateAvatar(ctx context.Context, id int32, avatar string) (old string, err error)
+	GetAvatarForUpdate(ctx context.Context, id int32) (string, error)
+	UpdateAvatar(ctx context.Context, id int32, avatar string) error
 }
 
 type SessionRepository interface {

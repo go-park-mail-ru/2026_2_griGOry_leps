@@ -62,10 +62,15 @@ const updatePasswordQuery = `
     WHERE user_id = $1
 `
 
+const getAvatarForUpdateQuery = `
+    SELECT COALESCE(avatar, '')
+    FROM user_account
+    WHERE user_id = $1
+    FOR UPDATE
+`
+
 const updateAvatarQuery = `
-    UPDATE user_account u
+    UPDATE user_account
     SET avatar = $2
-    FROM user_account old
-    WHERE u.user_id = $1 AND old.user_id = u.user_id
-    RETURNING COALESCE(old.avatar, '')
+    WHERE user_id = $1
 `

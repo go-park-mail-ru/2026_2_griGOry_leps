@@ -165,16 +165,25 @@ func (r *userRepoFake) UpdatePassword(_ context.Context, id int32, passwordHash 
 	return nil
 }
 
-func (r *userRepoFake) UpdateAvatar(_ context.Context, id int32, avatar string) (string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+func (r *userRepoFake) GetAvatarForUpdate(_ context.Context, id int32) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	if _, ok := r.users[id]; !ok {
 		return "", domain.ErrUserNotFound
 	}
+	return r.extra[id].Avatar, nil
+}
+
+func (r *userRepoFake) UpdateAvatar(_ context.Context, id int32, avatar string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.users[id]; !ok {
+		return domain.ErrUserNotFound
+	}
 	p := r.extra[id]
-	old := p.Avatar
 	p.Avatar = avatar
 	r.extra[id] = p
-	return old, nil
+	return nil
 }
