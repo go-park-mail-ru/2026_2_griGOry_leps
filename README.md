@@ -7,8 +7,12 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 - [Доска задач (YouGile)](https://ru.yougile.com/team/82999ec3673c/GOSH4LEEPS)
 - [Репозиторий фронтенда](https://github.com/frontend-park-mail-ru/2026_2_griGOry_leps)
 - [Макеты в Figma](https://www.figma.com/design/azXAN6gTvGAovlElu3VP3b/GoGET-%E2%80%94-Team-Workspace)
-- [Deploy](http://161.104.107.201:8001)
-- [API](http://161.104.107.201:8000/api/health)
+- [Сайт на проде](http://goget.pw:8001)
+- [API на проде](http://goget.pw:8000/api/health)
+
+> [!NOTE]
+> Сайт открывается только по домену `goget.pw`. По IP фронт загрузится, но запросы
+> к API не пройдут: бэк разрешает CORS и cookie только для `http://goget.pw:8001`.
 
 ## Участники команды
 
@@ -114,6 +118,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error`. На `debug` в лог пишутся и запросы к базе | `info` |
    | `CSRF_SECRET` | ключ подписи CSRF-токенов. Если не задан, генерируется при старте и токены сбрасываются при перезапуске | случайный |
    | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `UPLOAD_DIR` | папка для загруженных файлов (аватарок), создаётся сама | `uploads` |
    | `TEST_DATABASE_URL` | отдельная база для интеграционных тестов, только для `make test-integration` | — |
    | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
    | `GOOSE_DBSTRING` | адрес базы для миграций, по умолчанию тот же, что `DATABASE_URL` | `${DATABASE_URL}` |
@@ -158,7 +163,7 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 ### Тесты
 
-Юнит-тесты (`make test`) работают без базы. Тесты репозиториев помечены тегом `integration` и ходят в настоящий PostgreSQL. Каждый тест создаёт себе отдельную схему, накатывает в неё миграцию и удаляет схему после себя, поэтому данные в базе не пересекаются. Для них нужна отдельная пустая база:
+Юнит-тесты (`make test`) работают без базы. Тесты репозиториев помечены тегом `integration` и ходят в настоящий PostgreSQL. Каждый тест создаёт себе отдельную схему, накатывает в неё все миграции и удаляет схему после себя, поэтому данные в базе не пересекаются. Для них нужна отдельная пустая база:
 
 ```bash
 createdb -U postgres goget_test
@@ -180,8 +185,14 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `POST` | `/api/register` | регистрация, сразу создаёт сессию |
 | `POST` | `/api/login` | вход |
 | `POST` | `/api/logout` | выход, удаляет сессию |
-| `GET` | `/api/me` | текущий пользователь по cookie сессии |
+| `GET` | `/api/me` | профиль текущего пользователя |
+| `PATCH` | `/api/me` | изменить имя, телефон, email, город или «о себе» |
+| `PUT` | `/api/me/password` | сменить пароль, остальные сессии завершаются |
+| `POST` | `/api/me/avatar` | загрузить аватарку (JPG или PNG до 5 МБ, `multipart/form-data`, поле `file`) |
 | `GET` | `/api/listings` | лента объявлений |
+| `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
+
+Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.
 
 ## Структура проекта
 
@@ -193,7 +204,7 @@ internal/delivery/   HTTP-обработчики, роутер, мидлвары
 internal/logger/     JSON-логгер (slog) с request_id из контекста
 internal/csrf/       выпуск и проверка CSRF-токенов (HMAC)
 internal/usecase/    бизнес-логика и интерфейсы репозиториев
-internal/repository/ репозитории на PostgreSQL, транзакции, лог запросов к базе
+internal/repository/ репозитории на PostgreSQL, транзакции, лог запросов к базе, хранилище файлов
 migrations/          миграции goose
 db/                  описание схемы и тестовые данные (seed.sql)
 ```

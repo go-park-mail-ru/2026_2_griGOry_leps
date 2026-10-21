@@ -278,7 +278,11 @@ paths:
                 type: object
                 required: [avatar_url]
                 properties:
-                  avatar_url: { type: string, format: uri-reference }
+                  avatar_url:
+                    type: string
+                    format: uri-reference
+                    description: Путь на сервере API, как в `Profile.avatar_url`.
+                    example: /uploads/avatars/3f2a9c1e5b7d40a8b6e1c2d3f4a5b6c7.jpg
         '400': { $ref: '#/components/responses/BadFile' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '413': { $ref: '#/components/responses/FileTooLarge' }
@@ -1092,13 +1096,14 @@ components:
             email: { value: { error: email already registered, field: email } }
             phone: { value: { error: phone already registered, field: phone } }
     BadFile:
-      description: Нет части `file` или файл повреждён
+      description: Нет части `file`, файл повреждён или картинка больше 4096×4096 пикселей
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             missing: { value: { error: file is required, field: file } }
             broken: { value: { error: invalid image, field: file } }
+            tooBig: { value: { error: image resolution must be at most 4096x4096, field: file } }
     FileTooLarge:
       description: Файл больше 5 МБ
       content:
@@ -1208,7 +1213,14 @@ components:
                 id: { type: integer, example: 1 }
                 name: { type: string, example: Москва }
             about: { type: string, maxLength: 500, example: 'Продаю вещи после переезда' }
-            avatar_url: { type: string, format: uri-reference, nullable: true }
+            avatar_url:
+              type: string
+              format: uri-reference
+              nullable: true
+              description: |
+                Путь на сервере API, например `/uploads/avatars/3f2a….jpg`.
+                Полный адрес — origin API плюс этот путь (`http://goget.pw:8000/uploads/avatars/…`).
+              example: /uploads/avatars/3f2a9c1e5b7d40a8b6e1c2d3f4a5b6c7.jpg
             rating: { type: number, format: float, minimum: 0, maximum: 5, example: 4.9 }
             reviews_count: { type: integer, example: 23 }
             created_at: { type: string, format: date-time, description: Дата регистрации. }

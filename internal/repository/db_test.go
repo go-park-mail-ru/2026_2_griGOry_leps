@@ -7,6 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,14 +53,26 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	migration, err := os.ReadFile("../../migrations/1_init.sql")
+	files, err := filepath.Glob("../../migrations/*.sql")
 	require.NoError(t, err)
-	up, _, ok := strings.Cut(string(migration), "-- +goose Down")
-	require.True(t, ok)
-	// Выполняем Up целиком; комментарии Goose допустимы для PostgreSQL.
-	_, err = pool.Exec(ctx, up)
-	require.NoError(t, err)
+	sort.Slice(files, func(i, j int) bool { return migrationNumber(t, files[i]) < migrationNumber(t, files[j]) })
+	for _, file := range files {
+		migration, err := os.ReadFile(file)
+		require.NoError(t, err)
+		up, _, ok := strings.Cut(string(migration), "-- +goose Down")
+		require.True(t, ok, file)
+		_, err = pool.Exec(ctx, up)
+		require.NoError(t, err, file)
+	}
 	return pool
+}
+
+func migrationNumber(t *testing.T, file string) int {
+	t.Helper()
+	prefix, _, _ := strings.Cut(filepath.Base(file), "_")
+	n, err := strconv.Atoi(prefix)
+	require.NoError(t, err, file)
+	return n
 }
 
 func newTestSessionRepository(t *testing.T) (*SessionRepository, int32) {

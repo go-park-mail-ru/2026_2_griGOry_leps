@@ -52,3 +52,21 @@ func TestSession_Delete_Nonexistent(t *testing.T) {
 
 	require.NoError(t, repo.Delete(context.Background(), "nope"))
 }
+
+func TestSession_DeleteOthers(t *testing.T) {
+	repo, userID := newTestSessionRepository(t)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+	require.NoError(t, repo.Create(ctx, "current", userID, expires))
+	require.NoError(t, repo.Create(ctx, "laptop", userID, expires))
+	require.NoError(t, repo.Create(ctx, "phone", userID, expires))
+
+	require.NoError(t, repo.DeleteOthers(ctx, userID, "current"))
+
+	_, err := repo.GetByID(ctx, "current")
+	require.NoError(t, err)
+	for _, id := range []string{"laptop", "phone"} {
+		_, err := repo.GetByID(ctx, id)
+		require.ErrorIs(t, err, domain.ErrSessionNotFound, id)
+	}
+}

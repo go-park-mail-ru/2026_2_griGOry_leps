@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -187,46 +188,48 @@ func TestAuth_Logout_WithCookie(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
-func TestAuth_Me_NoCookie(t *testing.T) {
-	h := newAuthHandler()
-	req := httptest.NewRequest(http.MethodGet, "/me", nil)
-	rec := httptest.NewRecorder()
+func requireAuthRequest(h *AuthHandler, cookie *http.Cookie) (*httptest.ResponseRecorder, int32) {
+	var gotID int32
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotID = userIDFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
 
-	h.Me(rec, req)
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	h.RequireAuth(next).ServeHTTP(rec, req)
+	return rec, gotID
+}
+
+func TestRequireAuth_NoCookie(t *testing.T) {
+	rec, _ := requireAuthRequest(newAuthHandler(), nil)
 
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAuth_Me_Success(t *testing.T) {
-	h := newAuthHandler()
+func TestRequireAuth_ExpiredSession(t *testing.T) {
+	h := NewAuthHandler(authStub{err: domain.ErrSessionExpired}, false)
 
-	registerBody := `{"email":"a@b.ru","password":"Secret123","first_name":"Иван","phone":"+79001234567"}`
-	regRec := httptest.NewRecorder()
-	h.Register(regRec, httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(registerBody)))
+	rec, _ := requireAuthRequest(h, &http.Cookie{Name: sessionCookieName, Value: "old"})
 
-	cookies := regRec.Result().Cookies()
-	require.NotEmpty(t, cookies)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
 
-	req := httptest.NewRequest(http.MethodGet, "/me", nil)
-	req.AddCookie(cookies[0])
-	rec := httptest.NewRecorder()
+func TestRequireAuth_InternalError(t *testing.T) {
+	captureLogs(t)
+	h := NewAuthHandler(authStub{err: errors.New("db down")}, false)
 
-	h.Me(rec, req)
+	rec, _ := requireAuthRequest(h, &http.Cookie{Name: sessionCookieName, Value: "s"})
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestRequireAuth_PutsUserIDInContext(t *testing.T) {
+	rec, id := requireAuthRequest(newAuthHandler(), &http.Cookie{Name: sessionCookieName, Value: "s"})
 
 	require.Equal(t, http.StatusOK, rec.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	require.Equal(t, "Иван", resp["first_name"])
-}
-
-func TestAuth_Me_InvalidSession(t *testing.T) {
-	h := NewAuthHandler(authStub{err: domain.ErrSessionExpired}, false)
-	req := httptest.NewRequest(http.MethodGet, "/me", nil)
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: "invalid"})
-	rec := httptest.NewRecorder()
-
-	h.Me(rec, req)
-
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.EqualValues(t, 1, id)
 }

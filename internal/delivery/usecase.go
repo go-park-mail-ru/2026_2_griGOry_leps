@@ -13,6 +13,13 @@ type AuthUsecase interface {
 	Me(ctx context.Context, sessionID string) (domain.User, error)
 }
 
+type ProfileUsecase interface {
+	Profile(ctx context.Context, userID int32) (domain.Profile, error)
+	UpdateProfile(ctx context.Context, userID int32, upd domain.ProfileUpdate) (domain.Profile, error)
+	ChangePassword(ctx context.Context, userID int32, sessionID, current, next string) error
+	UploadAvatar(ctx context.Context, userID int32, data []byte) (string, error)
+}
+
 type AdUsecase interface {
 	List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error)
 }

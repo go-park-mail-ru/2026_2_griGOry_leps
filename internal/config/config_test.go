@@ -11,12 +11,14 @@ func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("FRONTEND_ORIGIN", "")
 	t.Setenv("COOKIE_SECURE", "")
+	t.Setenv("UPLOAD_DIR", "")
 
 	cfg := Load()
 
 	require.Equal(t, "8080", cfg.Port)
 	require.Equal(t, "http://localhost:5173", cfg.FrontendOrigin)
 	require.False(t, cfg.CookieSecure)
+	require.Equal(t, "uploads", cfg.UploadDir)
 }
 
 func TestLoad_FromEnv(t *testing.T) {

@@ -3,14 +3,18 @@ package delivery
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 )
 
-const requestTimeout = 5 * time.Second
+const (
+	requestTimeout = 5 * time.Second
+	avatarPath     = "/api/me/avatar"
+)
 
-func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
+func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -25,13 +29,51 @@ func NewRouter(frontendOrigin string, authHandler *AuthHandler, adHandler *AdHan
 	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", authHandler.Login).Methods(http.MethodPost)
 	r.HandleFunc("/api/logout", authHandler.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/api/me", authHandler.Me).Methods(http.MethodGet)
+
+	auth := func(h http.HandlerFunc) http.Handler { return authHandler.RequireAuth(h) }
+	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)
+	r.Handle("/api/me", auth(profileHandler.Update)).Methods(http.MethodPatch)
+	r.Handle("/api/me/password", auth(profileHandler.ChangePassword)).Methods(http.MethodPut)
+	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
 
+	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
+
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
-	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == avatarPath {
+			r.ServeHTTP(w, req)
+			return
+		}
+		timed.ServeHTTP(w, req)
+	})
+
+	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
+}
+
+func uploads(dir string) http.Handler {
+	root := http.Dir(dir)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, err := root.Open(strings.TrimPrefix(r.URL.Path, "/uploads"))
+		if err != nil {
+			notFound(w, r)
+			return
+		}
+		defer func() { _ = f.Close() }()
+
+		info, err := f.Stat()
+		if err != nil || info.IsDir() {
+			notFound(w, r)
+			return
+		}
+
+		w.Header().Del("Content-Type")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+	})
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {
