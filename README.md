@@ -119,6 +119,10 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    | `CSRF_SECRET` | ключ подписи CSRF-токенов. Если не задан, генерируется при старте и токены сбрасываются при перезапуске | случайный |
    | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
    | `UPLOAD_DIR` | папка для загруженных файлов (аватарок), создаётся сама | `uploads` |
+   | `SMTP_HOST` | почтовый сервер для писем сброса пароля. Если не задан, ссылка из письма пишется в лог | — |
+   | `SMTP_PORT` | порт почтового сервера: `587` (STARTTLS) или `465` (TLS) | `587` |
+   | `SMTP_USER`, `SMTP_PASSWORD` | логин и пароль от почтового ящика | — |
+   | `MAIL_FROM` | отправитель писем | `Go&Get <noreply@goget.pw>` |
    | `TEST_DATABASE_URL` | отдельная база для интеграционных тестов, только для `make test-integration` | — |
    | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
    | `GOOSE_DBSTRING` | адрес базы для миграций, по умолчанию тот же, что `DATABASE_URL` | `${DATABASE_URL}` |
@@ -185,6 +189,9 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `POST` | `/api/register` | регистрация, сразу создаёт сессию |
 | `POST` | `/api/login` | вход |
 | `POST` | `/api/logout` | выход, удаляет сессию |
+| `POST` | `/api/password/forgot` | письмо со ссылкой для сброса пароля, по email или телефону |
+| `GET` | `/api/password/reset?token=…` | проверить ссылку из письма, отдаёт email аккаунта |
+| `POST` | `/api/password/reset` | новый пароль по ссылке из письма, все сессии завершаются |
 | `GET` | `/api/me` | профиль текущего пользователя |
 | `PATCH` | `/api/me` | изменить имя, телефон, email, город или «о себе» |
 | `PUT` | `/api/me/password` | сменить пароль, остальные сессии завершаются |

@@ -56,6 +56,18 @@ func (r *sessionRepoFake) DeleteOthers(_ context.Context, userID int32, keepID s
 	return nil
 }
 
+func (r *sessionRepoFake) DeleteAll(_ context.Context, userID int32) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, s := range r.sessions {
+		if s.UserID == userID {
+			delete(r.sessions, id)
+		}
+	}
+	return nil
+}
+
 type txFake struct{}
 
 func (txFake) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {

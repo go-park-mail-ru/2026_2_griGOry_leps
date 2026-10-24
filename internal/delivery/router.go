@@ -14,7 +14,8 @@ const (
 	avatarPath     = "/api/me/avatar"
 )
 
-func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
+func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
+	profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -29,6 +30,9 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, profi
 	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", authHandler.Login).Methods(http.MethodPost)
 	r.HandleFunc("/api/logout", authHandler.Logout).Methods(http.MethodPost)
+	r.HandleFunc("/api/password/forgot", resetHandler.Forgot).Methods(http.MethodPost)
+	r.HandleFunc("/api/password/reset", resetHandler.Check).Methods(http.MethodGet)
+	r.HandleFunc("/api/password/reset", resetHandler.Reset).Methods(http.MethodPost)
 
 	auth := func(h http.HandlerFunc) http.Handler { return authHandler.RequireAuth(h) }
 	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)

@@ -24,4 +24,6 @@ var (
 	ErrUnsupportedImage  = errors.New("unsupported media type")
 	ErrInvalidImage      = errors.New("invalid image")
 	ErrImageTooLarge     = errors.New("image resolution must be at most 4096x4096")
+	ErrInvalidResetToken = errors.New("invalid or expired token")
+	ErrInvalidContact    = errors.New("invalid email or phone")
 )

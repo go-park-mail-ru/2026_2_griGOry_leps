@@ -20,6 +20,12 @@ type ProfileUsecase interface {
 	UploadAvatar(ctx context.Context, userID int32, data []byte) (string, error)
 }
 
+type PasswordResetUsecase interface {
+	RequestReset(ctx context.Context, login string) error
+	CheckToken(ctx context.Context, token string) (string, error)
+	ResetPassword(ctx context.Context, token, password string) error
+}
+
 type AdUsecase interface {
 	List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error)
 }

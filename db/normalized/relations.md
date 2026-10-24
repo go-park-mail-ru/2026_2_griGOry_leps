@@ -20,6 +20,7 @@
 - promotion — периоды и уровни платного продвижения объявлений.
 - ad_reaction — реакции пользователей.
 - session — сессии пользователей с идентификатором и временем истечения.
+- password_reset — ссылки для сброса пароля: хеш токена, срок действия и время использования.
 - ad_image — фотографии объявлений.
 
 Триггеры обновляют updated_at пользователей, объявлений и отзывов, сохраняют начальные значения и изменения цены и статуса, заполняют продавца нового диалога и проверяют отправителя сообщения. В истории статусов actor_id заполняется идентификатором владельца объявления. Корзины и сессии автоматически триггерами не создаются.
@@ -161,6 +162,14 @@ erDiagram
         timestamptz expires_at
     }
 
+    password_reset {
+        char(64) token_hash PK
+        integer user_id FK
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz used_at
+    }
+
     ad_image {
         integer image_id PK
         integer ad_id FK
@@ -195,5 +204,6 @@ erDiagram
     user_account ||..o{ ad_reaction : user_id
     ad ||..o{ ad_reaction : ad_id
     user_account ||..o{ session : user_id
+    user_account ||..o{ password_reset : user_id
     ad ||..o{ ad_image : ad_id
 ```
