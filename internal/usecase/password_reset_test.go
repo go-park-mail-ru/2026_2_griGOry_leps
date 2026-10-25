@@ -301,3 +301,58 @@ func addSessionFor(t *testing.T, sessions *sessionRepoFake, id string, userID in
 	t.Helper()
 	require.NoError(t, sessions.Create(context.Background(), id, userID, time.Now().Add(time.Hour)))
 }
+
+type lockLog struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (l *lockLog) add(event string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, event)
+}
+
+type lockingUsers struct {
+	*userRepoFake
+	log *lockLog
+}
+
+func (u lockingUsers) LockByID(ctx context.Context, id int32) error {
+	u.log.add("user")
+	return u.userRepoFake.LockByID(ctx, id)
+}
+
+type lockingResets struct {
+	*resetRepoFake
+	log *lockLog
+}
+
+func (r lockingResets) GetForUpdate(ctx context.Context, tokenHash string) (domain.PasswordReset, error) {
+	r.log.add("token")
+	return r.resetRepoFake.GetForUpdate(ctx, tokenHash)
+}
+
+func TestResetPassword_LocksUserBeforeToken(t *testing.T) {
+	env := newResetEnv(t)
+	token := env.requestToken(t)
+	log := &lockLog{}
+	uc := NewPasswordResetUsecase(lockingUsers{env.users, log}, env.sessions, lockingResets{env.resets, log},
+		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+
+	require.NoError(t, uc.ResetPassword(context.Background(), token, "NewSecret1"))
+
+	require.Equal(t, []string{"user", "token"}, log.events)
+}
+
+func TestResetPassword_ExpiredTokenSkipsTransaction(t *testing.T) {
+	env := newResetEnv(t)
+	token := env.requestToken(t)
+	env.resets.resets[hashToken(token)].expiresAt = time.Now().Add(-time.Second)
+	log := &lockLog{}
+	uc := NewPasswordResetUsecase(lockingUsers{env.users, log}, env.sessions, lockingResets{env.resets, log},
+		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+
+	require.ErrorIs(t, uc.ResetPassword(context.Background(), token, "NewSecret1"), domain.ErrInvalidResetToken)
+	require.Empty(t, log.events)
+}

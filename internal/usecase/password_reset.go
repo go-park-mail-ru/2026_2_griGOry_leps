@@ -130,23 +130,33 @@ func (uc *PasswordResetUsecase) ResetPassword(ctx context.Context, token, passwo
 		return err
 	}
 
+	tokenHash := hashToken(token)
+	reset, err := uc.resets.Get(ctx, tokenHash)
+	if err != nil {
+		return err
+	}
+	if !reset.Valid(time.Now()) {
+		return domain.ErrInvalidResetToken
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
 	return uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		reset, err := uc.resets.GetForUpdate(ctx, hashToken(token))
-		if err != nil {
-			return err
-		}
-		if !reset.Valid(time.Now()) {
-			return domain.ErrInvalidResetToken
-		}
-
 		if err := uc.users.LockByID(ctx, reset.UserID); err != nil {
 			return err
 		}
+
+		locked, err := uc.resets.GetForUpdate(ctx, tokenHash)
+		if err != nil {
+			return err
+		}
+		if !locked.Valid(time.Now()) {
+			return domain.ErrInvalidResetToken
+		}
+
 		if err := uc.users.UpdatePassword(ctx, reset.UserID, string(hash)); err != nil {
 			return err
 		}
