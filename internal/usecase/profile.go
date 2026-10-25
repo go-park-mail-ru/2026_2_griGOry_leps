@@ -24,12 +24,14 @@ const (
 type ProfileUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
+	resets   PasswordResetRepository
 	avatars  FileStorage
 	tx       Transactor
 }
 
-func NewProfileUsecase(users UserRepository, sessions SessionRepository, avatars FileStorage, tx Transactor) *ProfileUsecase {
-	return &ProfileUsecase{users: users, sessions: sessions, avatars: avatars, tx: tx}
+func NewProfileUsecase(users UserRepository, sessions SessionRepository, resets PasswordResetRepository,
+	avatars FileStorage, tx Transactor) *ProfileUsecase {
+	return &ProfileUsecase{users: users, sessions: sessions, resets: resets, avatars: avatars, tx: tx}
 }
 
 func (uc *ProfileUsecase) Profile(ctx context.Context, userID int32) (domain.Profile, error) {
@@ -41,7 +43,25 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 		return domain.Profile{}, err
 	}
 
-	if err := uc.users.UpdateProfile(ctx, userID, upd); err != nil {
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := uc.users.LockByID(ctx, userID); err != nil {
+			return err
+		}
+
+		before, err := uc.users.GetByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if err := uc.users.UpdateProfile(ctx, userID, upd); err != nil {
+			return err
+		}
+
+		if upd.Email != nil && *upd.Email != before.Email {
+			return uc.resets.UseAll(ctx, userID)
+		}
+		return nil
+	})
+	if err != nil {
 		return domain.Profile{}, err
 	}
 	return uc.users.GetProfile(ctx, userID)
@@ -114,6 +134,9 @@ func (uc *ProfileUsecase) ChangePassword(ctx context.Context, userID int32, sess
 			return domain.ErrWrongPassword
 		}
 		if err := uc.users.UpdatePassword(ctx, userID, string(hash)); err != nil {
+			return err
+		}
+		if err := uc.resets.UseAll(ctx, userID); err != nil {
 			return err
 		}
 		return uc.sessions.DeleteOthers(ctx, userID, sessionID)

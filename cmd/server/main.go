@@ -61,9 +61,9 @@ func main() {
 
 	tx := repository.NewTransactor(pool)
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, tx)
-	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, avatarStorage, tx)
-	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, repository.NewPasswordResetRepository(pool),
-		mailer, tx, cfg.FrontendOrigin+"/reset-password")
+	resetRepo := repository.NewPasswordResetRepository(pool)
+	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, avatarStorage, tx)
+	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)

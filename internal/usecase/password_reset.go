@@ -55,6 +55,14 @@ func (uc *PasswordResetUsecase) RequestReset(ctx context.Context, login string) 
 			return err
 		}
 
+		current, err := uc.users.GetByID(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		if current.Email != user.Email {
+			return nil
+		}
+
 		recent, err := uc.resets.HasCreatedSince(ctx, user.ID, now.Add(-resetCooldown))
 		if err != nil {
 			return err

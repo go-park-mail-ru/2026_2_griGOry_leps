@@ -61,3 +61,28 @@ func TestResetPassword_ConcurrentResetsWithDifferentTokens(t *testing.T) {
 		require.Equal(t, 1, succeeded, "iteration %d", i)
 	}
 }
+
+func TestResetPassword_LinkDiesAfterEmailOrPasswordChange(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+	users := NewUserRepository(pool)
+	sessions := NewSessionRepository(pool)
+	resets := NewPasswordResetRepository(pool)
+	tx := NewTransactor(pool)
+	resetUC := usecase.NewPasswordResetUsecase(users, sessions, resets, noopMailer{}, tx, "http://front.test/reset-password")
+	profileUC := usecase.NewProfileUsecase(users, sessions, resets, nil, tx)
+	user, err := users.Create(ctx, "anna@goget.pw", "hash", "Анна", "+79990000001")
+	require.NoError(t, err)
+
+	require.NoError(t, resets.Create(ctx, sha256Hex("before-email"), user.ID, time.Now().Add(time.Hour)))
+	email := "new@goget.pw"
+	_, err = profileUC.UpdateProfile(ctx, user.ID, domain.ProfileUpdate{Email: &email})
+	require.NoError(t, err)
+	require.ErrorIs(t, resetUC.ResetPassword(ctx, "before-email", "NewSecret1"), domain.ErrInvalidResetToken)
+
+	require.NoError(t, resets.Create(ctx, sha256Hex("before-password"), user.ID, time.Now().Add(time.Hour)))
+	require.NoError(t, resetUC.ResetPassword(ctx, "before-password", "NewSecret1"))
+	require.NoError(t, resets.Create(ctx, sha256Hex("after-reset"), user.ID, time.Now().Add(time.Hour)))
+	require.NoError(t, profileUC.ChangePassword(ctx, user.ID, "session", "NewSecret1", "OtherSecret2"))
+	require.ErrorIs(t, resetUC.ResetPassword(ctx, "after-reset", "ThirdSecret3"), domain.ErrInvalidResetToken)
+}

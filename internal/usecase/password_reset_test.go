@@ -356,3 +356,24 @@ func TestResetPassword_ExpiredTokenSkipsTransaction(t *testing.T) {
 	require.ErrorIs(t, uc.ResetPassword(context.Background(), token, "NewSecret1"), domain.ErrInvalidResetToken)
 	require.Empty(t, log.events)
 }
+
+type emailChangedRepo struct {
+	*userRepoFake
+}
+
+func (r emailChangedRepo) GetByID(ctx context.Context, id int32) (domain.User, error) {
+	user, err := r.userRepoFake.GetByID(ctx, id)
+	user.Email = "changed@goget.pw"
+	return user, err
+}
+
+func TestRequestReset_EmailChangedBeforeLock(t *testing.T) {
+	env := newResetEnv(t)
+	uc := NewPasswordResetUsecase(emailChangedRepo{env.users}, env.sessions, env.resets,
+		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+
+	require.NoError(t, uc.RequestReset(context.Background(), "anna@goget.pw"))
+
+	env.requireNoMail(t)
+	require.Empty(t, env.resets.resets)
+}
