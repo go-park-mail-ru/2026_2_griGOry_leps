@@ -51,6 +51,7 @@ type profileEnv struct {
 	uc       *ProfileUsecase
 	users    *userRepoFake
 	sessions *sessionRepoFake
+	resets   *resetRepoFake
 	storage  *storageFake
 	userID   int32
 }
@@ -59,6 +60,7 @@ func newProfileEnv(t *testing.T) profileEnv {
 	t.Helper()
 	users := newUserRepoFake()
 	sessions := newSessionRepoFake()
+	resets := newResetRepoFake()
 	storage := newStorageFake()
 
 	hash, err := bcrypt.GenerateFromPassword([]byte("Secret123"), bcrypt.MinCost)
@@ -67,9 +69,10 @@ func newProfileEnv(t *testing.T) profileEnv {
 	require.NoError(t, err)
 
 	return profileEnv{
-		uc:       NewProfileUsecase(users, sessions, storage, txFake{}),
+		uc:       NewProfileUsecase(users, sessions, resets, storage, txFake{}),
 		users:    users,
 		sessions: sessions,
+		resets:   resets,
 		storage:  storage,
 		userID:   user.ID,
 	}
@@ -227,7 +230,7 @@ func TestChangePassword_WeakNew(t *testing.T) {
 func TestChangePassword_TxError(t *testing.T) {
 	env := newProfileEnv(t)
 	txErr := errors.New("commit failed")
-	uc := NewProfileUsecase(env.users, env.sessions, env.storage, failingTx{err: txErr})
+	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.storage, failingTx{err: txErr})
 
 	err := uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1")
 
@@ -357,7 +360,7 @@ func TestUploadAvatar_StorageError(t *testing.T) {
 func TestUploadAvatar_TxErrorRemovesNewFile(t *testing.T) {
 	env := newProfileEnv(t)
 	txErr := errors.New("commit failed")
-	uc := NewProfileUsecase(env.users, env.sessions, env.storage, failingTx{err: txErr})
+	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.storage, failingTx{err: txErr})
 
 	_, err := uc.UploadAvatar(context.Background(), env.userID, pngBytes(t))
 
@@ -371,7 +374,7 @@ func TestChangePassword_PasswordChangedConcurrently(t *testing.T) {
 	addSession(t, env, "phone", env.userID)
 	before, err := env.users.GetByID(context.Background(), env.userID)
 	require.NoError(t, err)
-	uc := NewProfileUsecase(passwordChangedRepo{env.users}, env.sessions, env.storage, txFake{})
+	uc := NewProfileUsecase(passwordChangedRepo{env.users}, env.sessions, env.resets, env.storage, txFake{})
 
 	err = uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1")
 
@@ -381,4 +384,54 @@ func TestChangePassword_PasswordChangedConcurrently(t *testing.T) {
 	require.Equal(t, before.PasswordHash, after.PasswordHash)
 	_, err = env.sessions.GetByID(context.Background(), "phone")
 	require.NoError(t, err)
+}
+
+func (env profileEnv) addResetToken(t *testing.T, token string) {
+	t.Helper()
+	require.NoError(t, env.resets.Create(context.Background(), hashToken(token), env.userID, time.Now().Add(time.Hour)))
+}
+
+func (env profileEnv) resetTokenUsed(t *testing.T, token string) bool {
+	t.Helper()
+	reset, err := env.resets.Get(context.Background(), hashToken(token))
+	require.NoError(t, err)
+	return reset.UsedAt != nil
+}
+
+func TestChangePassword_RevokesResetLinks(t *testing.T) {
+	env := newProfileEnv(t)
+	env.addResetToken(t, "old-link")
+
+	require.NoError(t, env.uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1"))
+
+	require.True(t, env.resetTokenUsed(t, "old-link"))
+}
+
+func TestUpdateProfile_NewEmailRevokesResetLinks(t *testing.T) {
+	env := newProfileEnv(t)
+	env.addResetToken(t, "old-link")
+
+	_, err := env.uc.UpdateProfile(context.Background(), env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+
+	require.NoError(t, err)
+	require.True(t, env.resetTokenUsed(t, "old-link"))
+}
+
+func TestUpdateProfile_SameEmailKeepsResetLinks(t *testing.T) {
+	tests := map[string]domain.ProfileUpdate{
+		"same email":  {Email: ptr(" Anna@GoGet.pw ")},
+		"other field": {About: ptr("Продаю вещи")},
+	}
+
+	for name, upd := range tests {
+		t.Run(name, func(t *testing.T) {
+			env := newProfileEnv(t)
+			env.addResetToken(t, "link")
+
+			_, err := env.uc.UpdateProfile(context.Background(), env.userID, upd)
+
+			require.NoError(t, err)
+			require.False(t, env.resetTokenUsed(t, "link"))
+		})
+	}
 }

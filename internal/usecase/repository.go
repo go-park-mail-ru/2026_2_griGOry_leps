@@ -14,6 +14,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id int32) (domain.User, error)
 	GetProfile(ctx context.Context, id int32) (domain.Profile, error)
 	UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error
+	LockByID(ctx context.Context, id int32) error
 	GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error)
 	UpdatePassword(ctx context.Context, id int32, passwordHash string) error
 	GetAvatarForUpdate(ctx context.Context, id int32) (string, error)
@@ -25,6 +26,19 @@ type SessionRepository interface {
 	GetByID(ctx context.Context, id string) (domain.Session, error)
 	Delete(ctx context.Context, id string) error
 	DeleteOthers(ctx context.Context, userID int32, keepID string) error
+	DeleteAll(ctx context.Context, userID int32) error
+}
+
+type PasswordResetRepository interface {
+	Create(ctx context.Context, tokenHash string, userID int32, expiresAt time.Time) error
+	HasCreatedSince(ctx context.Context, userID int32, since time.Time) (bool, error)
+	Get(ctx context.Context, tokenHash string) (domain.PasswordReset, error)
+	GetForUpdate(ctx context.Context, tokenHash string) (domain.PasswordReset, error)
+	UseAll(ctx context.Context, userID int32) error
+}
+
+type Mailer interface {
+	SendPasswordReset(ctx context.Context, to, link string) error
 }
 
 type FileStorage interface {

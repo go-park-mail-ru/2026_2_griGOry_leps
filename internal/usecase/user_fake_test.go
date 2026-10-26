@@ -152,6 +152,16 @@ func (r *userRepoFake) UpdateProfile(_ context.Context, id int32, upd domain.Pro
 	return nil
 }
 
+func (r *userRepoFake) LockByID(_ context.Context, id int32) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if _, ok := r.users[id]; !ok {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
 func (r *userRepoFake) GetPasswordHashForUpdate(_ context.Context, id int32) (string, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

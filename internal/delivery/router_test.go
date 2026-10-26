@@ -26,7 +26,8 @@ func newTestRouter() http.Handler {
 }
 
 func newTestRouterWithUploads(dir string) http.Handler {
-	return NewRouter("http://front.test", dir, newAuthHandler(), NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), newCSRFHandler())
+	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
+		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), newCSRFHandler())
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {

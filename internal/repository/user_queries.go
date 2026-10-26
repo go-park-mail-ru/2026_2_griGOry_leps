@@ -56,6 +56,13 @@ const updateProfileQuery = `
     WHERE user_id = $1
 `
 
+const lockUserQuery = `
+    SELECT 1
+    FROM user_account
+    WHERE user_id = $1
+    FOR UPDATE
+`
+
 const getPasswordHashForUpdateQuery = `
     SELECT password_hash
     FROM user_account

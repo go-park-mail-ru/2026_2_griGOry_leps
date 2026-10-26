@@ -18,6 +18,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/mail"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -52,17 +53,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	mailer, err := newMailer(cfg)
+	if err != nil {
+		slog.Error("init mailer", "err", err)
+		os.Exit(1)
+	}
+
 	tx := repository.NewTransactor(pool)
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, tx)
-	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, avatarStorage, tx)
+	resetRepo := repository.NewPasswordResetRepository(pool)
+	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, avatarStorage, tx)
+	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)
+	resetHandler := delivery.NewPasswordResetHandler(resetUsecase)
 	adHandler := delivery.NewAdHandler(adUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
-	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, profileHandler, adHandler, csrfHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler, csrfHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -93,6 +103,20 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "err", err)
 	}
+}
+
+func newMailer(cfg *config.Config) (usecase.Mailer, error) {
+	if cfg.SMTPHost == "" {
+		slog.Warn("SMTP_HOST is not set, password reset links are written to the log")
+		return mail.Log{}, nil
+	}
+	return mail.NewSMTP(mail.SMTPConfig{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		User:     cfg.SMTPUser,
+		Password: cfg.SMTPPassword,
+		From:     cfg.MailFrom,
+	})
 }
 
 func csrfSecret(fromEnv string) []byte {

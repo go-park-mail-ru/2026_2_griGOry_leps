@@ -70,3 +70,18 @@ func TestSession_DeleteOthers(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrSessionNotFound, id)
 	}
 }
+
+func TestSession_DeleteAll(t *testing.T) {
+	repo, userID := newTestSessionRepository(t)
+	ctx := context.Background()
+	expires := time.Now().Add(time.Hour)
+	require.NoError(t, repo.Create(ctx, "laptop", userID, expires))
+	require.NoError(t, repo.Create(ctx, "phone", userID, expires))
+
+	require.NoError(t, repo.DeleteAll(ctx, userID))
+
+	for _, id := range []string{"laptop", "phone"} {
+		_, err := repo.GetByID(ctx, id)
+		require.ErrorIs(t, err, domain.ErrSessionNotFound, id)
+	}
+}
