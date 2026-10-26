@@ -676,10 +676,21 @@ paths:
       operationId: updateListing
       summary: Редактировать объявление
       description: |
-        Только автор. Принимает те же поля, что и создание (кроме `publish`),
-        любое подмножество, с теми же правилами для переданных полей.
+        Только автор. Принимает те же поля, что и создание, любое подмножество,
+        с теми же правилами для переданных полей. Непереданные поля не меняются.
         `photo_ids` заменяет список целиком: первое фото — главное, пропущенные
-        удаляются. Статус при правке не меняется.
+        удаляются. Пустой `description` убирает описание в любом статусе.
+
+        **Черновик** (`draft`):
+        - `null` в `category_id`, `price`, `condition`, `address` очищает поле,
+          пустой `photo_ids` убирает все фото;
+        - `publish` = true: изменения применяются, затем объявление проверяется
+          по всем правилам создания с `publish` = true. Если проверка прошла —
+          статус становится `moderation`, иначе 400 с полем, и ничего не сохраняется.
+
+        **Остальные статусы**: очистить обязательное поле нельзя — `null` и пустой
+        `photo_ids` дают 400 с полем. `publish` не принимается — 409.
+        Статус при правке не меняется.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -699,11 +710,13 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Проданное объявление править нельзя
+          description: Проданное объявление править нельзя; `publish` — только у черновика
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { error: listing is sold }
+              examples:
+                sold: { value: { error: listing is sold } }
+                notDraft: { value: { error: listing is not a draft } }
         '500': { $ref: '#/components/responses/InternalError' }
     delete:
       tags: [Объявления]
@@ -1682,9 +1695,9 @@ components:
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
-    UpdateListingRequest:
+    ListingFields:
       type: object
-      description: Любое подмножество полей.
+      description: Поля объявления, общие для создания и правки.
       properties:
         category_id: { type: integer, example: 12 }
         title: { type: string, minLength: 1, maxLength: 80 }
@@ -1702,9 +1715,43 @@ components:
         address: { type: string, minLength: 1 }
         has_delivery: { type: boolean }
 
+    UpdateListingRequest:
+      type: object
+      description: |
+        Любое подмножество полей. У черновика `null` очищает поле, а `photo_ids`
+        может быть пустым — см. описание `PATCH /listings/{listing_id}`.
+      properties:
+        category_id: { type: integer, nullable: true, example: 12 }
+        title: { type: string, minLength: 1, maxLength: 80 }
+        photo_ids:
+          type: array
+          description: Порядок задаёт порядок фото, первое — главное. Заменяет список целиком. Пустой — только у черновика.
+          items: { type: integer }
+          example: [501, 502, 503]
+        description: { type: string, maxLength: 3000 }
+        price:
+          type: string
+          pattern: '^\d{1,10}(\.\d{1,2})?$'
+          nullable: true
+        is_free: { type: boolean, description: 'Если true, сервер ставит price = 0.' }
+        is_negotiable: { type: boolean }
+        condition:
+          type: string
+          enum: [new, used_good, used_repair]
+          nullable: true
+        address: { type: string, minLength: 1, nullable: true }
+        has_delivery: { type: boolean }
+        publish:
+          type: boolean
+          description: Только для черновика. true — применить изменения и отправить на модерацию.
+      example:
+        title: 'Велосипед горный Stels Navigator 29"'
+        address: null
+        publish: false
+
     CreateListingRequest:
       allOf:
-        - $ref: '#/components/schemas/UpdateListingRequest'
+        - $ref: '#/components/schemas/ListingFields'
         - type: object
           properties:
             publish:
