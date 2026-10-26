@@ -40,7 +40,7 @@ tags:
   - name: Служебное
     description: Health-check и CSRF-токен
   - name: Авторизация
-    description: Регистрация, вход, выход
+    description: Регистрация, вход, выход, восстановление пароля
   - name: Профиль
     description: Свой профиль, аватарка, мои объявления
   - name: Справочники
@@ -190,6 +190,108 @@ paths:
         '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /password/forgot:
+    post:
+      tags: [Авторизация]
+      operationId: forgotPassword
+      summary: Запросить ссылку для сброса пароля
+      description: |
+        Принимает email или телефон, как при входе. Если такой аккаунт есть, на его email
+        уходит письмо со ссылкой `<фронт>/reset-password?token=…`. Ссылка действует 30 минут
+        и срабатывает один раз.
+
+        Ответ одинаковый, есть такой аккаунт или нет, чтобы по нему нельзя было
+        проверить, зарегистрирован ли email или телефон. Новое письмо уходит не чаще раза в минуту,
+        повторные запросы в течение минуты тоже отвечают 200, но письмо не отправляют.
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '200':
+          description: Запрос принят
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOk' }
+        '400':
+          description: Невалидный JSON, email или телефон
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                invalidLogin: { value: { error: invalid email or phone, field: login } }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /password/reset:
+    get:
+      tags: [Авторизация]
+      operationId: checkResetToken
+      summary: Проверить ссылку из письма
+      description: |
+        Фронт вызывает при открытии страницы `/reset-password`: если ссылка рабочая,
+        показывает форму нового пароля с email аккаунта, иначе экран «Ссылка больше не действует».
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ссылка действует
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email]
+                properties:
+                  email: { type: string, format: email, example: timur@mail.ru }
+        '400':
+          description: Ссылка устарела, уже использована или не существует
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: invalid or expired token, field: token }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Авторизация]
+      operationId: resetPassword
+      summary: Задать новый пароль по ссылке из письма
+      description: |
+        Новый пароль проверяется по тем же правилам, что при регистрации.
+        После смены все ссылки сброса пользователя перестают работать, а все его сессии
+        завершаются, поэтому дальше нужно войти с новым паролем.
+      security:
+        - csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '200':
+          description: Пароль изменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusOk' }
+        '400':
+          description: Невалидный JSON, ссылка устарела или пароль не прошёл проверку
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                invalidToken: { value: { error: invalid or expired token, field: token } }
+                weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
+                passwordTooLong: { value: { error: password is too long, field: password } }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   # ---------------------------------------------------------------- Профиль
   /me:
     get:
@@ -219,6 +321,8 @@ paths:
 
         При смене `city_id` сервер обновляет город для доставки; новые объявления
         получают город из профиля.
+
+        При смене `email` все выданные ссылки для сброса пароля перестают работать.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -298,6 +402,7 @@ paths:
       description: |
         Новый пароль проверяется по тем же правилам, что при регистрации.
         Остальные сессии пользователя завершаются, текущая остаётся.
+        Выданные ссылки для сброса пароля перестают работать.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1297,6 +1402,25 @@ components:
           description: Email (если содержит `@`) или телефон в любом из форматов, что и при регистрации.
           example: '+7 900 123-45-67'
         password: { type: string, format: password, example: Secret123 }
+
+    ForgotPasswordRequest:
+      type: object
+      required: [login]
+      properties:
+        login:
+          type: string
+          description: Email (если содержит `@`) или телефон в любом из форматов, что и при регистрации.
+          example: timur@mail.ru
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          description: Параметр `token` из ссылки в письме.
+          example: 9f2c4e7a1b3d5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8
+        password: { type: string, format: password, example: NewSecret1 }
 
     FileUpload:
       type: object

@@ -1,23 +1,22 @@
-package handler
+package delivery
 
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
 type AdHandler struct {
-	ads *usecase.AdUsecase
+	ads AdUsecase
 }
 
-func NewAdHandler(ads *usecase.AdUsecase) *AdHandler {
+func NewAdHandler(ads AdUsecase) *AdHandler {
 	return &AdHandler{ads: ads}
 }
 
@@ -42,7 +41,7 @@ func adResponse(ad domain.Ad) map[string]any {
 func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	params := usecase.ListAdsParams{
+	params := domain.ListAdsParams{
 		Query:    q.Get("q"),
 		City:     q.Get("city"),
 		PriceMin: q.Get("price_min"),
@@ -52,24 +51,24 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	categoryID, err := intParam(q, "category_id", 1)
 	if err != nil || categoryID > math.MaxInt32 {
-		writeError(w, http.StatusBadRequest, "invalid category_id")
+		writeError(r.Context(), w, http.StatusBadRequest, "invalid category_id")
 		return
 	}
 	params.CategoryID = int32(categoryID)
 
 	if params.Limit, err = intParam(q, "limit", 1); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if params.Offset, err = intParam(q, "offset", 0); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(r.Context(), w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if v := q.Get("has_delivery"); v != "" {
 		delivery, err := strconv.ParseBool(v)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid has_delivery")
+			writeError(r.Context(), w, http.StatusBadRequest, "invalid has_delivery")
 			return
 		}
 		params.HasDelivery = &delivery
@@ -78,13 +77,13 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 	page, err := h.ads.List(r.Context(), params)
 	if err != nil {
 		switch {
-		case errors.Is(err, usecase.ErrInvalidPrice),
-			errors.Is(err, usecase.ErrInvalidPriceRange),
-			errors.Is(err, usecase.ErrInvalidSort):
-			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrInvalidPrice),
+			errors.Is(err, domain.ErrInvalidPriceRange),
+			errors.Is(err, domain.ErrInvalidSort):
+			writeError(r.Context(), w, http.StatusBadRequest, err.Error())
 		default:
-			log.Printf("list ads error: %v", err)
-			writeError(w, http.StatusInternalServerError, "internal error")
+			slog.ErrorContext(r.Context(), "list ads", "err", err)
+			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
 		}
 		return
 	}
@@ -94,7 +93,7 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		items = append(items, adResponse(ad))
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{
 		"items":  items,
 		"total":  page.Total,
 		"limit":  page.Limit,

@@ -7,7 +7,12 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 - [Доска задач (YouGile)](https://ru.yougile.com/team/82999ec3673c/GOSH4LEEPS)
 - [Репозиторий фронтенда](https://github.com/frontend-park-mail-ru/2026_2_griGOry_leps)
 - [Макеты в Figma](https://www.figma.com/design/azXAN6gTvGAovlElu3VP3b/GoGET-%E2%80%94-Team-Workspace)
-- [Deploy]()
+- [Сайт на проде](http://goget.pw:8001)
+- [API на проде](http://goget.pw:8000/api/health)
+
+> [!NOTE]
+> Сайт открывается только по домену `goget.pw`. По IP фронт загрузится, но запросы
+> к API не пройдут: бэк разрешает CORS и cookie только для `http://goget.pw:8001`.
 
 ## Участники команды
 
@@ -27,8 +32,9 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 - **Язык:** Go
 - **Роутинг:** [gorilla/mux](https://github.com/gorilla/mux)
-- **Хранение данных:** в памяти процесса (map + sync.RWMutex), после перезапуска данные сбрасываются
+- **База данных:** PostgreSQL ([pgx](https://github.com/jackc/pgx)), миграции через [goose](https://github.com/pressly/goose) в папке `migrations/`
 - **Авторизация:** cookie-сессии
+- **Документация API:** OpenAPI ([`openapi.yaml`](openapi.yaml))
 
 ## Как работать с задачами
 
@@ -86,6 +92,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 ### Системные требования
 
 - [Go](https://go.dev/dl/) 1.26+
+- [PostgreSQL](https://www.postgresql.org/download/) 16+
+- goose: `go install github.com/pressly/goose/v3/cmd/goose@latest`
 
 ### Пошаговая инструкция
 
@@ -102,16 +110,108 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
    cp .env.example .env
    ```
 
+   | Переменная | Что задаёт | По умолчанию |
+   |---|---|---|
+   | `PORT` | порт сервера | `8080` |
+   | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
+   | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
+   | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error`. На `debug` в лог пишутся и запросы к базе | `info` |
+   | `CSRF_SECRET` | ключ подписи CSRF-токенов. Если не задан, генерируется при старте и токены сбрасываются при перезапуске | случайный |
+   | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `UPLOAD_DIR` | папка для загруженных файлов (аватарок), создаётся сама | `uploads` |
+   | `SMTP_HOST` | почтовый сервер для писем сброса пароля. Если не задан, ссылка из письма пишется в лог | — |
+   | `SMTP_PORT` | порт почтового сервера: `587` (STARTTLS) или `465` (TLS) | `587` |
+   | `SMTP_USER`, `SMTP_PASSWORD` | логин и пароль от почтового ящика | — |
+   | `MAIL_FROM` | отправитель писем | `Go&Get <noreply@goget.pw>` |
+   | `TEST_DATABASE_URL` | отдельная база для интеграционных тестов, только для `make test-integration` | — |
+   | `GOOSE_DRIVER` | драйвер базы для goose | `postgres` |
+   | `GOOSE_DBSTRING` | адрес базы для миграций, по умолчанию тот же, что `DATABASE_URL` | `${DATABASE_URL}` |
+
 3. Установите зависимости:
 
    ```bash
-   go mod tidy
+   go mod download
    ```
 
-4. Запустите сервер:
+4. Создайте базу, накатите миграции и тестовые объявления (логин, пароль и имя базы — как в `DATABASE_URL`):
+
+   ```bash
+   createdb -U postgres goget
+   make migrate-up
+   make seed
+   ```
+
+   `make seed` запускается один раз: он добавляет категории, продавца `seller@goget.pw` с паролем `Seller123` и 12 объявлений.
+
+5. Запустите сервер:
 
    ```bash
    make run
    ```
 
-Бэкенд будет доступен на `http://localhost:8080`.
+Бэкенд будет доступен на `http://localhost:8080`, проверить можно запросом `curl http://localhost:8080/api/health`.
+
+### Команды
+
+| Команда | Что делает |
+|---|---|
+| `make run` | запуск сервера |
+| `make build` | сборка бинарника в `bin/server` |
+| `make test` | юнит-тесты, база не нужна |
+| `make test-integration` | тесты репозиториев на настоящей базе из `TEST_DATABASE_URL` |
+| `make tidy` | обновление `go.mod` и `go.sum` |
+| `make migrate-up` | накатить все миграции |
+| `make migrate-down` | откатить последнюю миграцию |
+| `make migrate-status` | какие миграции уже применены |
+| `make seed` | тестовые категории, продавец и объявления |
+
+### Тесты
+
+Юнит-тесты (`make test`) работают без базы. Тесты репозиториев помечены тегом `integration` и ходят в настоящий PostgreSQL. Каждый тест создаёт себе отдельную схему, накатывает в неё все миграции и удаляет схему после себя, поэтому данные в базе не пересекаются. Для них нужна отдельная пустая база:
+
+```bash
+createdb -U postgres goget_test
+make test-integration
+```
+
+В CI такая база поднимается в контейнере, см. `.github/workflows/ci.yml`.
+
+## API
+
+Все ручки начинаются с `/api`, полное описание — в [`openapi.yaml`](openapi.yaml).
+
+POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с токеном из `GET /api/csrf`, иначе 403. Токен привязан к сессии, поэтому после входа, регистрации и выхода его нужно запросить заново.
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| `GET` | `/api/health` | проверка, что сервер жив |
+| `GET` | `/api/csrf` | CSRF-токен для изменяющих запросов |
+| `POST` | `/api/register` | регистрация, сразу создаёт сессию |
+| `POST` | `/api/login` | вход |
+| `POST` | `/api/logout` | выход, удаляет сессию |
+| `POST` | `/api/password/forgot` | письмо со ссылкой для сброса пароля, по email или телефону |
+| `GET` | `/api/password/reset?token=…` | проверить ссылку из письма, отдаёт email аккаунта |
+| `POST` | `/api/password/reset` | новый пароль по ссылке из письма, все сессии завершаются |
+| `GET` | `/api/me` | профиль текущего пользователя |
+| `PATCH` | `/api/me` | изменить имя, телефон, email, город или «о себе» |
+| `PUT` | `/api/me/password` | сменить пароль, остальные сессии завершаются |
+| `POST` | `/api/me/avatar` | загрузить аватарку (JPG или PNG до 5 МБ, `multipart/form-data`, поле `file`) |
+| `GET` | `/api/listings` | лента объявлений |
+| `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
+
+Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.
+
+## Структура проекта
+
+```
+cmd/server/          точка входа
+internal/config/     чтение переменных окружения
+internal/domain/     модели и ошибки
+internal/delivery/   HTTP-обработчики, роутер, мидлвары и интерфейсы usecase
+internal/logger/     JSON-логгер (slog) с request_id из контекста
+internal/csrf/       выпуск и проверка CSRF-токенов (HMAC)
+internal/usecase/    бизнес-логика и интерфейсы репозиториев
+internal/repository/ репозитории на PostgreSQL, транзакции, лог запросов к базе, хранилище файлов
+migrations/          миграции goose
+db/                  описание схемы и тестовые данные (seed.sql)
+```
