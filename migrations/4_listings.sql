@@ -12,6 +12,11 @@ ALTER TABLE ad
 
 UPDATE ad SET published_at = created_at WHERE status IN ('active', 'closed', 'sold');
 
+UPDATE ad
+SET address   = COALESCE(address, city),
+    condition = COALESCE(condition, 'used_good')
+WHERE status <> 'draft';
+
 ALTER TABLE ad_image
     ALTER COLUMN ad_id DROP NOT NULL,
     ADD COLUMN user_id integer REFERENCES user_account(user_id) ON DELETE CASCADE;
