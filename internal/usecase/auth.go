@@ -27,6 +27,8 @@ var (
 	firstNameFormat = regexp.MustCompile(`^[A-Za-zА-Яа-яЁё0-9_. -]{2,50}$`)
 )
 
+var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-password"), bcrypt.DefaultCost)
+
 type AuthUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
@@ -99,6 +101,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, login, password string) (domai
 
 	if err != nil {
 		if errors.Is(err, domain.ErrUserNotFound) {
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
 			return domain.User{}, domain.Session{}, domain.ErrInvalidLogin
 		}
 		return domain.User{}, domain.Session{}, err
