@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
 const (
@@ -27,17 +29,22 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 
 	r.HandleFunc("/api/csrf", csrfHandler.Token).Methods(http.MethodGet)
 
-	r.HandleFunc("/api/register", authHandler.Register).Methods(http.MethodPost)
-	r.HandleFunc("/api/login", authHandler.Login).Methods(http.MethodPost)
+	loginLimit := ratelimit.New(10, time.Minute)
+	registerLimit := ratelimit.New(5, 10*time.Minute)
+	forgotLimit := ratelimit.New(5, 10*time.Minute)
+	passwordLimit := ratelimit.New(10, 10*time.Minute)
+
+	r.HandleFunc("/api/register", rateLimit(registerLimit, authHandler.Register)).Methods(http.MethodPost)
+	r.HandleFunc("/api/login", rateLimit(loginLimit, authHandler.Login)).Methods(http.MethodPost)
 	r.HandleFunc("/api/logout", authHandler.Logout).Methods(http.MethodPost)
-	r.HandleFunc("/api/password/forgot", resetHandler.Forgot).Methods(http.MethodPost)
+	r.HandleFunc("/api/password/forgot", rateLimit(forgotLimit, resetHandler.Forgot)).Methods(http.MethodPost)
 	r.HandleFunc("/api/password/reset", resetHandler.Check).Methods(http.MethodGet)
-	r.HandleFunc("/api/password/reset", resetHandler.Reset).Methods(http.MethodPost)
+	r.HandleFunc("/api/password/reset", rateLimit(passwordLimit, resetHandler.Reset)).Methods(http.MethodPost)
 
 	auth := func(h http.HandlerFunc) http.Handler { return authHandler.RequireAuth(h) }
 	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)
 	r.Handle("/api/me", auth(profileHandler.Update)).Methods(http.MethodPatch)
-	r.Handle("/api/me/password", auth(profileHandler.ChangePassword)).Methods(http.MethodPut)
+	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
@@ -94,7 +101,7 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader)
-		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader)
+		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader+", Retry-After")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

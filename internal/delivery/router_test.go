@@ -59,7 +59,7 @@ func TestRouter_CORSAllowsAndExposesRequestID(t *testing.T) {
 	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 
 	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), requestIDHeader)
-	require.Equal(t, requestIDHeader, rec.Header().Get("Access-Control-Expose-Headers"))
+	require.Equal(t, requestIDHeader+", Retry-After", rec.Header().Get("Access-Control-Expose-Headers"))
 }
 
 func TestRouter_PanicLoggedWith500(t *testing.T) {
