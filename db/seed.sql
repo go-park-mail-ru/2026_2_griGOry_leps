@@ -46,14 +46,15 @@ data (category_id, title, description, price, city, has_delivery, image, hours_a
     (7, 'PlayStation 5 с двумя джойстиками', 'Дисковая версия, на гарантии', 4200000, 'Москва', false, '/img/listings/ps5.jpg', 33)
 ),
 inserted AS (
-    INSERT INTO ad (user_id, category_id, title, description, price, city, has_delivery, status, created_at)
-    SELECT seller.user_id, d.category_id, d.title, d.description, d.price, d.city, d.has_delivery,
-           'active', now() - d.hours_ago * interval '1 hour'
+    INSERT INTO ad (user_id, category_id, title, description, price, city, address, condition, has_delivery,
+                    status, created_at, published_at)
+    SELECT seller.user_id, d.category_id, d.title, d.description, d.price, d.city, d.city, 'used_good', d.has_delivery,
+           'active', now() - d.hours_ago * interval '1 hour', now() - d.hours_ago * interval '1 hour'
     FROM data d CROSS JOIN seller
-    RETURNING id, title
+    RETURNING id, user_id, title
 )
-INSERT INTO ad_image (ad_id, url)
-SELECT i.id, d.image
+INSERT INTO ad_image (ad_id, user_id, url)
+SELECT i.id, i.user_id, d.image
 FROM inserted i
 JOIN data d ON d.title = i.title;
 

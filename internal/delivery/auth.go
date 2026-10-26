@@ -179,6 +179,27 @@ func (h *AuthHandler) RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
+func (h *AuthHandler) OptionalAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(sessionCookieName)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		user, err := h.auth.Me(r.Context(), cookie.Value)
+		if err != nil {
+			if !errors.Is(err, domain.ErrSessionExpired) && !errors.Is(err, domain.ErrUserNotFound) {
+				slog.ErrorContext(r.Context(), "check session", "err", err)
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, user.ID)))
+	})
+}
+
 type userIDKey struct{}
 
 func userIDFromContext(ctx context.Context) int32 {

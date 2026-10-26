@@ -53,3 +53,18 @@ type Transactor interface {
 type AdRepository interface {
 	List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error)
 }
+
+type ListingRepository interface {
+	Get(ctx context.Context, id, viewerID int32) (domain.Listing, error)
+	GetStateForUpdate(ctx context.Context, id int32) (domain.ListingState, error)
+	Create(ctx context.Context, s domain.ListingState) (int32, error)
+	Update(ctx context.Context, id int32, s domain.ListingState) error
+	SetPhotos(ctx context.Context, userID, listingID int32, photoIDs []int32) ([]string, error)
+	Delete(ctx context.Context, id int32) ([]string, error)
+	Close(ctx context.Context, id int32, reason string) error
+	IsLeafCategory(ctx context.Context, id int32) (bool, error)
+	ListCategories(ctx context.Context) ([]domain.Category, error)
+	CreatePhoto(ctx context.Context, userID int32, url string) (int32, error)
+	ApproveModeration(ctx context.Context) (int64, error)
+	DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error)
+}
