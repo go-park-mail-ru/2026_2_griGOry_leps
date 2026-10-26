@@ -29,3 +29,13 @@ type PasswordResetUsecase interface {
 type AdUsecase interface {
 	List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error)
 }
+
+type ListingUsecase interface {
+	Get(ctx context.Context, id, viewerID int32) (domain.Listing, error)
+	Create(ctx context.Context, userID int32, f domain.ListingFields, publish bool) (domain.Listing, error)
+	Update(ctx context.Context, userID, id int32, f domain.ListingFields, publish *bool) (domain.Listing, error)
+	Delete(ctx context.Context, userID, id int32) error
+	Close(ctx context.Context, userID, id int32, reason string) (domain.Listing, error)
+	UploadPhoto(ctx context.Context, userID int32, data []byte) (domain.ListingPhoto, error)
+	Categories(ctx context.Context) ([]domain.CategoryNode, error)
+}

@@ -23,7 +23,10 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
-const csrfTokenTTL = 24 * time.Hour
+const (
+	csrfTokenTTL               = 24 * time.Hour
+	listingMaintenanceInterval = time.Minute
+)
 
 func main() {
 	_ = godotenv.Load()
@@ -53,6 +56,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	listingPhotoStorage, err := repository.NewFileStorage(filepath.Join(cfg.UploadDir, "listings"))
+	if err != nil {
+		slog.Error("init listing photo storage", "err", err)
+		os.Exit(1)
+	}
+
 	mailer, err := newMailer(cfg)
 	if err != nil {
 		slog.Error("init mailer", "err", err)
@@ -65,14 +74,16 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, avatarStorage, tx)
 	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
+	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)
 	resetHandler := delivery.NewPasswordResetHandler(resetUsecase)
 	adHandler := delivery.NewAdHandler(adUsecase)
+	listingHandler := delivery.NewListingHandler(listingUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
-	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler, csrfHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler, listingHandler, csrfHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -91,6 +102,10 @@ func main() {
 		}
 	}()
 
+	maintenanceCtx, stopMaintenance := context.WithCancel(context.Background())
+	defer stopMaintenance()
+	go runListingMaintenance(maintenanceCtx, listingUsecase)
+
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
@@ -102,6 +117,22 @@ func main() {
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("graceful shutdown failed", "err", err)
+	}
+}
+
+func runListingMaintenance(ctx context.Context, listings *usecase.ListingUsecase) {
+	ticker := time.NewTicker(listingMaintenanceInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			if err := listings.RunMaintenance(ctx, now); err != nil {
+				slog.ErrorContext(ctx, "listing maintenance", "err", err)
+			}
+		}
 	}
 }
 

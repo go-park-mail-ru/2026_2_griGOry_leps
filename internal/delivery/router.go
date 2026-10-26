@@ -12,12 +12,13 @@ import (
 )
 
 const (
-	requestTimeout = 5 * time.Second
-	avatarPath     = "/api/me/avatar"
+	requestTimeout   = 5 * time.Second
+	avatarPath       = "/api/me/avatar"
+	listingPhotoPath = "/api/listing-photos"
 )
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
-	profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
+	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -47,14 +48,23 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
 
+	r.HandleFunc("/api/categories", listingHandler.Categories).Methods(http.MethodGet)
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
+	r.Handle("/api/listings", auth(listingHandler.Create)).Methods(http.MethodPost)
+	r.Handle(listingPhotoPath, auth(listingHandler.UploadPhoto)).Methods(http.MethodPost)
+
+	const listingPath = "/api/listings/{listing_id:[0-9]+}"
+	r.Handle(listingPath, authHandler.OptionalAuth(http.HandlerFunc(listingHandler.Get))).Methods(http.MethodGet)
+	r.Handle(listingPath, auth(listingHandler.Update)).Methods(http.MethodPatch)
+	r.Handle(listingPath, auth(listingHandler.Delete)).Methods(http.MethodDelete)
+	r.Handle(listingPath+"/close", auth(listingHandler.Close)).Methods(http.MethodPost)
 
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path == avatarPath {
+		if req.URL.Path == avatarPath || req.URL.Path == listingPhotoPath {
 			r.ServeHTTP(w, req)
 			return
 		}
