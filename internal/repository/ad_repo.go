@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,6 +19,50 @@ func NewAdRepository(pool *pgxpool.Pool) *AdRepository {
 	return &AdRepository{pool: pool}
 }
 
+func adCardFields(ad *domain.Ad) []any {
+	return []any{
+		&ad.ID, &ad.UserID, &ad.CategoryID, &ad.Title, &ad.Description, &ad.Price, &ad.City,
+		&ad.HasDelivery, &ad.IsFree, &ad.ImageURL, &ad.Status, &ad.CloseReason, &ad.CreatedAt, &ad.UpdatedAt,
+	}
+}
+
+func scanAds(rows pgx.Rows) ([]domain.Ad, error) {
+	defer rows.Close()
+	ads := make([]domain.Ad, 0)
+	for rows.Next() {
+		var ad domain.Ad
+		if err := rows.Scan(adCardFields(&ad)...); err != nil {
+			return nil, fmt.Errorf("scan ad: %w", err)
+		}
+		ads = append(ads, ad)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read ad: %w", err)
+	}
+	return ads, nil
+}
+
+func readOnly(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return fmt.Errorf("begin read tx: %w", err)
+	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = tx.Rollback(cleanupCtx)
+	}()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit read tx: %w", err)
+	}
+	return nil
+}
+
 func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error) {
 	switch {
 	case f.Offset < 0 || f.Limit < 0:
@@ -29,51 +74,163 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 		return nil, 0, domain.ErrInvalidSort
 	}
 
-	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return nil, 0, fmt.Errorf("begin list ads: %w", err)
-	}
-
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = tx.Rollback(cleanupCtx)
-	}()
-
-	args := []any{f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery}
-	var total int
-
-	err = tx.QueryRow(ctx, countAdsQuery, args...).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count ads: %w", err)
-	}
-
-	args = append(args, f.Sort, f.Limit, f.Offset)
-	rows, err := tx.Query(ctx, listAdsQuery, args...)
-
-	if err != nil {
-		return nil, 0, fmt.Errorf("list ads: %w", err)
-	}
-
-	defer rows.Close()
-	ads := make([]domain.Ad, 0)
-	for rows.Next() {
-		var ad domain.Ad
-		err := rows.Scan(&ad.ID, &ad.UserID, &ad.CategoryID, &ad.Title, &ad.Description, &ad.Price, &ad.City, &ad.HasDelivery, &ad.ImageURL, &ad.Status, &ad.CreatedAt)
-		if err != nil {
-			return nil, 0, fmt.Errorf("scan ad: %w", err)
+	var (
+		ads   []domain.Ad
+		total int
+	)
+	err := readOnly(ctx, r.pool, func(tx pgx.Tx) error {
+		args := []any{f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery}
+		if err := tx.QueryRow(ctx, countAdsQuery, args...).Scan(&total); err != nil {
+			return fmt.Errorf("count ads: %w", err)
 		}
-		ads = append(ads, ad)
-	}
 
-	err = rows.Err()
+		rows, err := tx.Query(ctx, listAdsQuery, append(args, f.Sort, f.Limit, f.Offset)...)
+		if err != nil {
+			return fmt.Errorf("list ads: %w", err)
+		}
+		ads, err = scanAds(rows)
+		return err
+	})
 	if err != nil {
-		return nil, 0, fmt.Errorf("read ad: %w", err)
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("commit list ads: %w", err)
+		return nil, 0, err
 	}
 	return ads, total, nil
+}
+
+func (r *AdRepository) ListByUser(ctx context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error) {
+	if f.Offset < 0 || f.Limit < 0 {
+		return nil, nil, fmt.Errorf("negative pagination")
+	}
+
+	var (
+		ads    []domain.Ad
+		counts = make(map[string]int)
+	)
+	err := readOnly(ctx, r.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, countMyAdsQuery, f.UserID)
+		if err != nil {
+			return fmt.Errorf("count my ads: %w", err)
+		}
+		for rows.Next() {
+			var (
+				status string
+				count  int
+			)
+			if err := rows.Scan(&status, &count); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan my ads count: %w", err)
+			}
+			counts[status] = count
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read my ads count: %w", err)
+		}
+
+		rows, err = tx.Query(ctx, listMyAdsQuery, f.UserID, f.Status, f.Limit, f.Offset)
+		if err != nil {
+			return fmt.Errorf("list my ads: %w", err)
+		}
+		ads, err = scanAds(rows)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return ads, counts, nil
+}
+
+func (r *AdRepository) GetForUpdate(ctx context.Context, id int32) (int32, string, error) {
+	var (
+		ownerID int32
+		status  string
+	)
+	err := conn(ctx, r.pool).QueryRow(ctx, getAdForUpdateQuery, id).Scan(&ownerID, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", domain.ErrListingNotFound
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("get ad for update: %w", err)
+	}
+	return ownerID, status, nil
+}
+
+func (r *AdRepository) Close(ctx context.Context, id int32, reason string) error {
+	tag, err := conn(ctx, r.pool).Exec(ctx, closeAdQuery, id, reason)
+	if err != nil {
+		return fmt.Errorf("close ad: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrListingNotFound
+	}
+	return nil
+}
+
+func (r *AdRepository) Delete(ctx context.Context, id int32) error {
+	tag, err := conn(ctx, r.pool).Exec(ctx, deleteAdQuery, id)
+	if err != nil {
+		return fmt.Errorf("delete ad: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrListingNotFound
+	}
+	return nil
+}
+
+func (r *AdRepository) GetListing(ctx context.Context, id, viewerID int32) (domain.Listing, error) {
+	var (
+		l            domain.Listing
+		categoryID   *int32
+		categoryName *string
+	)
+	fields := append(adCardFields(&l.Ad),
+		&categoryID, &categoryName,
+		&l.Seller.ID, &l.Seller.FirstName, &l.Seller.Avatar,
+		&l.Seller.Rating, &l.Seller.ReviewsCount, &l.Seller.CreatedAt,
+		&l.InCart, &l.PublishedAt,
+	)
+
+	err := readOnly(ctx, r.pool, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, getListingQuery, id, viewerID).Scan(fields...)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ErrListingNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("get listing: %w", err)
+		}
+
+		if categoryID != nil && categoryName != nil {
+			l.Category = &domain.ListingCategory{ID: *categoryID, Name: *categoryName}
+			if err := tx.QueryRow(ctx, categoryPathQuery, *categoryID).Scan(&l.Category.Path); err != nil {
+				return fmt.Errorf("get category path: %w", err)
+			}
+		}
+
+		rows, err := tx.Query(ctx, listAdPhotosQuery, id)
+		if err != nil {
+			return fmt.Errorf("list ad photos: %w", err)
+		}
+		defer rows.Close()
+		l.Photos = make([]domain.ListingPhoto, 0)
+		for rows.Next() {
+			var photo domain.ListingPhoto
+			if err := rows.Scan(&photo.ID, &photo.URL); err != nil {
+				return fmt.Errorf("scan ad photo: %w", err)
+			}
+			l.Photos = append(l.Photos, photo)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read ad photos: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.Listing{}, err
+	}
+
+	l.IsOwner = viewerID != 0 && viewerID == l.UserID
+	if !l.IsOwner {
+		l.CloseReason = ""
+	}
+	return l, nil
 }

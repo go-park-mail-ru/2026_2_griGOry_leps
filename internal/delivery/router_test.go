@@ -21,13 +21,26 @@ func (panicAdUsecase) List(context.Context, domain.ListAdsParams) (domain.AdPage
 	panic("boom")
 }
 
+func (panicAdUsecase) ListMine(context.Context, domain.MyAdFilter) (domain.MyAdPage, error) {
+	panic("boom")
+}
+
+func (panicAdUsecase) Close(context.Context, int32, int32, string) (domain.Listing, error) {
+	panic("boom")
+}
+
+func (panicAdUsecase) Delete(context.Context, int32, int32) error {
+	panic("boom")
+}
+
 func newTestRouter() http.Handler {
 	return newTestRouterWithUploads("")
 }
 
 func newTestRouterWithUploads(dir string) http.Handler {
 	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
-		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), newCSRFHandler())
+		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), newCSRFHandler(),
+		NewSellerHandler(&sellerStub{}), NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}))
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -161,4 +174,43 @@ func TestRouter_ServesUploads(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, rec.Code, path)
 		require.Empty(t, rec.Header().Get("Cache-Control"), path)
 	}
+}
+
+func TestRouter_NewRoutesRequireAuth(t *testing.T) {
+	captureLogs(t)
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/me/listings"},
+		{http.MethodGet, "/api/me/addresses"},
+		{http.MethodPost, "/api/me/addresses"},
+		{http.MethodPatch, "/api/me/addresses/1"},
+		{http.MethodDelete, "/api/me/addresses/1"},
+		{http.MethodPost, "/api/listings/1/close"},
+		{http.MethodDelete, "/api/listings/1"},
+		{http.MethodPost, "/api/sellers/5/reports"},
+	} {
+		req := httptest.NewRequest(route.method, route.path, nil)
+		if route.method != http.MethodGet {
+			req.Header.Set(csrfHeader, "skip")
+		}
+		rec := httptest.NewRecorder()
+
+		newTestRouter().ServeHTTP(rec, req)
+
+		require.Contains(t, []int{http.StatusUnauthorized, http.StatusForbidden}, rec.Code, route.path)
+	}
+}
+
+func TestRouter_PublicSellerAndCityRoutes(t *testing.T) {
+	captureLogs(t)
+	for _, path := range []string{"/api/sellers/5", "/api/sellers/5/listings", "/api/sellers/5/reviews", "/api/cities?query=Мос"} {
+		rec := httptest.NewRecorder()
+
+		newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+		require.Equal(t, http.StatusOK, rec.Code, path)
+	}
+
+	rec := httptest.NewRecorder()
+	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sellers/abc", nil))
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

@@ -15,7 +15,8 @@ const (
 )
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
-	profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler) http.Handler {
+	profileHandler *ProfileHandler, adHandler *AdHandler, csrfHandler *CSRFHandler,
+	sellerHandler *SellerHandler, addressHandler *AddressHandler, cityHandler *CityHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -41,6 +42,21 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
+	r.Handle("/api/listings/{listing_id:[0-9]+}", auth(adHandler.Delete)).Methods(http.MethodDelete)
+	r.Handle("/api/listings/{listing_id:[0-9]+}/close", auth(adHandler.Close)).Methods(http.MethodPost)
+	r.Handle("/api/me/listings", auth(adHandler.ListMine)).Methods(http.MethodGet)
+
+	r.Handle("/api/me/addresses", auth(addressHandler.List)).Methods(http.MethodGet)
+	r.Handle("/api/me/addresses", auth(addressHandler.Create)).Methods(http.MethodPost)
+	r.Handle("/api/me/addresses/{address_id:[0-9]+}", auth(addressHandler.Update)).Methods(http.MethodPatch)
+	r.Handle("/api/me/addresses/{address_id:[0-9]+}", auth(addressHandler.Delete)).Methods(http.MethodDelete)
+
+	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
+
+	r.HandleFunc("/api/sellers/{seller_id:[0-9]+}", sellerHandler.Get).Methods(http.MethodGet)
+	r.HandleFunc("/api/sellers/{seller_id:[0-9]+}/listings", sellerHandler.Listings).Methods(http.MethodGet)
+	r.HandleFunc("/api/sellers/{seller_id:[0-9]+}/reviews", sellerHandler.Reviews).Methods(http.MethodGet)
+	r.Handle("/api/sellers/{seller_id:[0-9]+}/reports", auth(sellerHandler.Report)).Methods(http.MethodPost)
 
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 

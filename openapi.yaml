@@ -42,7 +42,7 @@ tags:
   - name: Авторизация
     description: Регистрация, вход, выход, восстановление пароля
   - name: Профиль
-    description: Свой профиль, аватарка, мои объявления
+    description: Свой профиль, аватарка, мои объявления, адреса доставки
   - name: Справочники
     description: Города и категории для выпадающих списков форм
   - name: Лента
@@ -466,6 +466,98 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /me/addresses:
+    get:
+      tags: [Профиль]
+      operationId: listAddresses
+      summary: Мои адреса доставки
+      description: В порядке добавления. Если адреса есть, ровно один из них основной.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Адреса текущего пользователя
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Address' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Профиль]
+      operationId: createAddress
+      summary: Добавить адрес
+      description: |
+        Первый адрес всегда становится основным, даже при `is_default` = false.
+        Новый основной адрес снимает отметку с прежнего.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressRequest' }
+      responses:
+        '201':
+          description: Адрес добавлен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '#/components/responses/AddressValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /me/addresses/{address_id}:
+    parameters:
+      - $ref: '#/components/parameters/AddressId'
+    patch:
+      tags: [Профиль]
+      operationId: updateAddress
+      summary: Изменить адрес
+      description: |
+        Меняет только переданные поля. `is_default` = true делает адрес основным
+        и снимает отметку с прежнего. `is_default` = false у основного адреса
+        передаёт отметку самому старому из остальных; единственный адрес остаётся основным.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateAddressRequest' }
+      responses:
+        '200':
+          description: Обновлённый адрес
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '400': { $ref: '#/components/responses/AddressValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '404': { $ref: '#/components/responses/AddressNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Профиль]
+      operationId: deleteAddress
+      summary: Удалить адрес
+      description: |
+        Если удалён основной адрес, основным становится самый старый из оставшихся,
+        поэтому после удаления клиенту стоит заново запросить `GET /me/addresses`.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      responses:
+        '204':
+          description: Адрес удалён
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '404': { $ref: '#/components/responses/AddressNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   # ---------------------------------------------------------------- Справочники
   /cities:
     get:
@@ -827,6 +919,85 @@ paths:
         '404': { $ref: '#/components/responses/SellerNotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /sellers/{seller_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    get:
+      tags: [Продавцы]
+      operationId: listSellerReviews
+      summary: Отзывы о продавце
+      description: |
+        Отзывы покупателей на объявления продавца. `rating` и `distribution` считаются
+        по всем отзывам и не зависят от `with_photos`; `total` — с учётом `with_photos`.
+        В `distribution` оценка округляется до целой звезды.
+      security: []
+      parameters:
+        - name: sort
+          in: query
+          description: |
+            - `newest` — сначала новые (по умолчанию)
+            - `rating_desc` — сначала положительные
+            - `rating_asc` — сначала отрицательные
+          schema: { type: string, enum: [newest, rating_desc, rating_asc], default: newest }
+        - name: with_photos
+          in: query
+          description: true — только отзывы с фото.
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница отзывов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewPage' }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                sort: { value: { error: invalid sort value } }
+                withPhotos: { value: { error: invalid with_photos } }
+                limit: { value: { error: invalid limit } }
+                offset: { value: { error: invalid offset } }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /sellers/{seller_id}/reports:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    post:
+      tags: [Продавцы]
+      operationId: reportSeller
+      summary: Пожаловаться на продавца
+      description: Жалобу видят только модераторы, продавец не узнаёт, кто её отправил.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportSellerRequest' }
+      responses:
+        '204':
+          description: Жалоба принята
+        '400':
+          description: Невалидный JSON, неизвестная причина, длинный комментарий или жалоба на себя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                reason: { value: { error: invalid report reason, field: reason } }
+                comment: { value: { error: comment must be at most 500 characters, field: comment } }
+                self: { value: { error: cannot report yourself } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   # ---------------------------------------------------------------- Корзина
   /cart:
     get:
@@ -1121,6 +1292,11 @@ components:
       required: true
       description: user_id продавца
       schema: { type: integer, minimum: 1 }
+    AddressId:
+      name: address_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
     OrderId:
       name: order_id
       in: path
@@ -1186,6 +1362,24 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: seller not found }
+    AddressNotFound:
+      description: Адреса нет или он чужой
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: address not found }
+    AddressValidation:
+      description: Невалидный JSON или не прошла проверка поля
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            badBody: { value: { error: invalid request body } }
+            missingStreet: { value: { error: street is required, field: street } }
+            longStreet: { value: { error: street must be at most 200 characters, field: street } }
+            missingHouse: { value: { error: house is required, field: house } }
+            longHouse: { value: { error: house must be at most 50 characters, field: house } }
+            longComment: { value: { error: comment must be at most 200 characters, field: comment } }
     OrderNotFound:
       description: Заказа нет или он чужой
       content:
@@ -1514,11 +1708,12 @@ components:
         counts:
           type: object
           description: Числа на вкладках, не зависят от `status`.
-          required: [all, draft, moderation, active, closed, sold]
+          required: [all, draft, moderation, rejected, active, closed, sold]
           properties:
             all: { type: integer, example: 7 }
             draft: { type: integer, example: 1 }
             moderation: { type: integer, example: 1 }
+            rejected: { type: integer, example: 0 }
             active: { type: integer, example: 4 }
             closed: { type: integer, example: 1 }
             sold: { type: integer, example: 0 }
@@ -1526,9 +1721,10 @@ components:
     # ------------------------------------------------ Объявление
     ListingStatus:
       type: string
-      enum: [draft, moderation, active, closed, sold]
+      enum: [draft, moderation, rejected, active, closed, sold]
       description: |
-        «Черновик», «На проверке», «Активно», «Закрыто», «Продано».
+        «Черновик», «На проверке», «Отклонено», «Активно», «Закрыто», «Продано».
+        `rejected` ставит модерация вместо `active`.
         `sold` ставит система после завершения сделки.
 
     CloseReason:
@@ -1716,6 +1912,89 @@ components:
             phone_verified: { type: boolean }
             completed_sales_count: { type: integer, example: 140 }
             active_listings_count: { type: integer, example: 12 }
+
+    Review:
+      type: object
+      required: [id, author, rating, text, listing_title, photos, created_at]
+      properties:
+        id: { type: integer, example: 31 }
+        author:
+          type: object
+          required: [id, first_name, avatar_url]
+          properties:
+            id: { type: integer, example: 77 }
+            first_name: { type: string, example: Анна }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
+        rating: { type: number, minimum: 0, maximum: 5, example: 5 }
+        text: { type: string, description: Пустая строка, если покупатель поставил только оценку. }
+        listing_title: { type: string, nullable: true, example: Велосипед Stels }
+        photos:
+          type: array
+          description: Пустой массив, если фото нет.
+          items: { type: string, format: uri-reference }
+        created_at: { type: string, format: date-time }
+
+    ReviewPage:
+      type: object
+      required: [items, total, limit, offset, rating, distribution]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        total: { type: integer, description: С учётом `with_photos`. }
+        limit: { type: integer }
+        offset: { type: integer }
+        rating: { type: number, example: 4.8, description: Средняя оценка по всем отзывам, 0 без отзывов. }
+        distribution:
+          type: object
+          description: Число отзывов на каждую звезду, все ключи есть всегда.
+          required: ['1', '2', '3', '4', '5']
+          properties:
+            '1': { type: integer, example: 1 }
+            '2': { type: integer, example: 1 }
+            '3': { type: integer, example: 2 }
+            '4': { type: integer, example: 8 }
+            '5': { type: integer, example: 44 }
+
+    ReportSellerRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [fraud, prohibited, rude, other]
+          description: |
+            - `fraud` — Мошенничество
+            - `prohibited` — Продаёт запрещённые товары
+            - `rude` — Грубость или оскорбления
+            - `other` — Другое
+        comment: { type: string, maxLength: 500, description: Пробелы по краям обрезаются. }
+
+    # ------------------------------------------------ Адреса
+    Address:
+      type: object
+      required: [id, street, house, comment, is_default]
+      properties:
+        id: { type: integer, example: 1 }
+        street: { type: string, maxLength: 200, example: 'Москва, ул. Тверская' }
+        house: { type: string, maxLength: 50, example: 'д. 12, кв. 34' }
+        comment: { type: string, maxLength: 200, example: Домофон 34 }
+        is_default: { type: boolean }
+
+    UpdateAddressRequest:
+      type: object
+      description: Любое подмножество полей; пробелы по краям обрезаются.
+      properties:
+        street: { type: string, minLength: 1, maxLength: 200 }
+        house: { type: string, minLength: 1, maxLength: 50 }
+        comment: { type: string, maxLength: 200 }
+        is_default: { type: boolean }
+
+    AddressRequest:
+      allOf:
+        - $ref: '#/components/schemas/UpdateAddressRequest'
+        - type: object
+          required: [street, house]
 
     # ------------------------------------------------ Корзина
     ListingIdsRequest:

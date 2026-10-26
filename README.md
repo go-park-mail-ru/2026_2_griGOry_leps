@@ -197,6 +197,18 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `PUT` | `/api/me/password` | сменить пароль, остальные сессии завершаются |
 | `POST` | `/api/me/avatar` | загрузить аватарку (JPG или PNG до 5 МБ, `multipart/form-data`, поле `file`) |
 | `GET` | `/api/listings` | лента объявлений |
+| `GET` | `/api/me/listings` | мои объявления во всех статусах и числа для вкладок |
+| `POST` | `/api/listings/{id}/close` | снять своё активное объявление с продажи |
+| `DELETE` | `/api/listings/{id}` | удалить своё объявление |
+| `GET` | `/api/me/addresses` | мои адреса доставки |
+| `POST` | `/api/me/addresses` | добавить адрес, первый сразу становится основным |
+| `PATCH` | `/api/me/addresses/{id}` | изменить адрес или сделать его основным |
+| `DELETE` | `/api/me/addresses/{id}` | удалить адрес; если он был основным, основным становится самый старый из оставшихся |
+| `GET` | `/api/cities?query=…` | поиск города по началу названия |
+| `GET` | `/api/sellers/{id}` | публичный профиль продавца |
+| `GET` | `/api/sellers/{id}/listings` | активные объявления продавца и его разделы |
+| `GET` | `/api/sellers/{id}/reviews` | отзывы о продавце, сводка рейтинга |
+| `POST` | `/api/sellers/{id}/reports` | пожаловаться на продавца |
 | `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
 
 Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.

@@ -3,7 +3,17 @@ package domain
 import "time"
 
 const (
-	AdStatusActive = "active"
+	AdStatusDraft      = "draft"
+	AdStatusModeration = "moderation"
+	AdStatusRejected   = "rejected"
+	AdStatusActive     = "active"
+	AdStatusClosed     = "closed"
+	AdStatusSold       = "sold"
+
+	CloseReasonSoldOnGoget   = "sold_on_goget"
+	CloseReasonSoldElsewhere = "sold_elsewhere"
+	CloseReasonChangedMind   = "changed_mind"
+	CloseReasonOther         = "other"
 
 	AdSortNewest    = "newest"
 	AdSortPriceAsc  = "price_asc"
@@ -19,9 +29,12 @@ type Ad struct {
 	Price       int64 // в копейках
 	City        string
 	HasDelivery bool
+	IsFree      bool
 	ImageURL    string
 	Status      string
+	CloseReason string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type AdFilter struct {
@@ -53,4 +66,41 @@ type ListAdsParams struct {
 	Sort        string
 	Limit       int
 	Offset      int
+}
+
+var AdStatuses = []string{
+	AdStatusDraft, AdStatusModeration, AdStatusRejected, AdStatusActive, AdStatusClosed, AdStatusSold,
+}
+
+type MyAdFilter struct {
+	UserID int32
+	Status string
+	Limit  int
+	Offset int
+}
+
+type MyAdPage struct {
+	AdPage
+	Counts map[string]int
+}
+
+type ListingCategory struct {
+	ID   int32
+	Name string
+	Path string
+}
+
+type ListingPhoto struct {
+	ID  int32
+	URL string
+}
+
+type Listing struct {
+	Ad
+	Category    *ListingCategory
+	Photos      []ListingPhoto
+	Seller      SellerShort
+	IsOwner     bool
+	InCart      bool
+	PublishedAt *time.Time
 }

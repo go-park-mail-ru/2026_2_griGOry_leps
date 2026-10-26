@@ -52,4 +52,35 @@ type Transactor interface {
 
 type AdRepository interface {
 	List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error)
+	ListByUser(ctx context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error)
+	GetForUpdate(ctx context.Context, id int32) (int32, string, error)
+	Close(ctx context.Context, id int32, reason string) error
+	Delete(ctx context.Context, id int32) error
+	GetListing(ctx context.Context, id, viewerID int32) (domain.Listing, error)
+}
+
+type SellerRepository interface {
+	Get(ctx context.Context, id int32) (domain.SellerProfile, error)
+	ListAds(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error)
+	ListReviews(ctx context.Context, f domain.ReviewFilter) (domain.ReviewPage, error)
+	CreateReport(ctx context.Context, report domain.SellerReport) error
+}
+
+type AddressRepository interface {
+	List(ctx context.Context, userID int32) ([]domain.Address, error)
+	Count(ctx context.Context, userID int32) (int, error)
+	GetForUpdate(ctx context.Context, userID, id int32) (domain.Address, error)
+	Create(ctx context.Context, a domain.Address) (domain.Address, error)
+	Update(ctx context.Context, a domain.Address) (domain.Address, error)
+	Delete(ctx context.Context, userID, id int32) error
+	ClearDefault(ctx context.Context, userID int32) error
+	PromoteOldest(ctx context.Context, userID, exceptID int32) error
+}
+
+type CityRepository interface {
+	Search(ctx context.Context, prefix string, limit int) ([]domain.City, error)
+}
+
+type UserLocker interface {
+	LockByID(ctx context.Context, id int32) error
 }
