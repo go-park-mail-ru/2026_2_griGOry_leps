@@ -134,6 +134,7 @@ paths:
                 passwordTooLong: { value: { error: password is too long, field: password } }
         '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /login:
@@ -169,6 +170,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: invalid login or password }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /logout:
@@ -225,6 +227,7 @@ paths:
                 badBody: { value: { error: invalid request body } }
                 invalidLogin: { value: { error: invalid email or phone, field: login } }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /password/reset:
@@ -290,6 +293,7 @@ paths:
                 weakPassword: { value: { error: 'password must be at least 8 characters and contain uppercase, lowercase letters and a digit', field: password } }
                 passwordTooLong: { value: { error: password is too long, field: password } }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Профиль
@@ -429,6 +433,7 @@ paths:
                 passwordTooLong: { value: { error: password is too long, field: new_password } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/listings:
@@ -1162,6 +1167,26 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: invalid request body }
+    TooManyRequests:
+      description: |
+        Слишком много запросов с одного IP. Лимиты:
+
+        | Ручка | Лимит |
+        | --- | --- |
+        | `POST /login` | 10 в минуту |
+        | `POST /register` | 5 за 10 минут |
+        | `POST /password/forgot` | 5 за 10 минут |
+        | `POST /password/reset`, `PUT /me/password` | 10 за 10 минут, общий счётчик |
+
+        Счётчик обнуляется через окно после первого запроса.
+      headers:
+        Retry-After:
+          description: Через сколько секунд можно повторить запрос
+          schema: { type: integer, example: 42 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: too many requests }
     Unauthorized:
       description: Cookie нет, она протухла или сессия удалена — во всех случаях один и тот же текст
       content:
