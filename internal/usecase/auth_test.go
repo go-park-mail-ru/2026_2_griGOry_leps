@@ -3,8 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -240,6 +242,29 @@ func TestLogin_UserNotFound(t *testing.T) {
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)
+}
+
+func TestLogin_UnknownUserTakesAsLongAsWrongPassword(t *testing.T) {
+	uc := newTestUsecase()
+	ctx := context.Background()
+
+	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "ivan", "+79001234567")
+	require.NoError(t, err)
+
+	fastest := func(login string) time.Duration {
+		best := time.Duration(math.MaxInt64)
+		for range 3 {
+			start := time.Now()
+			_, _, err := uc.Login(ctx, login, "WrongPass1")
+			require.ErrorIs(t, err, domain.ErrInvalidLogin)
+			best = min(best, time.Since(start))
+		}
+		return best
+	}
+
+	wrongPassword := fastest("a@b.ru")
+	unknownUser := fastest("nobody@b.ru")
+	require.Greater(t, unknownUser, wrongPassword/2)
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
