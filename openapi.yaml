@@ -937,6 +937,85 @@ paths:
         '404': { $ref: '#/components/responses/SellerNotFound' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /sellers/{seller_id}/reviews:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    get:
+      tags: [Продавцы]
+      operationId: listSellerReviews
+      summary: Отзывы о продавце
+      description: |
+        Отзывы покупателей на объявления продавца. `rating` и `distribution` считаются
+        по всем отзывам и не зависят от `with_photos`; `total` — с учётом `with_photos`.
+        В `distribution` оценка округляется до целой звезды.
+      security: []
+      parameters:
+        - name: sort
+          in: query
+          description: |
+            - `newest` — сначала новые (по умолчанию)
+            - `rating_desc` — сначала положительные
+            - `rating_asc` — сначала отрицательные
+          schema: { type: string, enum: [newest, rating_desc, rating_asc], default: newest }
+        - name: with_photos
+          in: query
+          description: true — только отзывы с фото.
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница отзывов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewPage' }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                sort: { value: { error: invalid sort value } }
+                withPhotos: { value: { error: invalid with_photos } }
+                limit: { value: { error: invalid limit } }
+                offset: { value: { error: invalid offset } }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /sellers/{seller_id}/reports:
+    parameters:
+      - $ref: '#/components/parameters/SellerId'
+    post:
+      tags: [Продавцы]
+      operationId: reportSeller
+      summary: Пожаловаться на продавца
+      description: Жалобу видят только модераторы, продавец не узнаёт, кто её отправил.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportSellerRequest' }
+      responses:
+        '204':
+          description: Жалоба принята
+        '400':
+          description: Невалидный JSON, неизвестная причина, длинный комментарий или жалоба на себя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                badBody: { value: { error: invalid request body } }
+                reason: { value: { error: invalid report reason, field: reason } }
+                comment: { value: { error: comment must be at most 500 characters, field: comment } }
+                self: { value: { error: cannot report yourself } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '404': { $ref: '#/components/responses/SellerNotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   # ---------------------------------------------------------------- Корзина
   /cart:
     get:
@@ -1906,6 +1985,67 @@ components:
             phone_verified: { type: boolean }
             completed_sales_count: { type: integer, example: 140 }
             active_listings_count: { type: integer, example: 12 }
+
+    Review:
+      type: object
+      required: [id, author, rating, text, listing_title, photos, created_at]
+      properties:
+        id: { type: integer, example: 31 }
+        author:
+          type: object
+          required: [id, first_name, avatar_url]
+          properties:
+            id: { type: integer, example: 77 }
+            first_name: { type: string, example: Анна }
+            avatar_url: { type: string, format: uri-reference, nullable: true }
+        rating: { type: number, minimum: 1, maximum: 5, example: 5 }
+        text: { type: string, description: Пустая строка, если покупатель поставил только оценку. }
+        listing_title:
+          type: string
+          nullable: true
+          example: Велосипед Stels
+          description: Название объявления на момент отзыва. Отзыв остаётся и после удаления объявления.
+        photos:
+          type: array
+          description: Пустой массив, если фото нет.
+          items: { type: string, format: uri-reference }
+        created_at: { type: string, format: date-time }
+
+    ReviewPage:
+      type: object
+      required: [items, total, limit, offset, rating, distribution]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        total: { type: integer, description: С учётом `with_photos`. }
+        limit: { type: integer }
+        offset: { type: integer }
+        rating: { type: number, example: 4.8, description: Средняя оценка по всем отзывам, 0 без отзывов. }
+        distribution:
+          type: object
+          description: Число отзывов на каждую звезду, все ключи есть всегда.
+          required: ['1', '2', '3', '4', '5']
+          properties:
+            '1': { type: integer, example: 1 }
+            '2': { type: integer, example: 1 }
+            '3': { type: integer, example: 2 }
+            '4': { type: integer, example: 8 }
+            '5': { type: integer, example: 44 }
+
+    ReportSellerRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          enum: [fraud, prohibited, rude, other]
+          description: |
+            - `fraud` — Мошенничество
+            - `prohibited` — Продаёт запрещённые товары
+            - `rude` — Грубость или оскорбления
+            - `other` — Другое
+        comment: { type: string, maxLength: 500, description: Пробелы по краям обрезаются. }
 
     # ------------------------------------------------ Адреса
     Address:

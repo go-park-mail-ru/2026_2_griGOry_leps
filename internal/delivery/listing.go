@@ -132,18 +132,12 @@ func newListingResponse(l domain.Listing) listingResponse {
 		Attributes:   []listingAttributeResponse{},
 		Status:       l.Status,
 		CloseReason:  l.CloseReason,
-		Seller: sellerShortResponse{
-			ID:           l.Seller.ID,
-			FirstName:    l.Seller.FirstName,
-			Rating:       l.Seller.Rating,
-			ReviewsCount: l.Seller.ReviewsCount,
-			CreatedAt:    l.Seller.CreatedAt,
-		},
-		IsOwner:     l.IsOwner,
-		InCart:      l.InCart,
-		PublishedAt: l.PublishedAt,
-		CreatedAt:   l.CreatedAt,
-		UpdatedAt:   l.UpdatedAt,
+		Seller:       newSellerShortResponse(l.Seller),
+		IsOwner:      l.IsOwner,
+		InCart:       l.InCart,
+		PublishedAt:  l.PublishedAt,
+		CreatedAt:    l.CreatedAt,
+		UpdatedAt:    l.UpdatedAt,
 	}
 
 	if l.Category != nil {
@@ -156,11 +150,26 @@ func newListingResponse(l domain.Listing) listingResponse {
 		price := formatPrice(*l.Price)
 		resp.Price = &price
 	}
-	if l.Seller.Avatar != "" {
-		url := avatarURL(l.Seller.Avatar)
-		resp.Seller.AvatarURL = &url
-	}
 	return resp
+}
+
+func optionalAvatarURL(name string) *string {
+	if name == "" {
+		return nil
+	}
+	url := avatarURL(name)
+	return &url
+}
+
+func newSellerShortResponse(s domain.Seller) sellerShortResponse {
+	return sellerShortResponse{
+		ID:           s.ID,
+		FirstName:    s.FirstName,
+		AvatarURL:    optionalAvatarURL(s.Avatar),
+		Rating:       s.Rating,
+		ReviewsCount: s.ReviewsCount,
+		CreatedAt:    s.CreatedAt,
+	}
 }
 
 type categoryNodeResponse struct {

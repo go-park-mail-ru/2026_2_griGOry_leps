@@ -16,15 +16,17 @@
 - conversation — диалоги покупателей и продавцов.
 - message — сообщения в диалогах и их статусы.
 - views — просмотры объявлений.
-- review — отзывы и рейтинги.
+- review — отзывы и рейтинги от 1 до 5. Хранит продавца и название объявления, поэтому переживает удаление объявления.
 - promotion — периоды и уровни платного продвижения объявлений.
 - ad_reaction — реакции пользователей.
 - session — сессии пользователей с идентификатором и временем истечения.
 - password_reset — ссылки для сброса пароля: хеш токена, срок действия и время использования.
 - ad_image — фотографии объявлений.
+- review_image — фотографии к отзывам.
 - address — адреса доставки пользователя; у пользователя не больше одного основного адреса.
+- seller_report — жалобы на продавцов: кто пожаловался, причина и комментарий.
 
-Триггеры обновляют updated_at пользователей, объявлений и отзывов, сохраняют начальные значения и изменения цены и статуса, заполняют продавца нового диалога и проверяют отправителя сообщения. В истории статусов actor_id заполняется идентификатором владельца объявления. Корзины и сессии автоматически триггерами не создаются.
+Триггеры обновляют updated_at пользователей, объявлений и отзывов, сохраняют начальные значения и изменения цены и статуса, заполняют продавца нового диалога, продавца и название объявления у нового отзыва и проверяют отправителя сообщения. В истории статусов actor_id заполняется идентификатором владельца объявления. Корзины и сессии автоматически триггерами не создаются.
 
 ## ER-диаграмма
 
@@ -140,6 +142,8 @@ erDiagram
         numeric rating
         timestamptz created_at
         timestamptz updated_at
+        int seller_id FK
+        varchar(200) listing_title
     }
 
     promotion {
@@ -180,6 +184,14 @@ erDiagram
         timestamptz created_at
     }
 
+    review_image {
+        integer image_id PK
+        integer rew_id FK
+        text url
+        integer position
+        timestamptz created_at
+    }
+
     address {
         integer address_id PK
         integer user_id FK
@@ -187,6 +199,15 @@ erDiagram
         varchar(50) house
         varchar(200) comment
         boolean is_default
+        timestamptz created_at
+    }
+
+    seller_report {
+        integer report_id PK
+        integer seller_id FK
+        integer reporter_id FK
+        varchar(20) reason
+        varchar(500) comment
         timestamptz created_at
     }
 
@@ -210,12 +231,16 @@ erDiagram
     user_account |o..o{ views : user_id
     ad ||..o{ views : ad_id
     user_account ||..o{ review : user_id
-    ad ||..o{ review : ad_id
+    ad |o..o{ review : ad_id
+    user_account ||..o{ review : seller_id
     ad ||..o{ promotion : ad_id
     user_account ||..o{ ad_reaction : user_id
     ad ||..o{ ad_reaction : ad_id
     user_account ||..o{ session : user_id
     user_account ||..o{ password_reset : user_id
     ad ||..o{ ad_image : ad_id
+    review ||..o{ review_image : rew_id
     user_account ||..o{ address : user_id
+    user_account ||..o{ seller_report : seller_id
+    user_account ||..o{ seller_report : reporter_id
 ```

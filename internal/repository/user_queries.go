@@ -39,8 +39,7 @@ const getProfileQuery = `
     LEFT JOIN LATERAL (
         SELECT ROUND(AVG(rv.rating), 2)::float8 AS rating, COUNT(*) AS reviews_count
         FROM review rv
-        JOIN ad a ON a.id = rv.ad_id
-        WHERE a.user_id = u.user_id
+        WHERE rv.seller_id = u.user_id
     ) r ON true
     WHERE u.user_id = $1
 `

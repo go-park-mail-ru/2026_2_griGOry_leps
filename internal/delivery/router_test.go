@@ -32,7 +32,7 @@ func newTestRouter() http.Handler {
 func newTestRouterWithUploads(dir string) http.Handler {
 	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
 		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), NewListingHandler(nil), newCSRFHandler(),
-		NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}))
+		NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}), NewSellerHandler(&sellerStub{}))
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -176,6 +176,7 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/me/addresses"},
 		{http.MethodPatch, "/api/me/addresses/1"},
 		{http.MethodDelete, "/api/me/addresses/1"},
+		{http.MethodPost, "/api/sellers/5/reports"},
 	} {
 		token, tokenRec := fetchCSRFToken(t, newCSRFHandler())
 		req := httptest.NewRequest(route.method, route.path, nil)
@@ -190,13 +191,19 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 	}
 }
 
-func TestRouter_CitiesArePublic(t *testing.T) {
+func TestRouter_PublicSellerAndCityRoutes(t *testing.T) {
 	captureLogs(t)
+	for _, path := range []string{"/api/sellers/5", "/api/sellers/5/listings", "/api/sellers/5/reviews", "/api/cities?query=Мос"} {
+		rec := httptest.NewRecorder()
+
+		newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+		require.Equal(t, http.StatusOK, rec.Code, path)
+	}
+
 	rec := httptest.NewRecorder()
-
-	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/cities?query=Мос", nil))
-
-	require.Equal(t, http.StatusOK, rec.Code)
+	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/sellers/abc", nil))
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestRouter_AddressIDMustBeNumeric(t *testing.T) {

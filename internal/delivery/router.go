@@ -19,7 +19,7 @@ const (
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
 	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
-	addressHandler *AddressHandler, cityHandler *CityHandler) http.Handler {
+	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -57,6 +57,12 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle(addressPath, auth(addressHandler.Delete)).Methods(http.MethodDelete)
 
 	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
+
+	const sellerPath = "/api/sellers/{seller_id:[0-9]+}"
+	r.HandleFunc(sellerPath, sellerHandler.Get).Methods(http.MethodGet)
+	r.HandleFunc(sellerPath+"/listings", sellerHandler.Listings).Methods(http.MethodGet)
+	r.HandleFunc(sellerPath+"/reviews", sellerHandler.Reviews).Methods(http.MethodGet)
+	r.Handle(sellerPath+"/reports", auth(sellerHandler.Report)).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/categories", listingHandler.Categories).Methods(http.MethodGet)
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)

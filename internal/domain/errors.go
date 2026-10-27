@@ -28,6 +28,10 @@ var (
 	ErrInvalidContact    = errors.New("invalid email or phone")
 
 	ErrInvalidStatus         = errors.New("invalid status")
+	ErrSellerNotFound        = errors.New("seller not found")
+	ErrInvalidReportReason   = errors.New("invalid report reason")
+	ErrReportCommentTooLong  = errors.New("comment must be at most 500 characters")
+	ErrSelfReport            = errors.New("cannot report yourself")
 	ErrAddressNotFound       = errors.New("address not found")
 	ErrMissingStreet         = errors.New("street is required")
 	ErrStreetTooLong         = errors.New("street must be at most 200 characters")
