@@ -7,7 +7,7 @@
 - user_account — пользователи платформы, их город, текст «о себе», файл аватарки и подтверждён ли телефон.
 - city — справочник городов для профиля.
 - category — категории объявлений.
-- ad — объявления, их авторы, категории, цены (в копейках), статусы (draft, moderation, active, closed, sold), тип (goods — товар, service — услуга), город и доставка.
+- ad — объявления, их авторы, категории, цены (в копейках), статусы (draft, moderation, rejected, active, closed, sold), тип (goods — товар, service — услуга), город и доставка.
 - cart — корзины пользователей, не более одной на пользователя.
 - cart_item — объявления в корзине.
 - favorites — избранные объявления.
@@ -22,6 +22,7 @@
 - session — сессии пользователей с идентификатором и временем истечения.
 - password_reset — ссылки для сброса пароля: хеш токена, срок действия и время использования.
 - ad_image — фотографии объявлений.
+- address — адреса доставки пользователя; у пользователя не больше одного основного адреса.
 
 Триггеры обновляют updated_at пользователей, объявлений и отзывов, сохраняют начальные значения и изменения цены и статуса, заполняют продавца нового диалога и проверяют отправителя сообщения. В истории статусов actor_id заполняется идентификатором владельца объявления. Корзины и сессии автоматически триггерами не создаются.
 
@@ -179,6 +180,16 @@ erDiagram
         timestamptz created_at
     }
 
+    address {
+        integer address_id PK
+        integer user_id FK
+        varchar(200) street
+        varchar(50) house
+        varchar(200) comment
+        boolean is_default
+        timestamptz created_at
+    }
+
     category |o..o{ category : parent_id
     city |o..o{ user_account : city_id
     user_account ||..o{ ad : user_id
@@ -206,4 +217,5 @@ erDiagram
     user_account ||..o{ session : user_id
     user_account ||..o{ password_reset : user_id
     ad ||..o{ ad_image : ad_id
+    user_account ||..o{ address : user_id
 ```

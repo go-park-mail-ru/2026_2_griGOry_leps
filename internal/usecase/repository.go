@@ -52,6 +52,26 @@ type Transactor interface {
 
 type AdRepository interface {
 	List(ctx context.Context, f domain.AdFilter) ([]domain.Ad, int, error)
+	ListByUser(ctx context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error)
+}
+
+type AddressRepository interface {
+	List(ctx context.Context, userID int32) ([]domain.Address, error)
+	Count(ctx context.Context, userID int32) (int, error)
+	GetForUpdate(ctx context.Context, userID, id int32) (domain.Address, error)
+	Create(ctx context.Context, a domain.Address) (domain.Address, error)
+	Update(ctx context.Context, a domain.Address) (domain.Address, error)
+	Delete(ctx context.Context, userID, id int32) error
+	ClearDefault(ctx context.Context, userID int32) error
+	PromoteOldest(ctx context.Context, userID, exceptID int32) error
+}
+
+type CityRepository interface {
+	Search(ctx context.Context, prefix string, limit int) ([]domain.City, error)
+}
+
+type UserLocker interface {
+	LockByID(ctx context.Context, id int32) error
 }
 
 type ListingRepository interface {

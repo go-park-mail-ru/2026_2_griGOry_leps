@@ -45,7 +45,7 @@ func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.L
 	if l.IsOwner {
 		return l, nil
 	}
-	if l.Status == domain.AdStatusDraft || l.Status == domain.AdStatusModeration {
+	if l.Status == domain.AdStatusDraft || l.Status == domain.AdStatusModeration || l.Status == domain.AdStatusRejected {
 		return domain.Listing{}, domain.ErrListingNotFound
 	}
 	l.CloseReason = nil
