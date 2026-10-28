@@ -782,7 +782,8 @@ paths:
 
         **Остальные статусы**: очистить обязательное поле нельзя — `null` и пустой
         `photo_ids` дают 400 с полем. `publish` не принимается — 409.
-        Статус при правке не меняется.
+        Статус при правке не меняется, кроме `rejected`: исправленное
+        объявление снова уходит на модерацию (`moderation`).
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1679,7 +1680,9 @@ components:
         id: { type: integer, example: 1024 }
         title: { type: string, example: 'Велосипед горный, состояние отличное' }
         price:
-          allOf: [{ $ref: '#/components/schemas/Price' }]
+          type: string
+          pattern: '^\d{1,10}\.\d{2}$'
+          example: '15000.00'
           nullable: true
           description: '"0.00" при `is_free`. null только в «Моих объявлениях» у черновика без цены.'
         is_free: { type: boolean, description: «Отдам даром». }

@@ -496,3 +496,19 @@ func TestListing_GetHidesRejectedFromOthers(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.AdStatusRejected, own.Status)
 }
+
+func TestListing_UpdateRejectedGoesBackToModeration(t *testing.T) {
+	e := newListingEnv()
+	l := e.active(t)
+	s := e.repo.states[l.ID]
+	s.Status = domain.AdStatusRejected
+	e.repo.states[l.ID] = s
+
+	_, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
+	require.ErrorIs(t, err, domain.ErrPhotosRequired)
+
+	updated, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{Title: ptr("Исправил")}, nil)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusModeration, updated.Status)
+	require.Equal(t, "Исправил", updated.Title)
+}
