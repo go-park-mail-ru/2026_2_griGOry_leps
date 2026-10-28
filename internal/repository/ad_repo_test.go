@@ -12,31 +12,33 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
+func price(kopecks int64) *int64 { return &kopecks }
+
 func sampleAds() []domain.Ad {
 	now := time.Now()
 
 	return []domain.Ad{
 		{
 			ID: 1, Title: "Велосипед горный", Description: "Отличное состояние",
-			Price: 1500000, CategoryID: 1, City: "Москва",
+			Price: price(1500000), CategoryID: 1, City: "Москва",
 			HasDelivery: true, Status: domain.AdStatusActive,
 			CreatedAt: now.Add(-3 * time.Hour),
 		},
 		{
 			ID: 2, Title: "Самокат детский", Description: "Лёгкий",
-			Price: 300000, CategoryID: 1, City: "Санкт-Петербург",
+			Price: price(300000), CategoryID: 1, City: "Санкт-Петербург",
 			HasDelivery: false, Status: domain.AdStatusActive,
 			CreatedAt: now.Add(-2 * time.Hour),
 		},
 		{
 			ID: 3, Title: "Книга", Description: "Интересная",
-			Price: 50000, CategoryID: 2, City: "Москва",
+			Price: price(50000), CategoryID: 2, City: "Москва",
 			HasDelivery: false, Status: domain.AdStatusActive,
 			CreatedAt: now.Add(-1 * time.Hour),
 		},
 		{
 			ID: 4, Title: "Снятое", Description: "",
-			Price: 100000, CategoryID: 1, City: "Москва",
+			Price: price(100000), CategoryID: 1, City: "Москва",
 			HasDelivery: false, Status: "closed",
 			CreatedAt: now,
 		},

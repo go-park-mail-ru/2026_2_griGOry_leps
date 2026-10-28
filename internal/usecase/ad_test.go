@@ -11,9 +11,16 @@ import (
 )
 
 type adRepoStub struct {
-	items  []domain.Ad
-	filter domain.AdFilter
-	err    error
+	items    []domain.Ad
+	filter   domain.AdFilter
+	err      error
+	myFilter domain.MyAdFilter
+	counts   map[string]int
+}
+
+func (s *adRepoStub) ListByUser(_ context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error) {
+	s.myFilter = f
+	return s.items, s.counts, s.err
 }
 
 func (s *adRepoStub) List(
@@ -100,9 +107,10 @@ func TestAdUsecase_List_PriceRangeInvalid(t *testing.T) {
 }
 
 func TestAdUsecase_List_Success(t *testing.T) {
+	price := int64(100000)
 	ads := []domain.Ad{
 		{
-			ID: 1, Title: "Тест", Price: 100000, CategoryID: 1, City: "Москва",
+			ID: 1, Title: "Тест", Price: &price, CategoryID: 1, City: "Москва",
 			Status: domain.AdStatusActive, CreatedAt: time.Now(),
 		},
 	}
@@ -114,4 +122,33 @@ func TestAdUsecase_List_Success(t *testing.T) {
 	require.Len(t, page.Items, 1)
 	require.Equal(t, 10, page.Limit)
 	require.Equal(t, 0, page.Offset)
+}
+
+func TestAdUsecase_ListMine_CountsAllStatuses(t *testing.T) {
+	repo := &adRepoStub{counts: map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}}
+
+	page, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{UserID: 7, Limit: 100})
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{
+		"all": 4, "draft": 1, "moderation": 0, "rejected": 0, "active": 3, "closed": 0, "sold": 0,
+	}, page.Counts)
+	require.Equal(t, 4, page.Total)
+	require.Equal(t, maxAdsLimit, page.Limit)
+	require.Equal(t, int32(7), repo.myFilter.UserID)
+}
+
+func TestAdUsecase_ListMine_TotalByStatus(t *testing.T) {
+	repo := &adRepoStub{counts: map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}}
+
+	page, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{Status: "draft"})
+	require.NoError(t, err)
+	require.Equal(t, 1, page.Total)
+	require.Equal(t, defaultAdsLimit, page.Limit)
+}
+
+func TestAdUsecase_ListMine_InvalidStatus(t *testing.T) {
+	repo := &adRepoStub{}
+	_, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{Status: "deleted"})
+	require.ErrorIs(t, err, domain.ErrInvalidStatus)
+	require.Zero(t, repo.myFilter)
 }

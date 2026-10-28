@@ -18,7 +18,8 @@ const (
 )
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
-	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler) http.Handler {
+	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
+	addressHandler *AddressHandler, cityHandler *CityHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -47,6 +48,15 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/me", auth(profileHandler.Update)).Methods(http.MethodPatch)
 	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
+	r.Handle("/api/me/listings", auth(adHandler.ListMine)).Methods(http.MethodGet)
+
+	const addressPath = "/api/me/addresses/{address_id:[0-9]+}"
+	r.Handle("/api/me/addresses", auth(addressHandler.List)).Methods(http.MethodGet)
+	r.Handle("/api/me/addresses", auth(addressHandler.Create)).Methods(http.MethodPost)
+	r.Handle(addressPath, auth(addressHandler.Update)).Methods(http.MethodPatch)
+	r.Handle(addressPath, auth(addressHandler.Delete)).Methods(http.MethodDelete)
+
+	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
 
 	r.HandleFunc("/api/categories", listingHandler.Categories).Methods(http.MethodGet)
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)

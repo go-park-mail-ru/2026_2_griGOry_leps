@@ -21,13 +21,18 @@ func (panicAdUsecase) List(context.Context, domain.ListAdsParams) (domain.AdPage
 	panic("boom")
 }
 
+func (panicAdUsecase) ListMine(context.Context, domain.MyAdFilter) (domain.MyAdPage, error) {
+	panic("boom")
+}
+
 func newTestRouter() http.Handler {
 	return newTestRouterWithUploads("")
 }
 
 func newTestRouterWithUploads(dir string) http.Handler {
 	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
-		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), NewListingHandler(nil), newCSRFHandler())
+		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), NewListingHandler(nil), newCSRFHandler(),
+		NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}))
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -161,4 +166,44 @@ func TestRouter_ServesUploads(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, rec.Code, path)
 		require.Empty(t, rec.Header().Get("Cache-Control"), path)
 	}
+}
+
+func TestRouter_NewRoutesRequireAuth(t *testing.T) {
+	captureLogs(t)
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/me/listings"},
+		{http.MethodGet, "/api/me/addresses"},
+		{http.MethodPost, "/api/me/addresses"},
+		{http.MethodPatch, "/api/me/addresses/1"},
+		{http.MethodDelete, "/api/me/addresses/1"},
+	} {
+		token, tokenRec := fetchCSRFToken(t, newCSRFHandler())
+		req := httptest.NewRequest(route.method, route.path, nil)
+		req.Header.Set(csrfHeader, token)
+		req.AddCookie(responseCookie(tokenRec, csrfCookieName))
+		rec := httptest.NewRecorder()
+
+		newTestRouter().ServeHTTP(rec, req)
+
+		require.Equal(t, http.StatusUnauthorized, rec.Code, route.path)
+		require.Equal(t, "not authenticated", decodeBody(t, rec)["error"], route.path)
+	}
+}
+
+func TestRouter_CitiesArePublic(t *testing.T) {
+	captureLogs(t)
+	rec := httptest.NewRecorder()
+
+	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/cities?query=Мос", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestRouter_AddressIDMustBeNumeric(t *testing.T) {
+	captureLogs(t)
+	rec := httptest.NewRecorder()
+
+	newTestRouter().ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/me/addresses/abc", nil))
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

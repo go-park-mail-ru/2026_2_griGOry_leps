@@ -480,3 +480,35 @@ func TestListing_CategoriesBuildsTree(t *testing.T) {
 	require.NotNil(t, tree[0].Children[0].Children)
 	require.Equal(t, "orphans", tree[1].Slug)
 }
+
+func TestListing_GetHidesRejectedFromOthers(t *testing.T) {
+	e := newListingEnv()
+	ctx := context.Background()
+	l := e.active(t)
+	s := e.repo.states[l.ID]
+	s.Status = domain.AdStatusRejected
+	e.repo.states[l.ID] = s
+
+	_, err := e.uc.Get(ctx, l.ID, otherID)
+	require.ErrorIs(t, err, domain.ErrListingNotFound)
+
+	own, err := e.uc.Get(ctx, l.ID, authorID)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusRejected, own.Status)
+}
+
+func TestListing_UpdateRejectedGoesBackToModeration(t *testing.T) {
+	e := newListingEnv()
+	l := e.active(t)
+	s := e.repo.states[l.ID]
+	s.Status = domain.AdStatusRejected
+	e.repo.states[l.ID] = s
+
+	_, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
+	require.ErrorIs(t, err, domain.ErrPhotosRequired)
+
+	updated, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{Title: ptr("Исправил")}, nil)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusModeration, updated.Status)
+	require.Equal(t, "Исправил", updated.Title)
+}

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -61,10 +62,7 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 		return domain.AdPage{}, domain.ErrInvalidPriceRange
 	}
 
-	if f.Limit <= 0 {
-		f.Limit = defaultAdsLimit
-	}
-	f.Limit = min(f.Limit, maxAdsLimit)
+	f.Limit = pageLimit(f.Limit)
 
 	items, total, err := uc.ads.List(ctx, f)
 	if err != nil {
@@ -72,6 +70,40 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 	}
 
 	return domain.AdPage{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+}
+
+func pageLimit(limit int) int {
+	if limit <= 0 {
+		return defaultAdsLimit
+	}
+	return min(limit, maxAdsLimit)
+}
+
+func (uc *AdUsecase) ListMine(ctx context.Context, f domain.MyAdFilter) (domain.MyAdPage, error) {
+	if f.Status != "" && !slices.Contains(domain.AdStatuses, f.Status) {
+		return domain.MyAdPage{}, domain.ErrInvalidStatus
+	}
+	f.Limit = pageLimit(f.Limit)
+
+	items, byStatus, err := uc.ads.ListByUser(ctx, f)
+	if err != nil {
+		return domain.MyAdPage{}, err
+	}
+
+	counts := map[string]int{"all": 0}
+	for _, status := range domain.AdStatuses {
+		counts[status] = byStatus[status]
+		counts["all"] += byStatus[status]
+	}
+
+	total := counts["all"]
+	if f.Status != "" {
+		total = counts[f.Status]
+	}
+	return domain.MyAdPage{
+		AdPage: domain.AdPage{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset},
+		Counts: counts,
+	}, nil
 }
 
 // parsePrice переводит цену в рублях ("1500" или "1500.5") в копейки.

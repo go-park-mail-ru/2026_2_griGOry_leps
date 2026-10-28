@@ -49,6 +49,8 @@ func main() {
 	userRepo := repository.NewUserRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 	adRepo := repository.NewAdRepository(pool)
+	addressRepo := repository.NewAddressRepository(pool)
+	cityRepo := repository.NewCityRepository(pool)
 
 	avatarStorage, err := repository.NewFileStorage(filepath.Join(cfg.UploadDir, "avatars"))
 	if err != nil {
@@ -74,6 +76,8 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, avatarStorage, tx)
 	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
+	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
+	cityUsecase := usecase.NewCityUsecase(cityRepo)
 	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
@@ -81,9 +85,12 @@ func main() {
 	resetHandler := delivery.NewPasswordResetHandler(resetUsecase)
 	adHandler := delivery.NewAdHandler(adUsecase)
 	listingHandler := delivery.NewListingHandler(listingUsecase)
+	addressHandler := delivery.NewAddressHandler(addressUsecase)
+	cityHandler := delivery.NewCityHandler(cityUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
-	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler, listingHandler, csrfHandler)
+	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
+		listingHandler, csrfHandler, addressHandler, cityHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

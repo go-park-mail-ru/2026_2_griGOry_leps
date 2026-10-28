@@ -28,6 +28,18 @@ type PasswordResetUsecase interface {
 
 type AdUsecase interface {
 	List(ctx context.Context, p domain.ListAdsParams) (domain.AdPage, error)
+	ListMine(ctx context.Context, f domain.MyAdFilter) (domain.MyAdPage, error)
+}
+
+type AddressUsecase interface {
+	List(ctx context.Context, userID int32) ([]domain.Address, error)
+	Create(ctx context.Context, userID int32, in domain.AddressInput) (domain.Address, error)
+	Update(ctx context.Context, userID, id int32, in domain.AddressInput) (domain.Address, error)
+	Delete(ctx context.Context, userID, id int32) error
+}
+
+type CityUsecase interface {
+	Search(ctx context.Context, query string) ([]domain.City, error)
 }
 
 type ListingUsecase interface {

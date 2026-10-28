@@ -3,7 +3,8 @@ package domain
 import "time"
 
 const (
-	AdStatusActive = "active"
+	AdStatusActive   = "active"
+	AdStatusRejected = "rejected"
 
 	AdSortNewest    = "newest"
 	AdSortPriceAsc  = "price_asc"
@@ -16,12 +17,15 @@ type Ad struct {
 	CategoryID  int32
 	Title       string
 	Description string
-	Price       int64 // в копейках
+	Price       *int64 // в копейках
 	City        string
 	HasDelivery bool
+	IsFree      bool
 	ImageURL    string
 	Status      string
+	CloseReason string
 	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type AdFilter struct {
@@ -41,6 +45,22 @@ type AdPage struct {
 	Total  int
 	Limit  int
 	Offset int
+}
+
+var AdStatuses = []string{
+	AdStatusDraft, AdStatusModeration, AdStatusRejected, AdStatusActive, AdStatusClosed, AdStatusSold,
+}
+
+type MyAdFilter struct {
+	UserID int32
+	Status string
+	Limit  int
+	Offset int
+}
+
+type MyAdPage struct {
+	AdPage
+	Counts map[string]int
 }
 
 type ListAdsParams struct {

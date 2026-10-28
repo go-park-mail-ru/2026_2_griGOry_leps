@@ -45,7 +45,7 @@ func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.L
 	if l.IsOwner {
 		return l, nil
 	}
-	if l.Status == domain.AdStatusDraft || l.Status == domain.AdStatusModeration {
+	if l.Status == domain.AdStatusDraft || l.Status == domain.AdStatusModeration || l.Status == domain.AdStatusRejected {
 		return domain.Listing{}, domain.ErrListingNotFound
 	}
 	l.CloseReason = nil
@@ -137,7 +137,7 @@ func (uc *ListingUsecase) Update(ctx context.Context, userID, id int32, f domain
 		if err := uc.apply(ctx, &state, f); err != nil {
 			return err
 		}
-		toModeration := publish != nil && *publish
+		toModeration := (publish != nil && *publish) || state.Status == domain.AdStatusRejected
 		if !isDraft || toModeration {
 			if err := checkComplete(state); err != nil {
 				return err

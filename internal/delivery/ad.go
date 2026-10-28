@@ -20,17 +20,25 @@ func NewAdHandler(ads AdUsecase) *AdHandler {
 	return &AdHandler{ads: ads}
 }
 
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func adResponse(ad domain.Ad) map[string]any {
-	var imageURL any
-	if ad.ImageURL != "" {
-		imageURL = ad.ImageURL
+	var price any
+	if ad.Price != nil {
+		price = formatPrice(*ad.Price)
 	}
 
 	return map[string]any{
 		"id":           ad.ID,
 		"title":        ad.Title,
-		"price":        fmt.Sprintf("%d.%02d", ad.Price/100, ad.Price%100),
-		"image_url":    imageURL,
+		"price":        price,
+		"is_free":      ad.IsFree,
+		"image_url":    nullable(ad.ImageURL),
 		"city":         ad.City,
 		"has_delivery": ad.HasDelivery,
 		"category_id":  ad.CategoryID,
@@ -88,17 +96,58 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	writeJSON(r.Context(), w, http.StatusOK, adPageResponse(page, adResponse))
+}
+
+func adPageResponse(page domain.AdPage, card func(domain.Ad) map[string]any) map[string]any {
 	items := make([]map[string]any, 0, len(page.Items))
 	for _, ad := range page.Items {
-		items = append(items, adResponse(ad))
+		items = append(items, card(ad))
 	}
-
-	writeJSON(r.Context(), w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"items":  items,
 		"total":  page.Total,
 		"limit":  page.Limit,
 		"offset": page.Offset,
-	})
+	}
+}
+
+func myAdResponse(ad domain.Ad) map[string]any {
+	resp := adResponse(ad)
+	resp["status"] = ad.Status
+	resp["close_reason"] = nullable(ad.CloseReason)
+	resp["updated_at"] = ad.UpdatedAt
+	return resp
+}
+
+func (h *AdHandler) ListMine(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := domain.MyAdFilter{UserID: userIDFromContext(r.Context()), Status: q.Get("status")}
+
+	var err error
+	if f.Limit, err = intParam(q, "limit", 1); err != nil {
+		writeError(r.Context(), w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if f.Offset, err = intParam(q, "offset", 0); err != nil {
+		writeError(r.Context(), w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	page, err := h.ads.ListMine(r.Context(), f)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidStatus) {
+			writeError(r.Context(), w, http.StatusBadRequest, err.Error())
+			return
+		}
+		slog.ErrorContext(r.Context(), "list my ads", "err", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	resp := adPageResponse(page.AdPage, myAdResponse)
+	resp["counts"] = page.Counts
+	writeJSON(r.Context(), w, http.StatusOK, resp)
 }
 
 func intParam(q url.Values, name string, minValue int) (int, error) {

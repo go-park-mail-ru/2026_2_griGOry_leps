@@ -26,4 +26,12 @@ var (
 	ErrImageTooLarge     = errors.New("image resolution must be at most 4096x4096")
 	ErrInvalidResetToken = errors.New("invalid or expired token")
 	ErrInvalidContact    = errors.New("invalid email or phone")
+
+	ErrInvalidStatus         = errors.New("invalid status")
+	ErrAddressNotFound       = errors.New("address not found")
+	ErrMissingStreet         = errors.New("street is required")
+	ErrStreetTooLong         = errors.New("street must be at most 200 characters")
+	ErrMissingHouse          = errors.New("house is required")
+	ErrHouseTooLong          = errors.New("house must be at most 50 characters")
+	ErrAddressCommentTooLong = errors.New("comment must be at most 200 characters")
 )
