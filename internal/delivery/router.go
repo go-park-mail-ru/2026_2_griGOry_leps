@@ -35,6 +35,7 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	registerLimit := ratelimit.New(5, 10*time.Minute)
 	forgotLimit := ratelimit.New(5, 10*time.Minute)
 	passwordLimit := ratelimit.New(10, 10*time.Minute)
+	reportLimit := ratelimit.New(5, 10*time.Minute)
 
 	r.HandleFunc("/api/register", rateLimit(registerLimit, authHandler.Register)).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", rateLimit(loginLimit, authHandler.Login)).Methods(http.MethodPost)
@@ -62,7 +63,7 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.HandleFunc(sellerPath, sellerHandler.Get).Methods(http.MethodGet)
 	r.HandleFunc(sellerPath+"/listings", sellerHandler.Listings).Methods(http.MethodGet)
 	r.HandleFunc(sellerPath+"/reviews", sellerHandler.Reviews).Methods(http.MethodGet)
-	r.Handle(sellerPath+"/reports", auth(sellerHandler.Report)).Methods(http.MethodPost)
+	r.Handle(sellerPath+"/reports", auth(rateLimit(reportLimit, sellerHandler.Report))).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/categories", listingHandler.Categories).Methods(http.MethodGet)
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)

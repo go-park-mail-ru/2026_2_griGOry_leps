@@ -990,7 +990,9 @@ paths:
       tags: [Продавцы]
       operationId: reportSeller
       summary: Пожаловаться на продавца
-      description: Жалобу видят только модераторы, продавец не узнаёт, кто её отправил.
+      description: |
+        Жалобу видят только модераторы, продавец не узнаёт, кто её отправил.
+        Не больше 5 жалоб за 10 минут с одного IP.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1015,6 +1017,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
         '404': { $ref: '#/components/responses/SellerNotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Корзина
@@ -2002,7 +2005,7 @@ components:
             first_name: { type: string, example: Анна }
             avatar_url: { type: string, format: uri-reference, nullable: true }
         rating: { type: number, minimum: 1, maximum: 5, example: 5 }
-        text: { type: string, description: Пустая строка, если покупатель поставил только оценку. }
+        text: { type: string, description: 'Пустая строка, если покупатель поставил только оценку.' }
         listing_title:
           type: string
           nullable: true
@@ -2024,7 +2027,7 @@ components:
         total: { type: integer, description: С учётом `with_photos`. }
         limit: { type: integer }
         offset: { type: integer }
-        rating: { type: number, example: 4.8, description: Средняя оценка по всем отзывам, 0 без отзывов. }
+        rating: { type: number, example: 4.8, description: 'Средняя оценка по всем отзывам, 0 без отзывов.' }
         distribution:
           type: object
           description: Число отзывов на каждую звезду, все ключи есть всегда.
