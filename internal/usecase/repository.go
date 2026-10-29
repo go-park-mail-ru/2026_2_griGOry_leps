@@ -55,6 +55,13 @@ type AdRepository interface {
 	ListByUser(ctx context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error)
 }
 
+type SellerRepository interface {
+	Get(ctx context.Context, id int32) (domain.SellerProfile, error)
+	ListAds(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error)
+	ListReviews(ctx context.Context, f domain.ReviewFilter) (domain.ReviewPage, error)
+	CreateReport(ctx context.Context, report domain.SellerReport) error
+}
+
 type AddressRepository interface {
 	List(ctx context.Context, userID int32) ([]domain.Address, error)
 	Count(ctx context.Context, userID int32) (int, error)

@@ -1,5 +1,5 @@
 -- Тестовые данные, чтобы лента не была пустой. Запускать один раз на базу после миграций: make seed
--- Продавец: seller@goget.pw / Seller123
+-- Продавец: seller@goget.pw / Seller123, покупатели с отзывами: buyer1@goget.pw и buyer2@goget.pw с тем же паролем
 
 BEGIN;
 
@@ -57,5 +57,22 @@ INSERT INTO ad_image (ad_id, user_id, url)
 SELECT i.id, i.user_id, d.image
 FROM inserted i
 JOIN data d ON d.title = i.title;
+
+INSERT INTO user_account (first_name, email, phone_number, password_hash)
+VALUES ('Ольга', 'buyer1@goget.pw', '+79990000002', '$2a$10$gRYWtxyjUoUpvKEaBkyAduv598hcAGBmKSPThGDEDORdFfW.WKv7i'),
+       ('Пётр', 'buyer2@goget.pw', '+79990000003', '$2a$10$gRYWtxyjUoUpvKEaBkyAduv598hcAGBmKSPThGDEDORdFfW.WKv7i')
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO review (user_id, ad_id, text, rating, created_at)
+SELECT b.user_id, a.id, r.text, r.rating, now() - r.days_ago * interval '1 day'
+FROM (VALUES
+    ('buyer1@goget.pw', 'Велосипед горный, состояние отличное', 'Всё как в описании, продавец на связи', 5, 2),
+    ('buyer2@goget.pw', 'Велосипед горный, состояние отличное', 'Пришлось подождать, но в итоге всё хорошо', 4, 5),
+    ('buyer1@goget.pw', 'Палатка 4-местная, двухслойная', 'Палатка с небольшой дыркой, о ней не предупредили', 3, 9)
+) AS r (email, title, text, rating, days_ago)
+JOIN user_account b ON b.email = r.email
+JOIN ad a ON a.title = r.title
+JOIN user_account s ON s.user_id = a.user_id AND s.email = 'seller@goget.pw'
+ON CONFLICT (user_id, ad_id) DO NOTHING;
 
 COMMIT;

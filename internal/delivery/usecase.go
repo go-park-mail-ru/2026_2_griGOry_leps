@@ -31,6 +31,13 @@ type AdUsecase interface {
 	ListMine(ctx context.Context, f domain.MyAdFilter) (domain.MyAdPage, error)
 }
 
+type SellerUsecase interface {
+	Profile(ctx context.Context, id int32) (domain.SellerProfile, error)
+	Listings(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error)
+	Reviews(ctx context.Context, f domain.ReviewFilter) (domain.ReviewPage, error)
+	Report(ctx context.Context, report domain.SellerReport) error
+}
+
 type AddressUsecase interface {
 	List(ctx context.Context, userID int32) ([]domain.Address, error)
 	Create(ctx context.Context, userID int32, in domain.AddressInput) (domain.Address, error)

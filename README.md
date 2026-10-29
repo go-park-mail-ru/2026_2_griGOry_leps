@@ -203,6 +203,10 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `PATCH` | `/api/me/addresses/{id}` | изменить адрес или сделать его основным |
 | `DELETE` | `/api/me/addresses/{id}` | удалить адрес; если он был основным, основным становится самый старый из оставшихся |
 | `GET` | `/api/cities?query=…` | поиск города по началу названия |
+| `GET` | `/api/sellers/{id}` | публичный профиль продавца |
+| `GET` | `/api/sellers/{id}/listings` | активные объявления продавца и его разделы |
+| `GET` | `/api/sellers/{id}/reviews` | отзывы о продавце, сводка рейтинга |
+| `POST` | `/api/sellers/{id}/reports` | пожаловаться на продавца |
 | `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
 
 Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.

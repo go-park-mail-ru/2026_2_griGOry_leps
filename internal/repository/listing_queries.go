@@ -32,8 +32,7 @@ const getListingQuery = `
     LEFT JOIN LATERAL (
         SELECT ROUND(AVG(rv.rating), 2)::float8 AS rating, COUNT(*) AS reviews_count
         FROM review rv
-        JOIN ad sa ON sa.id = rv.ad_id
-        WHERE sa.user_id = a.user_id
+        WHERE rv.seller_id = a.user_id
     ) r ON true
     WHERE a.id = $1
 `

@@ -51,6 +51,7 @@ func main() {
 	adRepo := repository.NewAdRepository(pool)
 	addressRepo := repository.NewAddressRepository(pool)
 	cityRepo := repository.NewCityRepository(pool)
+	sellerRepo := repository.NewSellerRepository(pool)
 
 	avatarStorage, err := repository.NewFileStorage(filepath.Join(cfg.UploadDir, "avatars"))
 	if err != nil {
@@ -78,6 +79,7 @@ func main() {
 	adUsecase := usecase.NewAdUsecase(adRepo)
 	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
 	cityUsecase := usecase.NewCityUsecase(cityRepo)
+	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
 	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
@@ -87,10 +89,11 @@ func main() {
 	listingHandler := delivery.NewListingHandler(listingUsecase)
 	addressHandler := delivery.NewAddressHandler(addressUsecase)
 	cityHandler := delivery.NewCityHandler(cityUsecase)
+	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
 	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
-		listingHandler, csrfHandler, addressHandler, cityHandler)
+		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
