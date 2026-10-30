@@ -19,7 +19,8 @@ const (
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
 	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
-	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler) http.Handler {
+	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler,
+	verifyHandler *EmailVerificationHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -36,6 +37,8 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	forgotLimit := ratelimit.New(5, 10*time.Minute)
 	passwordLimit := ratelimit.New(10, 10*time.Minute)
 	reportLimit := ratelimit.New(5, 10*time.Minute)
+	verifyLimit := ratelimit.New(10, 10*time.Minute)
+	resendLimit := ratelimit.New(5, 10*time.Minute)
 
 	r.HandleFunc("/api/register", rateLimit(registerLimit, authHandler.Register)).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", rateLimit(loginLimit, authHandler.Login)).Methods(http.MethodPost)
@@ -45,6 +48,13 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.HandleFunc("/api/password/reset", rateLimit(passwordLimit, resetHandler.Reset)).Methods(http.MethodPost)
 
 	auth := func(h http.HandlerFunc) http.Handler { return authHandler.RequireAuth(h) }
+	verified := func(h http.HandlerFunc) http.Handler { return authHandler.RequireAuth(requireVerifiedEmail(h)) }
+
+	r.HandleFunc("/api/email/verify", rateLimit(verifyLimit, verifyHandler.Verify)).Methods(http.MethodPost)
+	r.Handle("/api/email/verify/resend", auth(rateLimit(resendLimit, verifyHandler.Resend))).Methods(http.MethodPost)
+	r.HandleFunc("/api/email/verify/resend-by-link", rateLimit(resendLimit, verifyHandler.ResendByToken)).Methods(http.MethodPost)
+	r.Handle("/api/me/email/pending", auth(verifyHandler.CancelEmailChange)).Methods(http.MethodDelete)
+
 	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)
 	r.Handle("/api/me", auth(profileHandler.Update)).Methods(http.MethodPatch)
 	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
@@ -53,9 +63,9 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 
 	const addressPath = "/api/me/addresses/{address_id:[0-9]+}"
 	r.Handle("/api/me/addresses", auth(addressHandler.List)).Methods(http.MethodGet)
-	r.Handle("/api/me/addresses", auth(addressHandler.Create)).Methods(http.MethodPost)
-	r.Handle(addressPath, auth(addressHandler.Update)).Methods(http.MethodPatch)
-	r.Handle(addressPath, auth(addressHandler.Delete)).Methods(http.MethodDelete)
+	r.Handle("/api/me/addresses", verified(addressHandler.Create)).Methods(http.MethodPost)
+	r.Handle(addressPath, verified(addressHandler.Update)).Methods(http.MethodPatch)
+	r.Handle(addressPath, verified(addressHandler.Delete)).Methods(http.MethodDelete)
 
 	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
 
@@ -63,7 +73,7 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.HandleFunc(sellerPath, sellerHandler.Get).Methods(http.MethodGet)
 	r.HandleFunc(sellerPath+"/listings", sellerHandler.Listings).Methods(http.MethodGet)
 	r.HandleFunc(sellerPath+"/reviews", sellerHandler.Reviews).Methods(http.MethodGet)
-	r.Handle(sellerPath+"/reports", auth(rateLimit(reportLimit, sellerHandler.Report))).Methods(http.MethodPost)
+	r.Handle(sellerPath+"/reports", verified(rateLimit(reportLimit, sellerHandler.Report))).Methods(http.MethodPost)
 
 	r.HandleFunc("/api/categories", listingHandler.Categories).Methods(http.MethodGet)
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)

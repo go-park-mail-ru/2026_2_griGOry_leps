@@ -17,6 +17,9 @@ type UserRepository interface {
 	LockByID(ctx context.Context, id int32) error
 	GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error)
 	UpdatePassword(ctx context.Context, id int32, passwordHash string) error
+	SetEmailVerified(ctx context.Context, id int32) error
+	SetPendingEmail(ctx context.Context, id int32, email *string) error
+	ConfirmPendingEmail(ctx context.Context, id int32) error
 	GetAvatarForUpdate(ctx context.Context, id int32) (string, error)
 	UpdateAvatar(ctx context.Context, id int32, avatar string) error
 }
@@ -37,8 +40,21 @@ type PasswordResetRepository interface {
 	UseAll(ctx context.Context, userID int32) error
 }
 
+type EmailVerificationRepository interface {
+	Create(ctx context.Context, tokenHash string, userID int32, email string, expiresAt time.Time) error
+	LastCreatedAt(ctx context.Context, userID int32) (time.Time, error)
+	Get(ctx context.Context, tokenHash string) (domain.EmailVerification, error)
+	GetForUpdate(ctx context.Context, tokenHash string) (domain.EmailVerification, error)
+	UseAll(ctx context.Context, userID int32) error
+}
+
 type Mailer interface {
 	SendPasswordReset(ctx context.Context, to, link string) error
+	SendEmailVerification(ctx context.Context, to, link string) error
+}
+
+type EmailVerifier interface {
+	SendLink(ctx context.Context, userID int32, email string) error
 }
 
 type FileStorage interface {

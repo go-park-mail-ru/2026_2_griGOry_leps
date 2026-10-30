@@ -39,10 +39,11 @@ type loginRequest struct {
 
 func userResponse(user domain.User) map[string]any {
 	return map[string]any{
-		"id":         user.ID,
-		"email":      user.Email,
-		"first_name": user.FirstName,
-		"phone":      user.Phone,
+		"id":             user.ID,
+		"email":          user.Email,
+		"first_name":     user.FirstName,
+		"phone":          user.Phone,
+		"email_verified": user.EmailVerified,
 	}
 }
 
@@ -175,6 +176,7 @@ func (h *AuthHandler) RequireAuth(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
+		ctx = context.WithValue(ctx, emailVerifiedKey{}, user.EmailVerified)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -200,7 +202,24 @@ func (h *AuthHandler) OptionalAuth(next http.Handler) http.Handler {
 	})
 }
 
+func emailVerified(ctx context.Context) bool {
+	verified, _ := ctx.Value(emailVerifiedKey{}).(bool)
+	return verified
+}
+
+func requireVerifiedEmail(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !emailVerified(r.Context()) {
+			writeError(r.Context(), w, http.StatusForbidden, domain.ErrEmailNotVerified.Error())
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 type userIDKey struct{}
+
+type emailVerifiedKey struct{}
 
 func userIDFromContext(ctx context.Context) int32 {
 	id, _ := ctx.Value(userIDKey{}).(int32)

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -32,11 +33,12 @@ var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-passwo
 type AuthUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
+	verifier EmailVerifier
 	tx       Transactor
 }
 
-func NewAuthUsecase(users UserRepository, sessions SessionRepository, tx Transactor) *AuthUsecase {
-	return &AuthUsecase{users: users, sessions: sessions, tx: tx}
+func NewAuthUsecase(users UserRepository, sessions SessionRepository, verifier EmailVerifier, tx Transactor) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions, verifier: verifier, tx: tx}
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
@@ -80,6 +82,10 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 	})
 	if err != nil {
 		return domain.User{}, domain.Session{}, err
+	}
+
+	if err := uc.verifier.SendLink(ctx, user.ID, user.Email); err != nil {
+		slog.ErrorContext(ctx, "send email verification link", "err", err)
 	}
 
 	user.PasswordHash = ""

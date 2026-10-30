@@ -16,14 +16,17 @@ func rateLimit(l *ratelimit.Limiter, next http.HandlerFunc) http.HandlerFunc {
 		ip := clientIP(r)
 		ok, retryAfter := l.Allow(ip, time.Now())
 		if !ok {
-			seconds := max(1, int(math.Ceil(retryAfter.Seconds())))
-			w.Header().Set("Retry-After", strconv.Itoa(seconds))
+			setRetryAfter(w, retryAfter)
 			slog.WarnContext(r.Context(), "rate limit exceeded", "path", r.URL.Path, "ip", ip)
 			writeError(r.Context(), w, http.StatusTooManyRequests, "too many requests")
 			return
 		}
 		next(w, r)
 	}
+}
+
+func setRetryAfter(w http.ResponseWriter, d time.Duration) {
+	w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(d.Seconds())))))
 }
 
 func clientIP(r *http.Request) string {

@@ -20,7 +20,7 @@ func NewUserRepository(db DB) *UserRepository {
 
 func scanUser(row pgx.Row) (domain.User, error) {
 	var user domain.User
-	err := row.Scan(&user.ID, &user.FirstName, &user.Email, &user.Phone, &user.PasswordHash, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.FirstName, &user.Email, &user.Phone, &user.PasswordHash, &user.EmailVerified, &user.PendingEmail, &user.CreatedAt)
 	return user, err
 }
 
@@ -83,7 +83,7 @@ func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profi
 	)
 	err := conn(ctx, r.db).QueryRow(ctx, getProfileQuery, id).Scan(
 		&p.ID, &p.FirstName, &p.Email, &p.Phone, &p.CreatedAt,
-		&p.PhoneVerified, &cityID, &cityName, &p.About, &p.Avatar,
+		&p.EmailVerified, &p.PendingEmail, &p.PhoneVerified, &cityID, &cityName, &p.About, &p.Avatar,
 		&p.Rating, &p.ReviewsCount,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -110,6 +110,42 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, id int32, upd domain
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) SetEmailVerified(ctx context.Context, id int32) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, setEmailVerifiedQuery, id)
+	if err != nil {
+		return fmt.Errorf("set email verified: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) SetPendingEmail(ctx context.Context, id int32, email *string) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, setPendingEmailQuery, id, email)
+	if err != nil {
+		return fmt.Errorf("set pending email: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) ConfirmPendingEmail(ctx context.Context, id int32) error {
+	tag, err := conn(ctx, r.db).Exec(ctx, confirmPendingEmailQuery, id)
+	if err != nil {
+		if domainErr := constraintError(err); domainErr != nil {
+			return domainErr
+		}
+		return fmt.Errorf("confirm pending email: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNoPendingEmail
 	}
 	return nil
 }
