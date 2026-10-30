@@ -27,6 +27,11 @@ var (
 	ErrInvalidResetToken = errors.New("invalid or expired token")
 	ErrInvalidContact    = errors.New("invalid email or phone")
 
+	ErrInvalidVerifyToken   = errors.New("invalid or expired token")
+	ErrEmailAlreadyVerified = errors.New("email already verified")
+	ErrEmailNotVerified     = errors.New("email not verified")
+	ErrNoPendingEmail       = errors.New("no pending email change")
+
 	ErrInvalidStatus         = errors.New("invalid status")
 	ErrSellerNotFound        = errors.New("seller not found")
 	ErrInvalidReportReason   = errors.New("invalid report reason")

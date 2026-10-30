@@ -34,6 +34,8 @@ type profileResponse struct {
 	Email         string        `json:"email"`
 	FirstName     string        `json:"first_name"`
 	Phone         string        `json:"phone"`
+	EmailVerified bool          `json:"email_verified"`
+	PendingEmail  *string       `json:"pending_email"`
 	PhoneVerified bool          `json:"phone_verified"`
 	City          *cityResponse `json:"city"`
 	About         string        `json:"about"`
@@ -49,6 +51,7 @@ func newProfileResponse(p domain.Profile) profileResponse {
 		Email:         p.Email,
 		FirstName:     p.FirstName,
 		Phone:         p.Phone,
+		EmailVerified: p.EmailVerified,
 		PhoneVerified: p.PhoneVerified,
 		About:         p.About,
 		Rating:        p.Rating,
@@ -57,6 +60,9 @@ func newProfileResponse(p domain.Profile) profileResponse {
 	}
 	if p.City != nil {
 		resp.City = &cityResponse{ID: p.City.ID, Name: p.City.Name}
+	}
+	if p.PendingEmail != "" {
+		resp.PendingEmail = &p.PendingEmail
 	}
 	if p.Avatar != "" {
 		url := avatarURL(p.Avatar)

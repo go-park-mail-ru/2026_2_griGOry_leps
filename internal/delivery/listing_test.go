@@ -63,9 +63,36 @@ func (s *listingStub) Categories(context.Context) ([]domain.CategoryNode, error)
 }
 
 func listingRequestFor(method, body string) *http.Request {
+	req := unverifiedListingRequest(method, body)
+	return req.WithContext(context.WithValue(req.Context(), emailVerifiedKey{}, true))
+}
+
+func unverifiedListingRequest(method, body string) *http.Request {
 	req := httptest.NewRequest(method, "/api/listings/7", strings.NewReader(body))
 	req = mux.SetURLVars(req, map[string]string{"listing_id": "7"})
 	return req.WithContext(context.WithValue(req.Context(), userIDKey{}, int32(1)))
+}
+
+func TestListing_UnverifiedCanOnlyKeepDrafts(t *testing.T) {
+	stub := &listingStub{}
+	h := NewListingHandler(stub)
+
+	rec := httptest.NewRecorder()
+	h.Create(rec, unverifiedListingRequest(http.MethodPost, `{"title":"Диван"}`))
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.JSONEq(t, `{"error":"email not verified"}`, rec.Body.String())
+
+	rec = httptest.NewRecorder()
+	h.Create(rec, unverifiedListingRequest(http.MethodPost, `{"title":"Диван","publish":false}`))
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	rec = httptest.NewRecorder()
+	h.Update(rec, unverifiedListingRequest(http.MethodPatch, `{"title":"Диван"}`))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	h.Update(rec, unverifiedListingRequest(http.MethodPatch, `{"publish":true}`))
+	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
 func TestListing_UpdateDistinguishesNullAndMissing(t *testing.T) {

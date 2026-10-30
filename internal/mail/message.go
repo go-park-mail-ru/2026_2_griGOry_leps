@@ -39,6 +39,38 @@ var resetHTML = template.Must(template.New("reset").Parse(`<!doctype html>
 </html>
 `))
 
+const verifySubject = "Подтверждение почты на Go&Get"
+
+const verifyText = `Здравствуйте!
+
+Подтвердите почту для аккаунта на Go&Get. Для этого перейдите по ссылке:
+
+%s
+
+Ссылка действует 30 минут. Если вы не регистрировались на Go&Get и не меняли там почту, просто проигнорируйте это письмо.
+`
+
+var verifyHTML = template.Must(template.New("verify").Parse(`<!doctype html>
+<html lang="ru">
+<body style="margin:0;padding:24px;background:#f5f5f7;font-family:Arial,Helvetica,sans-serif;color:#1d1d1f">
+  <div style="max-width:480px;margin:0 auto;padding:32px;background:#ffffff;border-radius:16px">
+    <h1 style="margin:0 0 16px;font-size:22px">Подтвердите почту</h1>
+    <p style="margin:0 0 24px;font-size:15px;line-height:1.5">Нажмите на кнопку, чтобы подтвердить почту для аккаунта на Go&amp;Get.</p>
+    <a href="{{.}}" style="display:inline-block;padding:14px 28px;background:#2f6bff;color:#ffffff;text-decoration:none;border-radius:10px;font-size:15px">Подтвердить почту</a>
+    <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#6e6e73">Ссылка действует 30 минут. Если вы не регистрировались на Go&amp;Get и не меняли там почту, просто проигнорируйте это письмо.</p>
+  </div>
+</body>
+</html>
+`))
+
+func emailVerificationMessage(from *mail.Address, to, link string) ([]byte, error) {
+	var html bytes.Buffer
+	if err := verifyHTML.Execute(&html, link); err != nil {
+		return nil, fmt.Errorf("render verification mail: %w", err)
+	}
+	return buildMessage(from, to, verifySubject, fmt.Sprintf(verifyText, link), html.String())
+}
+
 func passwordResetMessage(from *mail.Address, to, link string) ([]byte, error) {
 	var html bytes.Buffer
 	if err := resetHTML.Execute(&html, link); err != nil {

@@ -88,6 +88,8 @@ func TestProfile_Get(t *testing.T) {
 		"email": "anna@goget.pw",
 		"first_name": "Анна",
 		"phone": "+79990000001",
+		"email_verified": false,
+		"pending_email": null,
 		"phone_verified": false,
 		"city": {"id": 1, "name": "Москва"},
 		"about": "Продаю вещи",

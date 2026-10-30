@@ -61,6 +61,23 @@ func TestPasswordResetMessage(t *testing.T) {
 	require.Contains(t, parts["text/html"], `href="http://goget.pw:8001/reset-password?token=abc&amp;x=1"`)
 }
 
+func TestEmailVerificationMessage(t *testing.T) {
+	from, err := mail.ParseAddress("Go&Get <noreply@goget.pw>")
+	require.NoError(t, err)
+	link := "http://goget.pw:8001/verify-email?token=abc&x=1"
+
+	raw, err := emailVerificationMessage(from, "anna@goget.pw", link)
+	require.NoError(t, err)
+
+	msg, parts := readParts(t, raw)
+	subject, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	require.NoError(t, err)
+	require.Equal(t, verifySubject, subject)
+	require.Equal(t, "anna@goget.pw", msg.Header.Get("To"))
+	require.Contains(t, parts["text/plain"], link)
+	require.Contains(t, parts["text/html"], `href="http://goget.pw:8001/verify-email?token=abc&amp;x=1"`)
+}
+
 type fakeSMTP struct {
 	addr     string
 	received chan string

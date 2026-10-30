@@ -168,6 +168,9 @@ func (uc *PasswordResetUsecase) ResetPassword(ctx context.Context, token, passwo
 		if err := uc.users.UpdatePassword(ctx, reset.UserID, string(hash)); err != nil {
 			return err
 		}
+		if err := uc.users.SetEmailVerified(ctx, reset.UserID); err != nil {
+			return err
+		}
 		if err := uc.resets.UseAll(ctx, reset.UserID); err != nil {
 			return err
 		}

@@ -72,9 +72,11 @@ func main() {
 	}
 
 	tx := repository.NewTransactor(pool)
-	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, tx)
 	resetRepo := repository.NewPasswordResetRepository(pool)
-	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, avatarStorage, tx)
+	verifyRepo := repository.NewEmailVerificationRepository(pool)
+	verifyUsecase := usecase.NewEmailVerificationUsecase(userRepo, verifyRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/verify-email")
+	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, verifyUsecase, tx)
+	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, avatarStorage, tx)
 	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
 	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
@@ -90,10 +92,11 @@ func main() {
 	addressHandler := delivery.NewAddressHandler(addressUsecase)
 	cityHandler := delivery.NewCityHandler(cityUsecase)
 	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
+	verifyHandler := delivery.NewEmailVerificationHandler(verifyUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
 	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
-		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler)
+		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler, verifyHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

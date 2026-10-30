@@ -25,13 +25,14 @@ type ProfileUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
 	resets   PasswordResetRepository
+	verifier EmailVerifier
 	avatars  FileStorage
 	tx       Transactor
 }
 
 func NewProfileUsecase(users UserRepository, sessions SessionRepository, resets PasswordResetRepository,
-	avatars FileStorage, tx Transactor) *ProfileUsecase {
-	return &ProfileUsecase{users: users, sessions: sessions, resets: resets, avatars: avatars, tx: tx}
+	verifier EmailVerifier, avatars FileStorage, tx Transactor) *ProfileUsecase {
+	return &ProfileUsecase{users: users, sessions: sessions, resets: resets, verifier: verifier, avatars: avatars, tx: tx}
 }
 
 func (uc *ProfileUsecase) Profile(ctx context.Context, userID int32) (domain.Profile, error) {
@@ -43,6 +44,7 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 		return domain.Profile{}, err
 	}
 
+	var linkTo string
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := uc.users.LockByID(ctx, userID); err != nil {
 			return err
@@ -52,11 +54,37 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 		if err != nil {
 			return err
 		}
+
+		if upd.Email != nil {
+			email := *upd.Email
+			switch {
+			case email == before.Email:
+				upd.Email = nil
+				if before.PendingEmail != "" {
+					if err := uc.users.SetPendingEmail(ctx, userID, nil); err != nil {
+						return err
+					}
+				}
+			case !before.EmailVerified:
+				linkTo = email
+			default:
+				upd.Email = nil
+				if email != before.PendingEmail {
+					if err := uc.checkEmailFree(ctx, userID, email); err != nil {
+						return err
+					}
+					if err := uc.users.SetPendingEmail(ctx, userID, &email); err != nil {
+						return err
+					}
+					linkTo = email
+				}
+			}
+		}
+
 		if err := uc.users.UpdateProfile(ctx, userID, upd); err != nil {
 			return err
 		}
-
-		if upd.Email != nil && *upd.Email != before.Email {
+		if upd.Email != nil {
 			return uc.resets.UseAll(ctx, userID)
 		}
 		return nil
@@ -64,7 +92,26 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 	if err != nil {
 		return domain.Profile{}, err
 	}
+
+	if linkTo != "" {
+		if err := uc.verifier.SendLink(ctx, userID, linkTo); err != nil {
+			slog.ErrorContext(ctx, "send email verification link", "err", err)
+		}
+	}
 	return uc.users.GetProfile(ctx, userID)
+}
+
+func (uc *ProfileUsecase) checkEmailFree(ctx context.Context, userID int32, email string) error {
+	other, err := uc.users.GetByEmail(ctx, email)
+	switch {
+	case errors.Is(err, domain.ErrUserNotFound):
+		return nil
+	case err != nil:
+		return err
+	case other.ID != userID:
+		return domain.ErrEmailTaken
+	}
+	return nil
 }
 
 func normalizeProfileUpdate(upd *domain.ProfileUpdate) error {

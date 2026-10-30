@@ -19,6 +19,8 @@ type noopMailer struct{}
 
 func (noopMailer) SendPasswordReset(context.Context, string, string) error { return nil }
 
+func (noopMailer) SendEmailVerification(context.Context, string, string) error { return nil }
+
 func sha256Hex(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -70,7 +72,8 @@ func TestResetPassword_LinkDiesAfterEmailOrPasswordChange(t *testing.T) {
 	resets := NewPasswordResetRepository(pool)
 	tx := NewTransactor(pool)
 	resetUC := usecase.NewPasswordResetUsecase(users, sessions, resets, noopMailer{}, tx, "http://front.test/reset-password")
-	profileUC := usecase.NewProfileUsecase(users, sessions, resets, nil, tx)
+	verifier := usecase.NewEmailVerificationUsecase(users, NewEmailVerificationRepository(pool), resets, noopMailer{}, tx, "http://front.test/verify-email")
+	profileUC := usecase.NewProfileUsecase(users, sessions, resets, verifier, nil, tx)
 	user, err := users.Create(ctx, "anna@goget.pw", "hash", "Анна", "+79990000001")
 	require.NoError(t, err)
 

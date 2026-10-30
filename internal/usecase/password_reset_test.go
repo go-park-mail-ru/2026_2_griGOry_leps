@@ -88,6 +88,11 @@ func (m mailerFake) SendPasswordReset(_ context.Context, to, link string) error 
 	return nil
 }
 
+func (m mailerFake) SendEmailVerification(_ context.Context, to, link string) error {
+	m.sent <- sentMail{to: to, link: link}
+	return nil
+}
+
 type resetEnv struct {
 	uc       *PasswordResetUsecase
 	users    *userRepoFake
