@@ -4,7 +4,7 @@
 
 В схеме используются следующие таблицы:
 
-- user_account — пользователи платформы, их город, текст «о себе», файл аватарки и подтверждён ли телефон.
+- user_account — пользователи платформы, их город, текст «о себе», файл аватарки и подтверждены ли почта и телефон, новая почта, которая ждёт подтверждения.
 - city — справочник городов для профиля.
 - category — категории объявлений.
 - ad — объявления, их авторы, категории, цены (в копейках), статусы (draft, moderation, rejected, active, closed, sold), тип (goods — товар, service — услуга), город и доставка.
@@ -21,6 +21,7 @@
 - ad_reaction — реакции пользователей.
 - session — сессии пользователей с идентификатором и временем истечения.
 - password_reset — ссылки для сброса пароля: хеш токена, срок действия и время использования.
+- email_verification — ссылки для подтверждения почты: хеш токена, email, на который ушла ссылка, срок действия и время использования.
 - ad_image — фотографии объявлений.
 - review_image — фотографии к отзывам.
 - address — адреса доставки пользователя; у пользователя не больше одного основного адреса.
@@ -47,6 +48,8 @@ erDiagram
         integer city_id FK
         varchar(500) about
         varchar(100) avatar
+        boolean email_verified
+        varchar(255) pending_email
         boolean phone_verified
     }
 
@@ -175,6 +178,15 @@ erDiagram
         timestamptz used_at
     }
 
+    email_verification {
+        char(64) token_hash PK
+        integer user_id FK
+        varchar(255) email
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz used_at
+    }
+
     ad_image {
         integer image_id PK
         integer ad_id FK
@@ -238,6 +250,7 @@ erDiagram
     ad ||..o{ ad_reaction : ad_id
     user_account ||..o{ session : user_id
     user_account ||..o{ password_reset : user_id
+    user_account ||..o{ email_verification : user_id
     ad ||..o{ ad_image : ad_id
     review ||..o{ review_image : rew_id
     user_account ||..o{ address : user_id
