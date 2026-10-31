@@ -14,14 +14,23 @@ import (
 )
 
 type verifierFake struct {
-	mu   sync.Mutex
-	sent []sentMail
+	mu      sync.Mutex
+	sent    []sentMail
+	revoked int
 }
 
-func (v *verifierFake) SendLink(_ context.Context, _ int32, email string) error {
+func (v *verifierFake) IssueLink(_ context.Context, _ int32, email string) (func(), error) {
+	return func() {
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		v.sent = append(v.sent, sentMail{to: email})
+	}, nil
+}
+
+func (v *verifierFake) RevokeLinks(context.Context, int32) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.sent = append(v.sent, sentMail{to: email})
+	v.revoked++
 	return nil
 }
 
@@ -150,6 +159,14 @@ func (env verifyEnv) waitToken(t *testing.T, to string) string {
 	}
 }
 
+func (env verifyEnv) issue(t *testing.T, email string) string {
+	t.Helper()
+	send, err := env.uc.IssueLink(context.Background(), env.userID, email)
+	require.NoError(t, err)
+	send()
+	return env.waitToken(t, email)
+}
+
 func (env verifyEnv) user(t *testing.T) domain.User {
 	t.Helper()
 	user, err := env.users.GetByID(context.Background(), env.userID)
@@ -166,16 +183,14 @@ func (env verifyEnv) requestChange(t *testing.T, email string) string {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, env.users.SetPendingEmail(ctx, env.userID, &email))
-	require.NoError(t, env.uc.SendLink(ctx, env.userID, email))
-	return env.waitToken(t, email)
+	return env.issue(t, email)
 }
 
 func TestVerify_LinkConfirmsEmailOnce(t *testing.T) {
 	env := newVerifyEnv(t)
 	ctx := context.Background()
 
-	require.NoError(t, env.uc.SendLink(ctx, env.userID, "anna@goget.pw"))
-	token := env.waitToken(t, "anna@goget.pw")
+	token := env.issue(t, "anna@goget.pw")
 
 	res, err := env.uc.Verify(ctx, token)
 	require.NoError(t, err)
@@ -200,8 +215,7 @@ func TestVerify_ExpiredTokenTellsWhereToResend(t *testing.T) {
 	env := newVerifyEnv(t)
 	ctx := context.Background()
 
-	require.NoError(t, env.uc.SendLink(ctx, env.userID, "anna@goget.pw"))
-	token := env.waitToken(t, "anna@goget.pw")
+	token := env.issue(t, "anna@goget.pw")
 	env.verifications.backdate(verifyTokenTTL + time.Minute)
 
 	res, err := env.uc.Verify(ctx, token)
@@ -214,8 +228,7 @@ func TestVerify_OldLinkDiesAfterUnverifiedEmailReplaced(t *testing.T) {
 	env := newVerifyEnv(t)
 	ctx := context.Background()
 
-	require.NoError(t, env.uc.SendLink(ctx, env.userID, "anna@goget.pw"))
-	token := env.waitToken(t, "anna@goget.pw")
+	token := env.issue(t, "anna@goget.pw")
 
 	email := "new@goget.pw"
 	require.NoError(t, env.users.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: &email}))
@@ -328,8 +341,7 @@ func TestResendByToken(t *testing.T) {
 	env := newVerifyEnv(t)
 	ctx := context.Background()
 
-	require.NoError(t, env.uc.SendLink(ctx, env.userID, "anna@goget.pw"))
-	token := env.waitToken(t, "anna@goget.pw")
+	token := env.issue(t, "anna@goget.pw")
 	env.verifications.backdate(verifyTokenTTL)
 
 	email, wait, err := env.uc.ResendByToken(ctx, token)
@@ -417,4 +429,108 @@ func TestResetPassword_ConfirmsEmail(t *testing.T) {
 	user, err := env.users.GetByID(ctx, env.userID)
 	require.NoError(t, err)
 	require.True(t, user.EmailVerified)
+}
+
+func (env verifyEnv) profileUsecase() *ProfileUsecase {
+	return NewProfileUsecase(env.users, newSessionRepoFake(), env.resets, env.uc, nil, txFake{})
+}
+
+func TestResend_RevokesPreviousLink(t *testing.T) {
+	env := newVerifyEnv(t)
+	ctx := context.Background()
+	old := env.issue(t, "anna@goget.pw")
+	env.verifications.backdate(verifyCooldown)
+
+	_, wait, err := env.uc.Resend(ctx, env.userID)
+	require.NoError(t, err)
+	require.Zero(t, wait)
+	fresh := env.waitToken(t, "anna@goget.pw")
+
+	_, err = env.uc.Verify(ctx, old)
+	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
+	_, err = env.uc.Verify(ctx, fresh)
+	require.NoError(t, err)
+}
+
+func TestUpdateProfile_CancelledChangeLinkStaysDead(t *testing.T) {
+	env := newVerifyEnv(t)
+	ctx := context.Background()
+	env.verify(t)
+	profile := env.profileUsecase()
+
+	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	require.NoError(t, err)
+	old := env.waitToken(t, "new@goget.pw")
+
+	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("anna@goget.pw")})
+	require.NoError(t, err)
+	env.verifications.backdate(verifyCooldown)
+	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	require.NoError(t, err)
+	fresh := env.waitToken(t, "new@goget.pw")
+
+	_, err = env.uc.Verify(ctx, old)
+	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
+	res, err := env.uc.Verify(ctx, fresh)
+	require.NoError(t, err)
+	require.True(t, res.Changed)
+}
+
+func TestUpdateProfile_ReplacedPendingEmailRevokesLink(t *testing.T) {
+	env := newVerifyEnv(t)
+	ctx := context.Background()
+	env.verify(t)
+	profile := env.profileUsecase()
+
+	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("first@goget.pw")})
+	require.NoError(t, err)
+	first := env.waitToken(t, "first@goget.pw")
+	env.verifications.backdate(verifyCooldown)
+
+	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
+	require.NoError(t, err)
+	env.waitToken(t, "second@goget.pw")
+
+	_, err = env.uc.Verify(ctx, first)
+	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
+	require.Equal(t, "second@goget.pw", env.user(t).PendingEmail)
+}
+
+func TestUpdateProfile_EmailChangeRespectsCooldown(t *testing.T) {
+	env := newVerifyEnv(t)
+	ctx := context.Background()
+	env.verify(t)
+	profile := env.profileUsecase()
+
+	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("first@goget.pw")})
+	require.NoError(t, err)
+	env.waitToken(t, "first@goget.pw")
+
+	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
+	var cooldown *domain.CooldownError
+	require.ErrorAs(t, err, &cooldown)
+	require.Greater(t, cooldown.Wait, 50*time.Second)
+	require.Empty(t, env.mails)
+	require.Equal(t, "first@goget.pw", env.user(t).PendingEmail)
+
+	_, wait, err := env.uc.Resend(ctx, env.userID)
+	require.NoError(t, err)
+	require.Greater(t, wait, time.Duration(0))
+}
+
+func TestResetPassword_RevokesEmailChange(t *testing.T) {
+	env := newVerifyEnv(t)
+	ctx := context.Background()
+	env.verify(t)
+	token := env.requestChange(t, "attacker@goget.pw")
+	require.NoError(t, env.resets.Create(ctx, hashToken("reset"), env.userID, time.Now().Add(time.Hour)))
+
+	reset := NewPasswordResetUsecase(env.users, newSessionRepoFake(), env.resets, env.uc, mailerFake{sent: env.mails}, txFake{},
+		"http://front.test/reset-password")
+	require.NoError(t, reset.ResetPassword(ctx, "reset", "NewSecret1"))
+
+	require.Empty(t, env.user(t).PendingEmail)
+	_, err := env.uc.Verify(ctx, token)
+	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
+	require.Equal(t, "anna@goget.pw", env.user(t).Email)
 }

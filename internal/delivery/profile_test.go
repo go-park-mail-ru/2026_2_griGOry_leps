@@ -164,6 +164,17 @@ func TestProfile_Update_Errors(t *testing.T) {
 	}
 }
 
+func TestProfile_Update_EmailLinkCooldown(t *testing.T) {
+	rec := httptest.NewRecorder()
+	stub := profileStub{err: &domain.CooldownError{Wait: 42 * time.Second}}
+
+	NewProfileHandler(stub).Update(rec, withAuth(httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"email":"new@goget.pw"}`))))
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.Equal(t, "42", rec.Header().Get("Retry-After"))
+	require.JSONEq(t, `{"error":"too many requests"}`, rec.Body.String())
+}
+
 func TestProfile_Update_InternalError(t *testing.T) {
 	captureLogs(t)
 	rec := httptest.NewRecorder()

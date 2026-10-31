@@ -369,7 +369,8 @@ paths:
       description: |
         Письмо уходит на `pending_email`, а если его нет — на неподтверждённый `email`,
         не чаще раза в минуту. Если минута не прошла — 429, в `Retry-After` сколько
-        секунд осталось. Работает только ссылка из последнего письма.
+        секунд осталось. Работает только ссылка из последнего письма: прежние ссылки
+        отзываются при отправке новой.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -488,6 +489,11 @@ paths:
         - почта подтверждена — новая записывается в `pending_email`, на неё уходит
           ссылка, а `email` меняется только после перехода по ссылке. Если новая почта
           занята другим аккаунтом — 409. Тот же email, что сейчас, отменяет смену.
+
+        Новая ссылка отзывает все прежние. Ссылки шлются не чаще раза в минуту на аккаунт
+        (общий счётчик с `POST /email/verify/resend`): если минута не прошла — 429,
+        в `Retry-After` сколько секунд осталось, профиль не меняется. Смена или
+        восстановление пароля отменяет смену почты и отзывает ссылки.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -518,6 +524,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /me/avatar:
@@ -1533,6 +1540,8 @@ components:
         | `POST /password/reset`, `PUT /me/password` | 10 за 10 минут, общий счётчик |
         | `POST /email/verify` | 10 за 10 минут |
         | `POST /email/verify/resend`, `POST /email/verify/resend-by-link` | 5 за 10 минут, общий счётчик, плюс не чаще раза в минуту на аккаунт |
+        | `PATCH /me` | 20 за 10 минут; письмо при смене почты — не чаще раза в минуту на аккаунт |
+        | `POST /sellers/{seller_id}/reports` | 5 за 10 минут |
 
         Счётчик обнуляется через окно после первого запроса.
       headers:
