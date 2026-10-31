@@ -39,6 +39,7 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	reportLimit := ratelimit.New(5, 10*time.Minute)
 	verifyLimit := ratelimit.New(10, 10*time.Minute)
 	resendLimit := ratelimit.New(5, 10*time.Minute)
+	profileLimit := ratelimit.New(20, 10*time.Minute)
 
 	r.HandleFunc("/api/register", rateLimit(registerLimit, authHandler.Register)).Methods(http.MethodPost)
 	r.HandleFunc("/api/login", rateLimit(loginLimit, authHandler.Login)).Methods(http.MethodPost)
@@ -56,7 +57,7 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/me/email/pending", auth(verifyHandler.CancelEmailChange)).Methods(http.MethodDelete)
 
 	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)
-	r.Handle("/api/me", auth(profileHandler.Update)).Methods(http.MethodPatch)
+	r.Handle("/api/me", auth(rateLimit(profileLimit, profileHandler.Update))).Methods(http.MethodPatch)
 	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
 	r.Handle("/api/me/listings", auth(adHandler.ListMine)).Methods(http.MethodGet)

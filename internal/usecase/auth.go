@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"log/slog"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -66,6 +65,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 
 	var user domain.User
 	var session domain.Session
+	var sendLink func()
 	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var err error
 		user, err = uc.users.Create(ctx, email, string(hash), firstName, phone)
@@ -77,16 +77,18 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		if err != nil {
 			return err
 		}
+		if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
+			return err
+		}
 
-		return uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt)
+		sendLink, err = uc.verifier.IssueLink(ctx, user.ID, user.Email)
+		return err
 	})
 	if err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
 
-	if err := uc.verifier.SendLink(ctx, user.ID, user.Email); err != nil {
-		slog.ErrorContext(ctx, "send email verification link", "err", err)
-	}
+	sendLink()
 
 	user.PasswordHash = ""
 

@@ -77,7 +77,8 @@ func main() {
 	verifyUsecase := usecase.NewEmailVerificationUsecase(userRepo, verifyRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/verify-email")
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, verifyUsecase, tx)
 	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, avatarStorage, tx)
-	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/reset-password")
+	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, mailer, tx,
+		cfg.FrontendOrigin+"/reset-password")
 	adUsecase := usecase.NewAdUsecase(adRepo)
 	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
 	cityUsecase := usecase.NewCityUsecase(cityRepo)

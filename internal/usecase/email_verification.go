@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -30,17 +31,34 @@ func NewEmailVerificationUsecase(users UserRepository, verifications EmailVerifi
 	}
 }
 
-func (uc *EmailVerificationUsecase) SendLink(ctx context.Context, userID int32, email string) error {
-	token, err := generateToken()
+// IssueLink отзывает прежние ссылки и создаёт новую. Письмо уходит, когда вызовут send — после коммита.
+func (uc *EmailVerificationUsecase) IssueLink(ctx context.Context, userID int32, email string) (func(), error) {
+	now := time.Now()
+	last, err := uc.verifications.LastCreatedAt(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := uc.verifications.Create(ctx, hashToken(token), userID, email, time.Now().Add(verifyTokenTTL)); err != nil {
-		return err
+	if next := last.Add(verifyCooldown); now.Before(next) {
+		return nil, &domain.CooldownError{Wait: next.Sub(now)}
 	}
 
-	go uc.sendMail(context.WithoutCancel(ctx), email, uc.verifyURL+"?token="+token)
-	return nil
+	token, err := generateToken()
+	if err != nil {
+		return nil, err
+	}
+	if err := uc.verifications.UseAll(ctx, userID); err != nil {
+		return nil, err
+	}
+	if err := uc.verifications.Create(ctx, hashToken(token), userID, email, now.Add(verifyTokenTTL)); err != nil {
+		return nil, err
+	}
+
+	link := uc.verifyURL + "?token=" + token
+	return func() { go uc.sendMail(context.WithoutCancel(ctx), email, link) }, nil
+}
+
+func (uc *EmailVerificationUsecase) RevokeLinks(ctx context.Context, userID int32) error {
+	return uc.verifications.UseAll(ctx, userID)
 }
 
 func (uc *EmailVerificationUsecase) sendMail(ctx context.Context, to, link string) {
@@ -63,15 +81,9 @@ func unconfirmedEmail(user domain.User) string {
 }
 
 func (uc *EmailVerificationUsecase) Resend(ctx context.Context, userID int32) (string, time.Duration, error) {
-	token, err := generateToken()
-	if err != nil {
-		return "", 0, err
-	}
-
-	now := time.Now()
 	var email string
-	var wait time.Duration
-	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+	var send func()
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := uc.users.LockByID(ctx, userID); err != nil {
 			return err
 		}
@@ -84,21 +96,18 @@ func (uc *EmailVerificationUsecase) Resend(ctx context.Context, userID int32) (s
 			return domain.ErrEmailAlreadyVerified
 		}
 
-		last, err := uc.verifications.LastCreatedAt(ctx, userID)
-		if err != nil {
-			return err
-		}
-		if next := last.Add(verifyCooldown); now.Before(next) {
-			wait = next.Sub(now)
-			return nil
-		}
-		return uc.verifications.Create(ctx, hashToken(token), userID, email, now.Add(verifyTokenTTL))
+		send, err = uc.IssueLink(ctx, userID, email)
+		return err
 	})
-	if err != nil || wait > 0 {
-		return email, wait, err
+	var cooldown *domain.CooldownError
+	if errors.As(err, &cooldown) {
+		return email, cooldown.Wait, nil
+	}
+	if err != nil {
+		return email, 0, err
 	}
 
-	go uc.sendMail(context.WithoutCancel(ctx), email, uc.verifyURL+"?token="+token)
+	send()
 	return email, 0, nil
 }
 
@@ -199,6 +208,6 @@ func (uc *EmailVerificationUsecase) CancelEmailChange(ctx context.Context, userI
 		if err := uc.users.SetPendingEmail(ctx, userID, nil); err != nil {
 			return err
 		}
-		return uc.verifications.UseAll(ctx, userID)
+		return uc.RevokeLinks(ctx, userID)
 	})
 }

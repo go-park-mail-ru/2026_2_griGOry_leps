@@ -53,8 +53,10 @@ type Mailer interface {
 	SendEmailVerification(ctx context.Context, to, link string) error
 }
 
+// EmailVerifier вызывается внутри транзакции, под блокировкой пользователя.
 type EmailVerifier interface {
-	SendLink(ctx context.Context, userID int32, email string) error
+	IssueLink(ctx context.Context, userID int32, email string) (send func(), err error)
+	RevokeLinks(ctx context.Context, userID int32) error
 }
 
 type FileStorage interface {

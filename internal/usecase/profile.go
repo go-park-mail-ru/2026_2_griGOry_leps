@@ -44,7 +44,7 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 		return domain.Profile{}, err
 	}
 
-	var linkTo string
+	var sendLink func()
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := uc.users.LockByID(ctx, userID); err != nil {
 			return err
@@ -64,19 +64,26 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 					if err := uc.users.SetPendingEmail(ctx, userID, nil); err != nil {
 						return err
 					}
+					if err := uc.verifier.RevokeLinks(ctx, userID); err != nil {
+						return err
+					}
 				}
 			case !before.EmailVerified:
-				linkTo = email
+				if sendLink, err = uc.verifier.IssueLink(ctx, userID, email); err != nil {
+					return err
+				}
 			default:
 				upd.Email = nil
 				if email != before.PendingEmail {
 					if err := uc.checkEmailFree(ctx, userID, email); err != nil {
 						return err
 					}
+					if sendLink, err = uc.verifier.IssueLink(ctx, userID, email); err != nil {
+						return err
+					}
 					if err := uc.users.SetPendingEmail(ctx, userID, &email); err != nil {
 						return err
 					}
-					linkTo = email
 				}
 			}
 		}
@@ -93,10 +100,8 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 		return domain.Profile{}, err
 	}
 
-	if linkTo != "" {
-		if err := uc.verifier.SendLink(ctx, userID, linkTo); err != nil {
-			slog.ErrorContext(ctx, "send email verification link", "err", err)
-		}
+	if sendLink != nil {
+		sendLink()
 	}
 	return uc.users.GetProfile(ctx, userID)
 }
@@ -184,6 +189,12 @@ func (uc *ProfileUsecase) ChangePassword(ctx context.Context, userID int32, sess
 			return err
 		}
 		if err := uc.resets.UseAll(ctx, userID); err != nil {
+			return err
+		}
+		if err := uc.users.SetPendingEmail(ctx, userID, nil); err != nil {
+			return err
+		}
+		if err := uc.verifier.RevokeLinks(ctx, userID); err != nil {
 			return err
 		}
 		return uc.sessions.DeleteOthers(ctx, userID, sessionID)

@@ -24,14 +24,17 @@ type PasswordResetUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
 	resets   PasswordResetRepository
+	verifier EmailVerifier
 	mailer   Mailer
 	tx       Transactor
 	resetURL string
 }
 
 func NewPasswordResetUsecase(users UserRepository, sessions SessionRepository, resets PasswordResetRepository,
-	mailer Mailer, tx Transactor, resetURL string) *PasswordResetUsecase {
-	return &PasswordResetUsecase{users: users, sessions: sessions, resets: resets, mailer: mailer, tx: tx, resetURL: resetURL}
+	verifier EmailVerifier, mailer Mailer, tx Transactor, resetURL string) *PasswordResetUsecase {
+	return &PasswordResetUsecase{
+		users: users, sessions: sessions, resets: resets, verifier: verifier, mailer: mailer, tx: tx, resetURL: resetURL,
+	}
 }
 
 func (uc *PasswordResetUsecase) RequestReset(ctx context.Context, login string) error {
@@ -169,6 +172,12 @@ func (uc *PasswordResetUsecase) ResetPassword(ctx context.Context, token, passwo
 			return err
 		}
 		if err := uc.users.SetEmailVerified(ctx, reset.UserID); err != nil {
+			return err
+		}
+		if err := uc.users.SetPendingEmail(ctx, reset.UserID, nil); err != nil {
+			return err
+		}
+		if err := uc.verifier.RevokeLinks(ctx, reset.UserID); err != nil {
 			return err
 		}
 		if err := uc.resets.UseAll(ctx, reset.UserID); err != nil {

@@ -116,6 +116,12 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		About:     req.About,
 	})
 	if err != nil {
+		var cooldown *domain.CooldownError
+		if errors.As(err, &cooldown) {
+			setRetryAfter(w, cooldown.Wait)
+			writeError(r.Context(), w, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		field := profileErrorField(err)
 		if field == "" {
 			slog.ErrorContext(r.Context(), "update profile", "err", err)
