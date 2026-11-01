@@ -94,13 +94,25 @@ type ListingRepository interface {
 	CreatePhoto(ctx context.Context, userID int32, url string) (int32, error)
 	ApproveModeration(ctx context.Context) (int64, error)
 	DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error)
+	ActiveOrder(ctx context.Context, listingID int32) (int32, bool, error)
 }
 
 type CartRepository interface {
 	Entries(ctx context.Context, userID int32) ([]domain.CartEntry, error)
 	EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error)
-	ListingForCart(ctx context.Context, listingID int32) (domain.CartListing, error)
+	LockListings(ctx context.Context, ids []int32) error
+	ListingForCart(ctx context.Context, userID, listingID int32) (domain.CartListing, error)
 	Add(ctx context.Context, userID, listingID int32) error
 	Remove(ctx context.Context, userID int32, ids []int32) error
 	Count(ctx context.Context, userID int32) (int, error)
+}
+
+type OrderRepository interface {
+	FindByKey(ctx context.Context, buyerID int32, key string) (int32, bool, error)
+	CancelOwnOverlapping(ctx context.Context, buyerID int32, listingIDs []int32) error
+	Create(ctx context.Context, o domain.Order, key string) (int32, error)
+	Get(ctx context.Context, id int32) (domain.Order, error)
+	GetForUpdate(ctx context.Context, id int32) (domain.Order, error)
+	UpdatePayment(ctx context.Context, o domain.Order) error
+	MarkSold(ctx context.Context, orderID int32) error
 }

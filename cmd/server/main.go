@@ -83,7 +83,7 @@ func main() {
 	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
 	cartRepo := repository.NewCartRepository(pool)
 	cartUsecase := usecase.NewCartUsecase(cartRepo, tx)
-	orderUsecase := usecase.NewOrderUsecase(cartRepo, addressRepo, userRepo)
+	orderUsecase := usecase.NewOrderUsecase(cartRepo, repository.NewOrderRepository(pool), addressRepo, userRepo, tx)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)

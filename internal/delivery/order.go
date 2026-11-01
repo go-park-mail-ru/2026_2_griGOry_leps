@@ -1,10 +1,17 @@
 package delivery
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gorilla/mux"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
+
+const idempotencyHeader = "Idempotency-Key"
 
 type OrderHandler struct {
 	orders OrderUsecase
@@ -67,6 +74,65 @@ type quoteResponse struct {
 	PaymentMethods []paymentMethodResponse `json:"payment_methods"`
 }
 
+type sellerDeliveryJSON struct {
+	SellerID int32  `json:"seller_id"`
+	Method   string `json:"method"`
+}
+
+type newAddressJSON struct {
+	Text string `json:"text"`
+}
+
+type orderDeliveryRequest struct {
+	BySeller  []sellerDeliveryJSON `json:"by_seller"`
+	AddressID *int32               `json:"address_id"`
+	Address   *newAddressJSON      `json:"address"`
+	Date      *string              `json:"date"`
+	TimeSlot  *string              `json:"time_slot"`
+	Comment   string               `json:"comment"`
+}
+
+type createOrderRequest struct {
+	ListingIDs    []int32              `json:"listing_ids"`
+	Delivery      orderDeliveryRequest `json:"delivery"`
+	Recipient     recipientJSON        `json:"recipient"`
+	PaymentMethod string               `json:"payment_method"`
+}
+
+type orderTotalsResponse struct {
+	Items    string `json:"items"`
+	Delivery string `json:"delivery"`
+	Total    string `json:"total"`
+}
+
+type orderDeliveryResponse struct {
+	BySeller    []sellerDeliveryJSON `json:"by_seller"`
+	AddressID   *int32               `json:"address_id"`
+	Address     *newAddressJSON      `json:"address"`
+	Date        *string              `json:"date"`
+	TimeSlot    *string              `json:"time_slot"`
+	Comment     string               `json:"comment"`
+	AddressText *string              `json:"address_text"`
+}
+
+type orderPaymentResponse struct {
+	Method          string  `json:"method"`
+	Status          string  `json:"status"`
+	ConfirmationURL *string `json:"confirmation_url"`
+}
+
+type orderResponse struct {
+	ID        int32                 `json:"id"`
+	Number    int32                 `json:"number"`
+	Status    string                `json:"status"`
+	PayUntil  *time.Time            `json:"pay_until"`
+	Items     []orderItemResponse   `json:"items"`
+	Totals    orderTotalsResponse   `json:"totals"`
+	Delivery  orderDeliveryResponse `json:"delivery"`
+	Payment   orderPaymentResponse  `json:"payment"`
+	CreatedAt time.Time             `json:"created_at"`
+}
+
 func newOrderItems(items []domain.OrderItem) []orderItemResponse {
 	resp := make([]orderItemResponse, 0, len(items))
 	for _, it := range items {
@@ -105,6 +171,40 @@ func newQuoteResponse(q domain.CheckoutQuote) quoteResponse {
 	return resp
 }
 
+func (h *OrderHandler) newOrderResponse(o domain.Order) orderResponse {
+	resp := orderResponse{
+		ID:     o.ID,
+		Number: o.Number(),
+		Status: o.Status,
+		Items:  newOrderItems(o.Items),
+		Totals: orderTotalsResponse{
+			Items:    formatPrice(o.ItemsTotal),
+			Delivery: formatPrice(o.DeliveryTotal),
+			Total:    formatPrice(o.ItemsTotal + o.DeliveryTotal),
+		},
+		Delivery: orderDeliveryResponse{
+			BySeller:    make([]sellerDeliveryJSON, 0, len(o.BySeller)),
+			AddressID:   o.AddressID,
+			Date:        o.Date,
+			TimeSlot:    o.TimeSlot,
+			Comment:     o.Comment,
+			AddressText: o.AddressText,
+		},
+		Payment:   orderPaymentResponse{Method: o.PaymentMethod, Status: o.PaymentStatus},
+		CreatedAt: o.CreatedAt,
+	}
+	for _, s := range o.BySeller {
+		resp.Delivery.BySeller = append(resp.Delivery.BySeller, sellerDeliveryJSON{SellerID: s.SellerID, Method: s.Method})
+	}
+	if o.AddressID == nil && o.AddressText != nil {
+		resp.Delivery.Address = &newAddressJSON{Text: *o.AddressText}
+	}
+	if o.Status == domain.OrderAwaitingPayment {
+		resp.PayUntil = o.PayUntil
+	}
+	return resp
+}
+
 func (h *OrderHandler) Quote(w http.ResponseWriter, r *http.Request) {
 	var req listingIDsRequest
 	if !decodeJSONBody(w, r, &req) {
@@ -112,8 +212,97 @@ func (h *OrderHandler) Quote(w http.ResponseWriter, r *http.Request) {
 	}
 	q, err := h.orders.Quote(r.Context(), userIDFromContext(r.Context()), req.ListingIDs)
 	if err != nil {
-		writeCartError(w, r, "checkout quote", err)
+		writeOrderError(w, r, "checkout quote", err)
 		return
 	}
 	writeJSON(r.Context(), w, http.StatusOK, newQuoteResponse(q))
+}
+
+func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req createOrderRequest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+
+	in := domain.OrderInput{
+		ListingIDs:     req.ListingIDs,
+		BySeller:       make([]domain.SellerDelivery, 0, len(req.Delivery.BySeller)),
+		AddressID:      req.Delivery.AddressID,
+		Date:           req.Delivery.Date,
+		TimeSlot:       req.Delivery.TimeSlot,
+		Comment:        req.Delivery.Comment,
+		Recipient:      domain.Recipient{FirstName: req.Recipient.FirstName, Phone: req.Recipient.Phone},
+		PaymentMethod:  req.PaymentMethod,
+		IdempotencyKey: r.Header.Get(idempotencyHeader),
+	}
+	for _, s := range req.Delivery.BySeller {
+		in.BySeller = append(in.BySeller, domain.SellerDelivery{SellerID: s.SellerID, Method: s.Method})
+	}
+	if req.Delivery.Address != nil {
+		in.AddressText = &req.Delivery.Address.Text
+	}
+
+	order, err := h.orders.Create(r.Context(), userIDFromContext(r.Context()), in)
+	if err != nil {
+		writeOrderError(w, r, "create order", err)
+		return
+	}
+	writeJSON(r.Context(), w, http.StatusCreated, h.newOrderResponse(order))
+}
+
+func orderID(r *http.Request) (int32, bool) {
+	id, err := strconv.ParseInt(mux.Vars(r)["order_id"], 10, 32)
+	return int32(id), err == nil && id > 0
+}
+
+func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id, ok := orderID(r)
+	if !ok {
+		writeError(r.Context(), w, http.StatusNotFound, domain.ErrOrderNotFound.Error())
+		return
+	}
+	order, err := h.orders.Get(r.Context(), userIDFromContext(r.Context()), id)
+	if err != nil {
+		writeOrderError(w, r, "get order", err)
+		return
+	}
+	writeJSON(r.Context(), w, http.StatusOK, h.newOrderResponse(order))
+}
+
+func orderErrorField(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrDeliveryNotAvailable):
+		return "delivery.by_seller"
+	case errors.Is(err, domain.ErrDeliveryAddress):
+		return "delivery.address"
+	case errors.Is(err, domain.ErrDeliveryDate):
+		return "delivery.date"
+	case errors.Is(err, domain.ErrDeliveryTimeSlot):
+		return "delivery.time_slot"
+	case errors.Is(err, domain.ErrOrderCommentTooLong):
+		return "delivery.comment"
+	case errors.Is(err, domain.ErrMissingFirstName), errors.Is(err, domain.ErrInvalidFirstName):
+		return "recipient.first_name"
+	case errors.Is(err, domain.ErrInvalidPhone):
+		return "recipient.phone"
+	case errors.Is(err, domain.ErrInvalidPaymentMethod):
+		return "payment_method"
+	}
+	return ""
+}
+
+func writeOrderError(w http.ResponseWriter, r *http.Request, op string, err error) {
+	ctx := r.Context()
+	if field := orderErrorField(err); field != "" {
+		writeFieldError(ctx, w, http.StatusBadRequest, field, err.Error())
+		return
+	}
+	switch {
+	case errors.Is(err, domain.ErrInvalidIdempotency):
+		writeError(ctx, w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, domain.ErrOrderNotFound):
+		writeError(ctx, w, http.StatusNotFound, err.Error())
+	default:
+		writeCartError(w, r, op, err)
+	}
 }

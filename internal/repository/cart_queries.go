@@ -1,12 +1,24 @@
 package repository
 
+const reservedByOthers = `
+    EXISTS (
+        SELECT 1
+        FROM order_item oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE oi.ad_id = a.id
+          AND o.status = 'awaiting_payment'
+          AND o.pay_until > now()
+          AND (o.buyer_id <> $1 OR o.payment_status = 'processing')
+    )
+`
+
 const cartEntryColumns = `
     a.id, a.title, a.price, (
         SELECT url FROM ad_image
         WHERE ad_id = a.id
         ORDER BY position, image_id
         LIMIT 1
-    ), a.address, a.has_delivery, a.status,
+    ), a.address, a.has_delivery, a.status, ` + reservedByOthers + `,
     u.user_id, u.first_name, COALESCE(u.avatar, ''), COALESCE(stats.rating, 0)
 `
 
@@ -39,10 +51,14 @@ const cartEntriesByIDsQuery = `
     ORDER BY ci.id DESC
 `
 
+const lockAdsQuery = `
+    SELECT id FROM ad WHERE id = ANY($1) ORDER BY id FOR UPDATE
+`
+
 const getAdForCartQuery = `
-    SELECT a.user_id, a.status
+    SELECT a.user_id, a.status, ` + reservedByOthers + `
     FROM ad a
-    WHERE a.id = $1
+    WHERE a.id = $2
 `
 
 const ensureCartQuery = `

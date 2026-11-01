@@ -84,6 +84,9 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/cart/items/{listing_id:[0-9]+}", auth(cartHandler.Remove)).Methods(http.MethodDelete)
 
 	r.Handle("/api/checkout/quote", auth(orderHandler.Quote)).Methods(http.MethodPost)
+	r.Handle("/api/orders", auth(orderHandler.Create)).Methods(http.MethodPost)
+	const orderPath = "/api/orders/{order_id:[0-9]+}"
+	r.Handle(orderPath, auth(orderHandler.Get)).Methods(http.MethodGet)
 
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 
@@ -136,7 +139,7 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader+", "+idempotencyHeader)
 		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader+", Retry-After")
 
 		if r.Method == http.MethodOptions {

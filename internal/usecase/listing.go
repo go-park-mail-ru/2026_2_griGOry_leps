@@ -169,7 +169,13 @@ func (uc *ListingUsecase) Delete(ctx context.Context, userID, id int32) error {
 		if _, err := uc.ownState(ctx, userID, id); err != nil {
 			return err
 		}
-		var err error
+		orderID, ok, err := uc.listings.ActiveOrder(ctx, id)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return &domain.ListingOrderError{OrderID: orderID, OrderNumber: domain.Order{ID: orderID}.Number()}
+		}
 		removed, err = uc.listings.Delete(ctx, id)
 		return err
 	})
@@ -192,6 +198,11 @@ func (uc *ListingUsecase) Close(ctx context.Context, userID, id int32, reason st
 			return err
 		}
 		if state.Status != domain.AdStatusActive {
+			return domain.ErrListingNotActive
+		}
+		if _, ok, err := uc.listings.ActiveOrder(ctx, id); err != nil {
+			return err
+		} else if ok {
 			return domain.ErrListingNotActive
 		}
 		return uc.listings.Close(ctx, id, reason)
