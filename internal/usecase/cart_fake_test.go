@@ -33,6 +33,17 @@ func (r *cartRepoFake) Entries(_ context.Context, userID int32) ([]domain.CartEn
 	return entries, nil
 }
 
+func (r *cartRepoFake) EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error) {
+	all, _ := r.Entries(ctx, userID)
+	var entries []domain.CartEntry
+	for _, e := range all {
+		if slices.Contains(ids, e.ListingID) {
+			entries = append(entries, e)
+		}
+	}
+	return entries, nil
+}
+
 func (r *cartRepoFake) ListingForCart(_ context.Context, listingID int32) (domain.CartListing, error) {
 	e, ok := r.catalog[listingID]
 	if !ok {
