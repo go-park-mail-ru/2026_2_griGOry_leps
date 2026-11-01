@@ -2,27 +2,30 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
-func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(url)
+func NewPool(ctx context.Context, url string) (*sql.DB, error) {
+	cfg, err := pgx.ParseConfig(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
-	cfg.ConnConfig.Tracer = queryLogger{}
+	cfg.Tracer = queryLogger{}
 
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
+	pool := stdlib.OpenDB(*cfg)
+	pool.SetMaxOpenConns(max(4, runtime.NumCPU()))
+	pool.SetMaxIdleConns(max(4, runtime.NumCPU()))
+	pool.SetConnMaxLifetime(time.Hour)
+	pool.SetConnMaxIdleTime(30 * time.Minute)
+	if err := pool.PingContext(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
