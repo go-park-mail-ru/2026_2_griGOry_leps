@@ -16,12 +16,14 @@ const (
 	strangerID int32 = 3
 )
 
+var testPrices = domain.DeliveryPrices{Courier: 39000, PickupPoint: 19000}
+
 func newCartEnv() (*CartUsecase, *cartRepoFake) {
 	repo := newCartRepoFake()
 	repo.put(101, sellerA, 1500000, true)
 	repo.put(102, sellerA, 230000, true)
 	repo.put(201, sellerB, 1850000, false)
-	return NewCartUsecase(repo, txFake{}), repo
+	return NewCartUsecase(repo, txFake{}, testPrices), repo
 }
 
 func TestCart_AddRules(t *testing.T) {
@@ -72,7 +74,7 @@ func TestCart_GroupsBySellerNewestFirst(t *testing.T) {
 	require.Equal(t, sellerA, cart.Groups[0].Seller.ID)
 	require.Equal(t, int32(102), cart.Groups[0].Items[0].ListingID)
 	require.Equal(t, int32(101), cart.Groups[0].Items[1].ListingID)
-	require.Equal(t, domain.UnavailableSold, cart.Groups[1].Items[0].UnavailableReason())
+	require.Equal(t, domain.ReasonSold, cart.Groups[1].Items[0].UnavailableReason())
 }
 
 func TestCart_EmptyCartHasNoGroups(t *testing.T) {
@@ -111,4 +113,20 @@ func TestCart_RemoveAndValidateIDs(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrInvalidListingIDs)
 	_, _, err = uc.BulkAdd(ctx, buyerID, make([]int32, domain.MaxCartBatch+1))
 	require.ErrorIs(t, err, domain.ErrInvalidListingIDs)
+}
+
+func TestCart_DeletedListingStaysInCart(t *testing.T) {
+	uc, repo := newCartEnv()
+	ctx := context.Background()
+	_, _, err := uc.BulkAdd(ctx, buyerID, []int32{101, 102})
+	require.NoError(t, err)
+	repo.catalog[101] = domain.CartEntry{ListingID: 101, Status: domain.ListingDeleted, Seller: repo.catalog[101].Seller}
+
+	cart, err := uc.Get(ctx, buyerID)
+	require.NoError(t, err)
+	require.Equal(t, 2, cart.ItemsCount)
+	items := cart.Groups[0].Items
+	require.Equal(t, domain.ReasonDeleted, items[1].UnavailableReason())
+	require.Nil(t, items[1].DeliveryFrom)
+	require.Equal(t, int64(19000), *items[0].DeliveryFrom)
 }

@@ -72,13 +72,13 @@ func (r *CartRepository) ListingForCart(ctx context.Context, userID, listingID i
 	return l, nil
 }
 
-func (r *CartRepository) Add(ctx context.Context, userID, listingID int32) error {
+func (r *CartRepository) Add(ctx context.Context, userID, listingID, sellerID int32) error {
 	db := conn(ctx, r.db)
 	var cartID int32
 	if err := db.QueryRow(ctx, ensureCartQuery, userID).Scan(&cartID); err != nil {
 		return fmt.Errorf("ensure cart: %w", err)
 	}
-	if _, err := db.Exec(ctx, addCartItemQuery, cartID, listingID); err != nil {
+	if _, err := db.Exec(ctx, addCartItemQuery, cartID, listingID, sellerID); err != nil {
 		return fmt.Errorf("add cart item: %w", err)
 	}
 	return nil

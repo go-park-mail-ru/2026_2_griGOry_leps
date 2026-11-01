@@ -33,10 +33,10 @@ func newOrderEnv(t *testing.T) orderEnv {
 	_, err := addresses.Create(context.Background(), domain.Address{UserID: buyerID, Street: "Тверская", House: "12", IsDefault: true})
 	require.NoError(t, err)
 
-	uc := NewOrderUsecase(carts, orders, addresses, users, txFake{})
+	uc := NewOrderUsecase(carts, orders, addresses, users, txFake{}, testPrices)
 	uc.now = func() time.Time { return now }
 	for _, id := range []int32{101, 102, 201} {
-		require.NoError(t, carts.Add(context.Background(), buyerID, id))
+		require.NoError(t, carts.Add(context.Background(), buyerID, id, carts.catalog[id].Seller.ID))
 	}
 	return orderEnv{uc: uc, carts: carts, orders: orders, now: &now}
 }
@@ -134,7 +134,7 @@ func TestOrder_PickupOnlyNeedsNoAddress(t *testing.T) {
 	o, err := e.uc.Create(context.Background(), buyerID, in)
 	require.NoError(t, err)
 	require.Nil(t, o.AddressText)
-	require.Equal(t, int64(domain.PickupPointPrice), o.DeliveryTotal)
+	require.Equal(t, testPrices.PickupPoint, o.DeliveryTotal)
 }
 
 func TestOrder_CashOnDeliveryIsPlacedAtOnce(t *testing.T) {
@@ -149,7 +149,7 @@ func TestOrder_CashOnDeliveryIsPlacedAtOnce(t *testing.T) {
 	require.Nil(t, o.PayUntil)
 	require.Equal(t, "+79001234567", o.Recipient.Phone)
 	require.Equal(t, "Тверская, 12", *o.AddressText)
-	require.Equal(t, int64(domain.CourierPrice), o.DeliveryTotal)
+	require.Equal(t, testPrices.Courier, o.DeliveryTotal)
 	require.Equal(t, domain.AdStatusSold, e.carts.catalog[101].Status)
 	require.Equal(t, []int32{102}, e.carts.carts[buyerID])
 }
@@ -202,4 +202,17 @@ func TestOrder_NewCheckoutCancelsOwnUnpaidOrder(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.OrderAwaitingPayment, second.Status)
 	require.Equal(t, domain.OrderCancelled, e.orders.orders[first.ID].Status)
+}
+
+func TestOrder_SelfPickupShowsEveryListingAddress(t *testing.T) {
+	e := newOrderEnv(t)
+	other := "Москва, м. Аэропорт"
+	c := e.carts.catalog[102]
+	c.Address = &other
+	e.carts.catalog[102] = c
+
+	q, err := e.uc.Quote(context.Background(), buyerID, []int32{101, 102})
+	require.NoError(t, err)
+	require.Equal(t, "Москва, м. Аэропорт; Москва, м. Сокол · договоритесь с продавцом", q.Sellers[0].Options[2].Hint)
+	require.Equal(t, int64(39000), q.Sellers[0].Options[0].Price)
 }

@@ -24,14 +24,13 @@ const (
 	PaymentFailed     = "failed"
 	PaymentOnDelivery = "on_delivery"
 
-	UnavailableSold    = "sold"
-	UnavailableClosed  = "closed"
-	UnavailableDeleted = "deleted"
+	ReasonSold    = "sold"
+	ReasonClosed  = "closed"
+	ReasonDeleted = "deleted"
+
+	ListingDeleted = "deleted"
 
 	MaxCartBatch = 100
-
-	CourierPrice     = 39000
-	PickupPointPrice = 19000
 )
 
 var (
@@ -64,6 +63,15 @@ func (e *ListingOrderError) Error() string { return ErrListingHasOrder.Error() }
 
 func (e *ListingOrderError) Unwrap() error { return ErrListingHasOrder }
 
+type DeliveryPrices struct {
+	Courier     int64
+	PickupPoint int64
+}
+
+func (p DeliveryPrices) Cheapest() int64 {
+	return min(p.Courier, p.PickupPoint)
+}
+
 type CartSeller struct {
 	ID        int32
 	FirstName string
@@ -72,25 +80,28 @@ type CartSeller struct {
 }
 
 type CartEntry struct {
-	ListingID   int32
-	Title       string
-	Price       *int64
-	ImageURL    *string
-	Address     *string
-	HasDelivery bool
-	Status      string
-	Reserved    bool
-	Seller      CartSeller
+	ListingID    int32
+	Title        string
+	Price        *int64
+	ImageURL     *string
+	Address      *string
+	HasDelivery  bool
+	Status       string
+	Reserved     bool
+	DeliveryFrom *int64
+	Seller       CartSeller
 }
 
 func (e CartEntry) UnavailableReason() string {
 	switch {
-	case e.Status == AdStatusSold || (e.Status == AdStatusActive && e.Reserved):
-		return UnavailableSold
-	case e.Status == AdStatusActive:
+	case e.Status == AdStatusActive && !e.Reserved:
 		return ""
+	case e.Status == AdStatusActive || e.Status == AdStatusSold:
+		return ReasonSold
+	case e.Status == ListingDeleted:
+		return ReasonDeleted
 	default:
-		return UnavailableClosed
+		return ReasonClosed
 	}
 }
 

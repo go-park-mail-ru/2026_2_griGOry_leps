@@ -816,9 +816,9 @@ paths:
       operationId: deleteListing
       summary: Удалить объявление
       description: |
-        Только автор. Стирает объявление навсегда вместе со статистикой и убирает
-        его из корзин всех пользователей. Нельзя, если по объявлению есть
-        оформленный заказ.
+        Только автор. Стирает объявление навсегда вместе со статистикой. В чужих
+        корзинах позиция остаётся недоступной (`unavailable_reason` = `deleted`).
+        Нельзя, если по объявлению есть оформленный заказ.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1563,6 +1563,12 @@ components:
       pattern: '^\d{1,10}\.\d{2}$'
       example: '15000.00'
 
+    Amount:
+      type: string
+      pattern: '^\d+\.\d{2}$'
+      example: '45300.00'
+      description: Сумма нескольких цен, поэтому без ограничения на число цифр.
+
     PriceFilter:
       type: string
       pattern: '^\d{1,10}(\.\d{1,2})?$'
@@ -2151,7 +2157,9 @@ components:
           pattern: '^\d{1,10}\.\d{2}$'
           example: '15000.00'
           nullable: true
-          description: Минимальная цена доставки; null, если продавец не отправляет или позиция недоступна.
+          description: |
+            Минимальная цена доставки из настроек сервера (`DELIVERY_COURIER_PRICE`,
+            `DELIVERY_PICKUP_POINT_PRICE`); null, если продавец не отправляет или позиция недоступна.
         availability: { type: string, enum: [available, unavailable] }
         unavailable_reason:
           type: string
@@ -2215,7 +2223,7 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/OrderItem' }
-        items_total: { $ref: '#/components/schemas/Price' }
+        items_total: { $ref: '#/components/schemas/Amount' }
         sellers:
           type: array
           items:

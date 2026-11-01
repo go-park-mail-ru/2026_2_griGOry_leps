@@ -64,7 +64,7 @@ func (r *cartRepoFake) ListingForCart(_ context.Context, userID, listingID int32
 	return domain.CartListing{SellerID: e.Seller.ID, Status: e.Status, Reserved: e.Reserved}, nil
 }
 
-func (r *cartRepoFake) Add(_ context.Context, userID, listingID int32) error {
+func (r *cartRepoFake) Add(_ context.Context, userID, listingID, _ int32) error {
 	if !slices.Contains(r.carts[userID], listingID) {
 		r.carts[userID] = append(r.carts[userID], listingID)
 	}

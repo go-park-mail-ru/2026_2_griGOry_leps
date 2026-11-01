@@ -102,7 +102,7 @@ type CartRepository interface {
 	EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error)
 	LockListings(ctx context.Context, ids []int32) error
 	ListingForCart(ctx context.Context, userID, listingID int32) (domain.CartListing, error)
-	Add(ctx context.Context, userID, listingID int32) error
+	Add(ctx context.Context, userID, listingID, sellerID int32) error
 	Remove(ctx context.Context, userID int32, ids []int32) error
 	Count(ctx context.Context, userID int32) (int, error)
 }

@@ -33,12 +33,13 @@ type OrderUsecase struct {
 	addresses AddressRepository
 	users     UserRepository
 	tx        Transactor
+	prices    domain.DeliveryPrices
 	now       func() time.Time
 }
 
 func NewOrderUsecase(carts CartRepository, orders OrderRepository, addresses AddressRepository, users UserRepository,
-	tx Transactor) *OrderUsecase {
-	return &OrderUsecase{carts: carts, orders: orders, addresses: addresses, users: users, tx: tx, now: time.Now}
+	tx Transactor, prices domain.DeliveryPrices) *OrderUsecase {
+	return &OrderUsecase{carts: carts, orders: orders, addresses: addresses, users: users, tx: tx, prices: prices, now: time.Now}
 }
 
 func (uc *OrderUsecase) Quote(ctx context.Context, userID int32, ids []int32) (domain.CheckoutQuote, error) {
@@ -68,7 +69,7 @@ func (uc *OrderUsecase) Quote(ctx context.Context, userID int32, ids []int32) (d
 	q := domain.CheckoutQuote{
 		Items:      items,
 		ItemsTotal: total,
-		Sellers:    quoteSellers(entries),
+		Sellers:    quoteSellers(entries, uc.prices),
 		Addresses:  make([]domain.QuoteAddress, 0, len(addresses)),
 		Dates:      deliveryDates(uc.now()),
 		Times:      deliveryTimes,
@@ -119,11 +120,11 @@ func orderItems(entries []domain.CartEntry) ([]domain.OrderItem, int64) {
 	return items, total
 }
 
-func quoteSellers(entries []domain.CartEntry) []domain.QuoteSeller {
+func quoteSellers(entries []domain.CartEntry, prices domain.DeliveryPrices) []domain.QuoteSeller {
 	var sellers []domain.QuoteSeller
 	index := make(map[int32]int)
 	ships := make(map[int32]bool)
-	pickup := make(map[int32]*string)
+	addresses := make(map[int32][]string)
 	for _, e := range entries {
 		i, ok := index[e.Seller.ID]
 		if !ok {
@@ -134,28 +135,29 @@ func quoteSellers(entries []domain.CartEntry) []domain.QuoteSeller {
 		}
 		sellers[i].ItemsCount++
 		ships[e.Seller.ID] = ships[e.Seller.ID] && e.HasDelivery
-		if pickup[e.Seller.ID] == nil {
-			pickup[e.Seller.ID] = e.Address
+		if e.Address != nil && *e.Address != "" && !slices.Contains(addresses[e.Seller.ID], *e.Address) {
+			addresses[e.Seller.ID] = append(addresses[e.Seller.ID], *e.Address)
 		}
 	}
 	for i := range sellers {
-		sellers[i].Options = deliveryOptions(ships[sellers[i].SellerID], pickup[sellers[i].SellerID])
+		id := sellers[i].SellerID
+		sellers[i].Options = deliveryOptions(ships[id], addresses[id], prices)
 	}
 	return sellers
 }
 
-func deliveryOptions(ships bool, address *string) []domain.DeliveryOption {
+func deliveryOptions(ships bool, addresses []string, prices domain.DeliveryPrices) []domain.DeliveryOption {
 	courierHint, pickupHint := "С завтрашнего дня, интервал 4 часа", "Через 2 дня в ближайший пункт выдачи"
 	if !ships {
 		courierHint, pickupHint = "Продавец не отправляет доставкой", "Продавец не отправляет доставкой"
 	}
 	selfHint := selfPickupHintEnd
-	if address != nil && *address != "" {
-		selfHint = *address + " · " + selfPickupHintEnd
+	if len(addresses) > 0 {
+		selfHint = strings.Join(addresses, "; ") + " · " + selfPickupHintEnd
 	}
 	return []domain.DeliveryOption{
-		{Method: domain.DeliveryCourier, Price: domain.CourierPrice, Available: ships, Hint: courierHint},
-		{Method: domain.DeliveryPickupPoint, Price: domain.PickupPointPrice, Available: ships, Hint: pickupHint},
+		{Method: domain.DeliveryCourier, Price: prices.Courier, Available: ships, Hint: courierHint},
+		{Method: domain.DeliveryPickupPoint, Price: prices.PickupPoint, Available: ships, Hint: pickupHint},
 		{Method: domain.DeliverySelfPickup, Price: 0, Available: true, Hint: selfHint},
 	}
 }
@@ -229,7 +231,7 @@ func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.Orde
 
 func (uc *OrderUsecase) buildOrder(ctx context.Context, userID int32, in domain.OrderInput, entries []domain.CartEntry) (domain.Order, error) {
 	items, total := orderItems(entries)
-	sellers := quoteSellers(entries)
+	sellers := quoteSellers(entries, uc.prices)
 
 	bySeller, deliveryTotal, err := chooseDelivery(sellers, in.BySeller)
 	if err != nil {
