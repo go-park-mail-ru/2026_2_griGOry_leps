@@ -269,3 +269,30 @@ func TestOrder_ReplayReturnsOrderEvenWhenListingsAreSold(t *testing.T) {
 	require.Equal(t, first.ID, again.ID)
 	require.Len(t, e.orders.orders, 1)
 }
+
+func TestOrder_ProcessingPaymentKeepsReservationAfterDeadline(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	o, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+
+	*e.now = e.now.Add(time.Hour - time.Second)
+	_, err = e.uc.TestPayment(ctx, *o.PaymentToken, true)
+	require.NoError(t, err)
+
+	*e.now = e.now.Add(2 * time.Second)
+	require.True(t, e.orders.reserved(strangerID, 101))
+	require.True(t, e.orders.reserved(buyerID, 101))
+
+	in := courierInput(key2)
+	in.ListingIDs = []int32{101}
+	in.BySeller = in.BySeller[:1]
+	_, err = e.uc.Create(ctx, buyerID, in)
+	var unavailable *domain.ItemsUnavailableError
+	require.ErrorAs(t, err, &unavailable)
+
+	*e.now = e.now.Add(bankConfirmDelay)
+	placed, err := e.uc.Get(ctx, buyerID, o.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrderPlaced, placed.Status)
+}

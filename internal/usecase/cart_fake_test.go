@@ -95,10 +95,11 @@ func newOrderRepoFake(carts *cartRepoFake, now *time.Time) *orderRepoFake {
 
 func (r *orderRepoFake) reserved(viewerID, listingID int32) bool {
 	for _, o := range r.orders {
-		if o.Status != domain.OrderAwaitingPayment || o.PayUntil == nil || !o.PayUntil.After(*r.now) {
+		if o.Status != domain.OrderAwaitingPayment {
 			continue
 		}
-		if o.BuyerID == viewerID && o.PaymentStatus != domain.PaymentProcessing {
+		active := o.PayUntil != nil && o.PayUntil.After(*r.now) && o.BuyerID != viewerID
+		if o.PaymentStatus != domain.PaymentProcessing && !active {
 			continue
 		}
 		for _, it := range o.Items {
