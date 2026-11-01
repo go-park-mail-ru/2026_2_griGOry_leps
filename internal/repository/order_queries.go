@@ -79,7 +79,8 @@ const activeOrderForListingQuery = `
     FROM order_item oi
     JOIN orders o ON o.id = oi.order_id
     WHERE oi.ad_id = $1
-      AND (o.status = 'placed' OR (o.status = 'awaiting_payment' AND o.pay_until > now()))
+      AND (o.status = 'placed' OR (o.status = 'awaiting_payment'
+           AND (o.payment_status = 'processing' OR o.pay_until > now())))
     ORDER BY o.id DESC
     LIMIT 1
 `

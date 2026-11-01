@@ -7,8 +7,7 @@ const reservedByOthers = `
         JOIN orders o ON o.id = oi.order_id
         WHERE oi.ad_id = a.id
           AND o.status = 'awaiting_payment'
-          AND o.pay_until > now()
-          AND (o.buyer_id <> $1 OR o.payment_status = 'processing')
+          AND (o.payment_status = 'processing' OR (o.pay_until > now() AND o.buyer_id <> $1))
     )
 `
 

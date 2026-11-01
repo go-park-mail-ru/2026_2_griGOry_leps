@@ -472,6 +472,9 @@ func (uc *OrderUsecase) TestPayment(ctx context.Context, token string, success b
 		if err != nil {
 			return err
 		}
+		if order.PaymentToken == nil || *order.PaymentToken != token {
+			return nil
+		}
 		if err := uc.settle(ctx, &order); err != nil {
 			return err
 		}
