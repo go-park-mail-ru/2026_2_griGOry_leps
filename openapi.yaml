@@ -873,7 +873,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Закрыть можно только активное объявление
+          description: Закрыть можно только активное объявление без неоплаченного заказа
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1195,7 +1195,11 @@ paths:
       summary: Оформить покупку
       description: |
         Повтор запроса с тем же `Idempotency-Key` возвращает уже созданный заказ.
-        После успеха товары заказа убираются из корзины.
+        Товары заказа убираются из корзины, когда заказ становится `placed`;
+        пока заказ ждёт оплаты, они остаются в корзине покупателя, а для остальных
+        покупателей становятся недоступными (`unavailable_reason` = `sold`).
+        Новое оформление с теми же объявлениями отменяет неоплаченный заказ
+        этого же покупателя.
 
         - `cod` — заказ сразу `placed`, `payment.status` = `on_delivery`.
         - `card` и `sbp` — заказ `awaiting_payment`, клиент переходит на
@@ -1240,6 +1244,7 @@ paths:
                 idempotencyKey: { value: { error: invalid Idempotency-Key header } }
                 bySeller: { value: { error: delivery method is not available, field: delivery.by_seller } }
                 address: { value: { error: delivery address is required, field: delivery.address } }
+                date: { value: { error: delivery date is required, field: delivery.date } }
                 timeSlot: { value: { error: delivery time slot is required, field: delivery.time_slot } }
                 comment: { value: { error: comment must be at most 200 characters, field: delivery.comment } }
                 recipientName: { value: { error: first name is required, field: recipient.first_name } }

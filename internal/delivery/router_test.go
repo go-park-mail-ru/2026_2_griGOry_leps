@@ -132,6 +132,7 @@ func TestRouter_SecurityHeaders(t *testing.T) {
 
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), csrfHeader)
+	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), idempotencyHeader)
 }
 
 func TestRouter_MeRequiresSession(t *testing.T) {
