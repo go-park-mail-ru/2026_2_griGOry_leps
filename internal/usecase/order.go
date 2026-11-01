@@ -183,12 +183,6 @@ func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.Orde
 	if !idempotencyKey.MatchString(in.IdempotencyKey) {
 		return domain.Order{}, domain.ErrInvalidIdempotency
 	}
-	if id, ok, err := uc.orders.FindByKey(ctx, userID, in.IdempotencyKey); err != nil {
-		return domain.Order{}, err
-	} else if ok {
-		return uc.Get(ctx, userID, id)
-	}
-
 	ids, err := checkListingIDs(in.ListingIDs)
 	if err != nil {
 		return domain.Order{}, err
@@ -196,6 +190,17 @@ func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.Orde
 
 	var orderID int32
 	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := uc.users.LockByID(ctx, userID); err != nil {
+			return err
+		}
+		id, ok, err := uc.orders.FindByKey(ctx, userID, in.IdempotencyKey)
+		if err != nil {
+			return err
+		}
+		if ok {
+			orderID = id
+			return nil
+		}
 		if err := uc.orders.CancelOwnOverlapping(ctx, userID, ids); err != nil {
 			return err
 		}
