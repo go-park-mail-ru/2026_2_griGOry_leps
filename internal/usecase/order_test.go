@@ -154,7 +154,7 @@ func TestOrder_CashOnDeliveryIsPlacedAtOnce(t *testing.T) {
 	require.Equal(t, []int32{102}, e.carts.carts[buyerID])
 }
 
-func TestOrder_CardOrderWaitsForPayment(t *testing.T) {
+func TestOrder_CardPaymentFlow(t *testing.T) {
 	e := newOrderEnv(t)
 	ctx := context.Background()
 
@@ -162,18 +162,53 @@ func TestOrder_CardOrderWaitsForPayment(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.OrderAwaitingPayment, o.Status)
 	require.Equal(t, domain.PaymentPending, o.PaymentStatus)
+	require.NotNil(t, o.PaymentToken)
 	require.Equal(t, e.now.Add(time.Hour), *o.PayUntil)
 	require.Len(t, e.carts.carts[buyerID], 3)
-	require.True(t, e.orders.reserved(strangerID, 101))
-	require.False(t, e.orders.reserved(buyerID, 101))
 
 	again, err := e.uc.Create(ctx, buyerID, courierInput(key1))
 	require.NoError(t, err)
 	require.Equal(t, o.ID, again.ID)
 	require.Len(t, e.orders.orders, 1)
 
+	_, err = e.uc.Create(ctx, strangerID, domain.OrderInput{IdempotencyKey: key2, ListingIDs: []int32{101}})
+	require.Error(t, err)
+	require.True(t, e.orders.reserved(strangerID, 101))
+
 	_, err = e.uc.Get(ctx, strangerID, o.ID)
 	require.ErrorIs(t, err, domain.ErrOrderNotFound)
+
+	_, err = e.uc.TestPayment(ctx, *o.PaymentToken, false)
+	require.NoError(t, err)
+	failed, err := e.uc.Get(ctx, buyerID, o.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.PaymentFailed, failed.PaymentStatus)
+
+	retried, err := e.uc.Pay(ctx, buyerID, o.ID, domain.PaymentSBP)
+	require.NoError(t, err)
+	require.Equal(t, domain.PaymentPending, retried.PaymentStatus)
+	require.NotEqual(t, *o.PaymentToken, *retried.PaymentToken)
+
+	_, err = e.uc.TestPayment(ctx, *o.PaymentToken, true)
+	require.ErrorIs(t, err, domain.ErrOrderNotFound)
+
+	_, err = e.uc.TestPayment(ctx, *retried.PaymentToken, true)
+	require.NoError(t, err)
+	processing, err := e.uc.Get(ctx, buyerID, o.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.PaymentProcessing, processing.PaymentStatus)
+	_, err = e.uc.Pay(ctx, buyerID, o.ID, domain.PaymentCard)
+	require.ErrorIs(t, err, domain.ErrOrderNotPayable)
+
+	*e.now = e.now.Add(bankConfirmDelay)
+	placed, err := e.uc.Get(ctx, buyerID, o.ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrderPlaced, placed.Status)
+	require.Equal(t, domain.PaymentPaid, placed.PaymentStatus)
+	require.Equal(t, []int32{102}, e.carts.carts[buyerID])
+
+	_, err = e.uc.Pay(ctx, buyerID, o.ID, domain.PaymentCard)
+	require.ErrorIs(t, err, domain.ErrOrderNotPayable)
 }
 
 func TestOrder_ExpiresAfterAnHour(t *testing.T) {
@@ -183,6 +218,8 @@ func TestOrder_ExpiresAfterAnHour(t *testing.T) {
 	require.NoError(t, err)
 
 	*e.now = e.now.Add(time.Hour)
+	require.NoError(t, e.uc.RunMaintenance(ctx))
+
 	expired, err := e.uc.Get(ctx, buyerID, o.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.OrderCancelled, expired.Status)

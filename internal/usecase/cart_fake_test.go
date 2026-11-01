@@ -151,6 +151,15 @@ func (r *orderRepoFake) GetForUpdate(ctx context.Context, id int32) (domain.Orde
 	return r.Get(ctx, id)
 }
 
+func (r *orderRepoFake) IDByToken(_ context.Context, token string) (int32, error) {
+	for id, o := range r.orders {
+		if o.PaymentToken != nil && *o.PaymentToken == token {
+			return id, nil
+		}
+	}
+	return 0, domain.ErrOrderNotFound
+}
+
 func (r *orderRepoFake) UpdatePayment(_ context.Context, o domain.Order) error {
 	stored := r.orders[o.ID]
 	stored.Status, stored.PaymentMethod, stored.PaymentStatus = o.Status, o.PaymentMethod, o.PaymentStatus
@@ -166,4 +175,18 @@ func (r *orderRepoFake) MarkSold(_ context.Context, orderID int32) error {
 		r.carts.catalog[*it.ListingID] = e
 	}
 	return nil
+}
+
+func (r *orderRepoFake) Due(_ context.Context, now time.Time) ([]int32, error) {
+	var ids []int32
+	for id, o := range r.orders {
+		if o.Status != domain.OrderAwaitingPayment {
+			continue
+		}
+		processed := o.PaymentStatus == domain.PaymentProcessing && o.PaymentConfirmAt != nil && !now.Before(*o.PaymentConfirmAt)
+		if processed || (o.PayUntil != nil && !now.Before(*o.PayUntil)) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }

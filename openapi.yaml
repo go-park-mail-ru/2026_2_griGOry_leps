@@ -1205,6 +1205,8 @@ paths:
         - `card` и `sbp` — заказ `awaiting_payment`, клиент переходит на
           `payment.confirmation_url`; `placed` сервер ставит сам после
           подтверждения платежа. Без оплаты в течение часа — `cancelled`.
+          Пока платёжный провайдер не подключён, `confirmation_url` ведёт на
+          тестовую страницу банка `GET /test-payments/{token}`.
 
         | Поле | Правило |
         | --- | --- |
@@ -1321,6 +1323,52 @@ paths:
               example: { error: order is not payable }
         '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
+
+  /test-payments/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentPage
+      summary: Тестовая страница банка
+      description: |
+        Заглушка вместо платёжного провайдера. HTML-страница с суммой заказа
+        и кнопками «Оплатить» и «Отклонить».
+      security: []
+      responses:
+        '200':
+          description: HTML-страница
+          content:
+            text/html:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+
+  /test-payments/{token}/{result}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      - name: result
+        in: path
+        required: true
+        schema: { type: string, enum: [success, fail] }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentResult
+      summary: Результат тестовой оплаты
+      description: |
+        `success` переводит оплату в `processing`, через несколько секунд заказ
+        становится `placed`; `fail` — оплата `failed`, заказ продолжает ждать оплаты.
+        После этого перенаправляет на `<фронт>/orders/{order_id}`.
+      security: []
+      responses:
+        '303':
+          description: Перенаправление на страницу заказа
+        '404': { $ref: '#/components/responses/OrderNotFound' }
 
 components:
   securitySchemes:
