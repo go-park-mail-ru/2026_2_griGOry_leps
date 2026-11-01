@@ -29,6 +29,16 @@ const getCartQuery = `
     ORDER BY ci.id DESC
 `
 
+const cartEntriesByIDsQuery = `
+    SELECT ` + cartEntryColumns + `
+    FROM cart c
+    JOIN cart_item ci ON ci.cart_id = c.id
+    JOIN ad a ON a.id = ci.ad_id
+` + cartSellerJoin + `
+    WHERE c.user_id = $1 AND a.id = ANY($2)
+    ORDER BY ci.id DESC
+`
+
 const getAdForCartQuery = `
     SELECT a.user_id, a.status
     FROM ad a

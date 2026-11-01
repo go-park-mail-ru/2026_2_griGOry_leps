@@ -65,3 +65,7 @@ type CartUsecase interface {
 	BulkAdd(ctx context.Context, userID int32, ids []int32) (int, []int32, error)
 	Remove(ctx context.Context, userID int32, ids []int32) (int, error)
 }
+
+type OrderUsecase interface {
+	Quote(ctx context.Context, userID int32, ids []int32) (domain.CheckoutQuote, error)
+}

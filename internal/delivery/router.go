@@ -19,7 +19,8 @@ const (
 
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
 	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
-	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, cartHandler *CartHandler) http.Handler {
+	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, cartHandler *CartHandler,
+	orderHandler *OrderHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -81,6 +82,8 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/cart/items/bulk-add", auth(cartHandler.BulkAdd)).Methods(http.MethodPost)
 	r.Handle("/api/cart/items/bulk-delete", auth(cartHandler.BulkRemove)).Methods(http.MethodPost)
 	r.Handle("/api/cart/items/{listing_id:[0-9]+}", auth(cartHandler.Remove)).Methods(http.MethodDelete)
+
+	r.Handle("/api/checkout/quote", auth(orderHandler.Quote)).Methods(http.MethodPost)
 
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 

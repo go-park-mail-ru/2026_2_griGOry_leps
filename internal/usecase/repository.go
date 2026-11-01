@@ -98,6 +98,7 @@ type ListingRepository interface {
 
 type CartRepository interface {
 	Entries(ctx context.Context, userID int32) ([]domain.CartEntry, error)
+	EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error)
 	ListingForCart(ctx context.Context, listingID int32) (domain.CartListing, error)
 	Add(ctx context.Context, userID, listingID int32) error
 	Remove(ctx context.Context, userID int32, ids []int32) error
