@@ -11,14 +11,13 @@ const (
 	PaymentSBP  = "sbp"
 	PaymentCOD  = "cod"
 
-	UnavailableSold    = "sold"
-	UnavailableClosed  = "closed"
-	UnavailableDeleted = "deleted"
+	ReasonSold    = "sold"
+	ReasonClosed  = "closed"
+	ReasonDeleted = "deleted"
+
+	ListingDeleted = "deleted"
 
 	MaxCartBatch = 100
-
-	CourierPrice     = 39000
-	PickupPointPrice = 19000
 )
 
 var (
@@ -33,6 +32,15 @@ type ItemsUnavailableError struct {
 
 func (e *ItemsUnavailableError) Error() string { return "cart items are unavailable" }
 
+type DeliveryPrices struct {
+	Courier     int64
+	PickupPoint int64
+}
+
+func (p DeliveryPrices) Cheapest() int64 {
+	return min(p.Courier, p.PickupPoint)
+}
+
 type CartSeller struct {
 	ID        int32
 	FirstName string
@@ -41,14 +49,15 @@ type CartSeller struct {
 }
 
 type CartEntry struct {
-	ListingID   int32
-	Title       string
-	Price       *int64
-	ImageURL    *string
-	Address     *string
-	HasDelivery bool
-	Status      string
-	Seller      CartSeller
+	ListingID    int32
+	Title        string
+	Price        *int64
+	ImageURL     *string
+	Address      *string
+	HasDelivery  bool
+	Status       string
+	DeliveryFrom *int64
+	Seller       CartSeller
 }
 
 func (e CartEntry) UnavailableReason() string {
@@ -56,9 +65,11 @@ func (e CartEntry) UnavailableReason() string {
 	case AdStatusActive:
 		return ""
 	case AdStatusSold:
-		return UnavailableSold
+		return ReasonSold
+	case ListingDeleted:
+		return ReasonDeleted
 	default:
-		return UnavailableClosed
+		return ReasonClosed
 	}
 }
 

@@ -8,18 +8,25 @@ import (
 )
 
 type CartUsecase struct {
-	carts CartRepository
-	tx    Transactor
+	carts  CartRepository
+	tx     Transactor
+	prices domain.DeliveryPrices
 }
 
-func NewCartUsecase(carts CartRepository, tx Transactor) *CartUsecase {
-	return &CartUsecase{carts: carts, tx: tx}
+func NewCartUsecase(carts CartRepository, tx Transactor, prices domain.DeliveryPrices) *CartUsecase {
+	return &CartUsecase{carts: carts, tx: tx, prices: prices}
 }
 
 func (uc *CartUsecase) Get(ctx context.Context, userID int32) (domain.Cart, error) {
 	entries, err := uc.carts.Entries(ctx, userID)
 	if err != nil {
 		return domain.Cart{}, err
+	}
+	cheapest := uc.prices.Cheapest()
+	for i := range entries {
+		if entries[i].HasDelivery && entries[i].UnavailableReason() == "" {
+			entries[i].DeliveryFrom = &cheapest
+		}
 	}
 	return groupCart(entries), nil
 }
@@ -67,7 +74,7 @@ func (uc *CartUsecase) add(ctx context.Context, userID, listingID int32) error {
 	default:
 		return domain.ErrListingUnavailable
 	}
-	return uc.carts.Add(ctx, userID, listingID)
+	return uc.carts.Add(ctx, userID, listingID, l.SellerID)
 }
 
 func (uc *CartUsecase) BulkAdd(ctx context.Context, userID int32, ids []int32) (int, []int32, error) {
