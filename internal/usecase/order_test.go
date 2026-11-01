@@ -30,10 +30,10 @@ func newOrderEnv(t *testing.T) orderEnv {
 	_, err := addresses.Create(context.Background(), domain.Address{UserID: buyerID, Street: "Тверская", House: "12", IsDefault: true})
 	require.NoError(t, err)
 
-	uc := NewOrderUsecase(carts, addresses, users)
+	uc := NewOrderUsecase(carts, addresses, users, testPrices)
 	uc.now = func() time.Time { return now }
 	for _, id := range []int32{101, 102, 201} {
-		require.NoError(t, carts.Add(context.Background(), buyerID, id))
+		require.NoError(t, carts.Add(context.Background(), buyerID, id, carts.catalog[id].Seller.ID))
 	}
 	return orderEnv{uc: uc, carts: carts}
 }
@@ -65,4 +65,17 @@ func TestOrder_QuoteUnavailable(t *testing.T) {
 	var unavailable *domain.ItemsUnavailableError
 	require.ErrorAs(t, err, &unavailable)
 	require.Equal(t, []int32{102, 999}, unavailable.ListingIDs)
+}
+
+func TestOrder_SelfPickupShowsEveryListingAddress(t *testing.T) {
+	e := newOrderEnv(t)
+	other := "Москва, м. Аэропорт"
+	c := e.carts.catalog[102]
+	c.Address = &other
+	e.carts.catalog[102] = c
+
+	q, err := e.uc.Quote(context.Background(), buyerID, []int32{101, 102})
+	require.NoError(t, err)
+	require.Equal(t, "Москва, м. Аэропорт; Москва, м. Сокол · договоритесь с продавцом", q.Sellers[0].Options[2].Hint)
+	require.Equal(t, int64(39000), q.Sellers[0].Options[0].Price)
 }
