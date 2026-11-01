@@ -3,6 +3,7 @@ package delivery
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -81,6 +82,9 @@ func newCartSeller(s domain.CartSeller) cartSellerResponse {
 
 func newCartItem(e domain.CartEntry) cartItemResponse {
 	reason := e.UnavailableReason()
+	if reason == domain.ReasonDeleted {
+		return cartItemResponse{ListingID: e.ListingID, Availability: "unavailable", UnavailableReason: &reason}
+	}
 	if reason != "" {
 		item := cartItemResponse{ListingID: e.ListingID, Availability: "unavailable", UnavailableReason: &reason}
 		title := e.Title
@@ -95,8 +99,8 @@ func newCartItem(e domain.CartEntry) cartItemResponse {
 	if e.Price != nil {
 		item.Price = priceString(*e.Price)
 	}
-	if e.HasDelivery {
-		item.DeliveryFrom = priceString(domain.PickupPointPrice)
+	if e.DeliveryFrom != nil {
+		item.DeliveryFrom = priceString(*e.DeliveryFrom)
 	}
 	return item
 }
@@ -177,7 +181,8 @@ func (h *CartHandler) BulkAdd(w http.ResponseWriter, r *http.Request) {
 
 func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(dst); err != nil || !errors.Is(dec.Decode(&struct{}{}), io.EOF) {
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid request body")
 		return false
 	}

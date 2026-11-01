@@ -84,3 +84,17 @@ func TestLoad_DatabaseURL(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://u:p@db:5432/x")
 	require.Equal(t, "postgres://u:p@db:5432/x", Load().DatabaseURL)
 }
+
+func TestLoad_DeliveryPrices(t *testing.T) {
+	t.Setenv("DELIVERY_COURIER_PRICE", "")
+	t.Setenv("DELIVERY_PICKUP_POINT_PRICE", "")
+	cfg := Load()
+	require.Equal(t, int64(39000), cfg.CourierPrice)
+	require.Equal(t, int64(19000), cfg.PickupPointPrice)
+
+	t.Setenv("DELIVERY_COURIER_PRICE", "450.5")
+	t.Setenv("DELIVERY_PICKUP_POINT_PRICE", "-1")
+	cfg = Load()
+	require.Equal(t, int64(45050), cfg.CourierPrice)
+	require.Equal(t, int64(19000), cfg.PickupPointPrice)
+}
