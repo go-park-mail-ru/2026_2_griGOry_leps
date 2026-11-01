@@ -95,3 +95,11 @@ type ListingRepository interface {
 	ApproveModeration(ctx context.Context) (int64, error)
 	DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error)
 }
+
+type CartRepository interface {
+	Entries(ctx context.Context, userID int32) ([]domain.CartEntry, error)
+	ListingForCart(ctx context.Context, listingID int32) (domain.CartListing, error)
+	Add(ctx context.Context, userID, listingID int32) error
+	Remove(ctx context.Context, userID int32, ids []int32) error
+	Count(ctx context.Context, userID int32) (int, error)
+}

@@ -81,6 +81,8 @@ func main() {
 	cityUsecase := usecase.NewCityUsecase(cityRepo)
 	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
 	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
+	cartRepo := repository.NewCartRepository(pool)
+	cartUsecase := usecase.NewCartUsecase(cartRepo, tx)
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)
@@ -90,10 +92,11 @@ func main() {
 	addressHandler := delivery.NewAddressHandler(addressUsecase)
 	cityHandler := delivery.NewCityHandler(cityUsecase)
 	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
+	cartHandler := delivery.NewCartHandler(cartUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
 	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
-		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler)
+		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler, cartHandler)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
