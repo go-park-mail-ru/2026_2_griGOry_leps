@@ -14,6 +14,7 @@ import (
 
 const (
 	payTimeout        = time.Hour
+	bankConfirmDelay  = 3 * time.Second
 	deliveryDays      = 4
 	maxOrderComment   = 200
 	maxAddressText    = 300
@@ -343,11 +344,16 @@ func (uc *OrderUsecase) applyCourier(ctx context.Context, userID int32, in domai
 }
 
 func (uc *OrderUsecase) startPayment(order *domain.Order) error {
+	order.PaymentConfirmAt = nil
 	if order.PaymentMethod == domain.PaymentCOD {
-		order.Status, order.PaymentStatus = domain.OrderPlaced, domain.PaymentOnDelivery
+		order.Status, order.PaymentStatus, order.PaymentToken = domain.OrderPlaced, domain.PaymentOnDelivery, nil
 		return nil
 	}
-	order.Status, order.PaymentStatus = domain.OrderAwaitingPayment, domain.PaymentPending
+	token, err := generateToken()
+	if err != nil {
+		return err
+	}
+	order.Status, order.PaymentStatus, order.PaymentToken = domain.OrderAwaitingPayment, domain.PaymentPending, &token
 	return nil
 }
 
@@ -380,6 +386,43 @@ func (uc *OrderUsecase) Get(ctx context.Context, userID, id int32) (domain.Order
 	return order, err
 }
 
+func (uc *OrderUsecase) Pay(ctx context.Context, userID, id int32, method string) (domain.Order, error) {
+	if !slices.Contains(paymentMethods, method) {
+		return domain.Order{}, domain.ErrInvalidPaymentMethod
+	}
+
+	var order domain.Order
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		order, err = uc.ownForUpdate(ctx, userID, id)
+		if err != nil {
+			return err
+		}
+		if err := uc.settle(ctx, &order); err != nil {
+			return err
+		}
+		if order.Status != domain.OrderAwaitingPayment || order.PaymentStatus == domain.PaymentProcessing {
+			return domain.ErrOrderNotPayable
+		}
+
+		order.PaymentMethod = method
+		if err := uc.startPayment(&order); err != nil {
+			return err
+		}
+		if err := uc.orders.UpdatePayment(ctx, order); err != nil {
+			return err
+		}
+		if order.Status == domain.OrderPlaced {
+			return uc.place(ctx, order)
+		}
+		return nil
+	})
+	if err != nil {
+		return domain.Order{}, err
+	}
+	return uc.orders.Get(ctx, id)
+}
+
 func (uc *OrderUsecase) ownForUpdate(ctx context.Context, userID, id int32) (domain.Order, error) {
 	order, err := uc.orders.GetForUpdate(ctx, id)
 	if err != nil {
@@ -395,9 +438,74 @@ func (uc *OrderUsecase) settle(ctx context.Context, order *domain.Order) error {
 	if order.Status != domain.OrderAwaitingPayment {
 		return nil
 	}
-	if order.PayUntil != nil && !uc.now().Before(*order.PayUntil) {
-		order.Status = domain.OrderCancelled
+	now := uc.now()
+	switch {
+	case order.PaymentStatus == domain.PaymentProcessing && order.PaymentConfirmAt != nil && !now.Before(*order.PaymentConfirmAt):
+		order.Status, order.PaymentStatus, order.PaymentToken, order.PaymentConfirmAt = domain.OrderPlaced, domain.PaymentPaid, nil, nil
+		if err := uc.orders.UpdatePayment(ctx, *order); err != nil {
+			return err
+		}
+		return uc.place(ctx, *order)
+	case order.PaymentStatus != domain.PaymentProcessing && order.PayUntil != nil && !now.Before(*order.PayUntil):
+		order.Status, order.PaymentToken = domain.OrderCancelled, nil
 		return uc.orders.UpdatePayment(ctx, *order)
+	}
+	return nil
+}
+
+func (uc *OrderUsecase) TestPayment(ctx context.Context, token string, success bool) (int32, error) {
+	var orderID int32
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		id, err := uc.orders.IDByToken(ctx, token)
+		if err != nil {
+			return err
+		}
+		orderID = id
+		order, err := uc.orders.GetForUpdate(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := uc.settle(ctx, &order); err != nil {
+			return err
+		}
+		if order.Status != domain.OrderAwaitingPayment || order.PaymentStatus != domain.PaymentPending {
+			return nil
+		}
+		if success {
+			confirmAt := uc.now().Add(bankConfirmDelay)
+			order.PaymentStatus, order.PaymentConfirmAt = domain.PaymentProcessing, &confirmAt
+		} else {
+			order.PaymentStatus = domain.PaymentFailed
+		}
+		return uc.orders.UpdatePayment(ctx, order)
+	})
+	return orderID, err
+}
+
+func (uc *OrderUsecase) PaymentPage(ctx context.Context, token string) (domain.Order, error) {
+	id, err := uc.orders.IDByToken(ctx, token)
+	if err != nil {
+		return domain.Order{}, err
+	}
+	return uc.orders.Get(ctx, id)
+}
+
+func (uc *OrderUsecase) RunMaintenance(ctx context.Context) error {
+	ids, err := uc.orders.Due(ctx, uc.now())
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+			order, err := uc.orders.GetForUpdate(ctx, id)
+			if err != nil {
+				return err
+			}
+			return uc.settle(ctx, &order)
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

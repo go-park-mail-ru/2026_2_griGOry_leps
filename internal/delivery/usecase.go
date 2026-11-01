@@ -70,4 +70,7 @@ type OrderUsecase interface {
 	Quote(ctx context.Context, userID int32, ids []int32) (domain.CheckoutQuote, error)
 	Create(ctx context.Context, userID int32, in domain.OrderInput) (domain.Order, error)
 	Get(ctx context.Context, userID, id int32) (domain.Order, error)
+	Pay(ctx context.Context, userID, id int32, method string) (domain.Order, error)
+	TestPayment(ctx context.Context, token string, success bool) (int32, error)
+	PaymentPage(ctx context.Context, token string) (domain.Order, error)
 }

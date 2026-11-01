@@ -87,6 +87,12 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/orders", auth(orderHandler.Create)).Methods(http.MethodPost)
 	const orderPath = "/api/orders/{order_id:[0-9]+}"
 	r.Handle(orderPath, auth(orderHandler.Get)).Methods(http.MethodGet)
+	r.Handle(orderPath+"/payment", auth(orderHandler.Pay)).Methods(http.MethodPost)
+
+	const paymentPath = testPaymentPath + "{token:[0-9a-f]{64}}"
+	r.HandleFunc(paymentPath, orderHandler.TestPaymentPage).Methods(http.MethodGet)
+	r.HandleFunc(paymentPath+"/success", orderHandler.TestPaymentResult(true)).Methods(http.MethodGet)
+	r.HandleFunc(paymentPath+"/fail", orderHandler.TestPaymentResult(false)).Methods(http.MethodGet)
 
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 

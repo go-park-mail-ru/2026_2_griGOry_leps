@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -126,6 +127,18 @@ func (r *OrderRepository) get(ctx context.Context, query string, id int32) (doma
 	return o, nil
 }
 
+func (r *OrderRepository) IDByToken(ctx context.Context, token string) (int32, error) {
+	var id int32
+	err := conn(ctx, r.db).QueryRow(ctx, orderIDByTokenQuery, token).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrOrderNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find order by token: %w", err)
+	}
+	return id, nil
+}
+
 func (r *OrderRepository) UpdatePayment(ctx context.Context, o domain.Order) error {
 	_, err := conn(ctx, r.db).Exec(ctx, updateOrderPaymentQuery,
 		o.ID, o.Status, o.PaymentMethod, o.PaymentStatus, o.PaymentToken, o.PaymentConfirmAt)
@@ -140,4 +153,16 @@ func (r *OrderRepository) MarkSold(ctx context.Context, orderID int32) error {
 		return fmt.Errorf("mark order listings sold: %w", err)
 	}
 	return nil
+}
+
+func (r *OrderRepository) Due(ctx context.Context, now time.Time) ([]int32, error) {
+	rows, err := conn(ctx, r.db).Query(ctx, dueOrdersQuery, now)
+	if err != nil {
+		return nil, fmt.Errorf("due orders: %w", err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int32])
+	if err != nil {
+		return nil, fmt.Errorf("scan due orders: %w", err)
+	}
+	return ids, nil
 }

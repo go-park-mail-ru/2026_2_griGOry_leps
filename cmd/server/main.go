@@ -26,6 +26,7 @@ import (
 const (
 	csrfTokenTTL               = 24 * time.Hour
 	listingMaintenanceInterval = time.Minute
+	orderMaintenanceInterval   = 5 * time.Second
 )
 
 func main() {
@@ -94,7 +95,7 @@ func main() {
 	cityHandler := delivery.NewCityHandler(cityUsecase)
 	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
 	cartHandler := delivery.NewCartHandler(cartUsecase)
-	orderHandler := delivery.NewOrderHandler(orderUsecase)
+	orderHandler := delivery.NewOrderHandler(orderUsecase, cfg.PublicURL, cfg.FrontendOrigin)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
 	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
@@ -120,6 +121,7 @@ func main() {
 	maintenanceCtx, stopMaintenance := context.WithCancel(context.Background())
 	defer stopMaintenance()
 	go runListingMaintenance(maintenanceCtx, listingUsecase)
+	go runOrderMaintenance(maintenanceCtx, orderUsecase)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -146,6 +148,22 @@ func runListingMaintenance(ctx context.Context, listings *usecase.ListingUsecase
 		case now := <-ticker.C:
 			if err := listings.RunMaintenance(ctx, now); err != nil {
 				slog.ErrorContext(ctx, "listing maintenance", "err", err)
+			}
+		}
+	}
+}
+
+func runOrderMaintenance(ctx context.Context, orders *usecase.OrderUsecase) {
+	ticker := time.NewTicker(orderMaintenanceInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := orders.RunMaintenance(ctx); err != nil {
+				slog.ErrorContext(ctx, "order maintenance", "err", err)
 			}
 		}
 	}
