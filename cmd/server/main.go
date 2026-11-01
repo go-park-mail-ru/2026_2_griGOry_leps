@@ -17,6 +17,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/mail"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
@@ -82,7 +83,7 @@ func main() {
 	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
 	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
 	cartRepo := repository.NewCartRepository(pool)
-	cartUsecase := usecase.NewCartUsecase(cartRepo, tx)
+	cartUsecase := usecase.NewCartUsecase(cartRepo, tx, domain.DeliveryPrices{Courier: cfg.CourierPrice, PickupPoint: cfg.PickupPointPrice})
 
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)
