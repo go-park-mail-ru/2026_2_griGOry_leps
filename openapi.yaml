@@ -1097,6 +1097,42 @@ paths:
         '403': { $ref: '#/components/responses/InvalidCSRF' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /cart/items/bulk-add:
+    post:
+      tags: [Корзина]
+      operationId: bulkAddCartItems
+      summary: Вернуть несколько объявлений в корзину
+      description: |
+        Для «Вернуть» после «Удалить выбранные». Идемпотентно: уже лежащие в корзине
+        id пропускаются без ошибки. Неактивные, удалённые и свои объявления не
+        добавляются, их id приходят в `skipped_ids`.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ListingIdsRequest' }
+      responses:
+        '200':
+          description: Число позиций в корзине и id, которые не удалось добавить
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items_count, skipped_ids]
+                properties:
+                  items_count: { type: integer, example: 3 }
+                  skipped_ids:
+                    type: array
+                    items: { type: integer }
+                    example: [1031]
+        '400': { $ref: '#/components/responses/BadRequestBody' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /cart/items/bulk-delete:
     post:
       tags: [Корзина]
