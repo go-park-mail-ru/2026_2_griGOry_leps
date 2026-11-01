@@ -14,7 +14,7 @@ CREATE TABLE orders (
     recipient_name     varchar(50) NOT NULL,
     recipient_phone    varchar(20) NOT NULL,
     address_id         integer REFERENCES address(address_id) ON DELETE SET NULL,
-    address_text       varchar(300),
+    address_text       varchar(500),
     delivery_date      date,
     time_slot          varchar(20),
     comment            varchar(200) NOT NULL DEFAULT '',

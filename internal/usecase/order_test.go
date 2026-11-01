@@ -216,3 +216,19 @@ func TestOrder_SelfPickupShowsEveryListingAddress(t *testing.T) {
 	require.Equal(t, "Москва, м. Аэропорт; Москва, м. Сокол · договоритесь с продавцом", q.Sellers[0].Options[2].Hint)
 	require.Equal(t, int64(39000), q.Sellers[0].Options[0].Price)
 }
+
+func TestOrder_ReplayReturnsOrderEvenWhenListingsAreSold(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	in := courierInput(key1)
+	in.PaymentMethod = domain.PaymentCOD
+
+	first, err := e.uc.Create(ctx, buyerID, in)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusSold, e.carts.catalog[101].Status)
+
+	again, err := e.uc.Create(ctx, buyerID, in)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, again.ID)
+	require.Len(t, e.orders.orders, 1)
+}

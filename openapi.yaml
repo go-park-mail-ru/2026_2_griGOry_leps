@@ -2338,9 +2338,9 @@ components:
           required: [items, delivery, total]
           description: Считает сервер.
           properties:
-            items: { $ref: '#/components/schemas/Price' }
-            delivery: { $ref: '#/components/schemas/Price' }
-            total: { $ref: '#/components/schemas/Price' }
+            items: { $ref: '#/components/schemas/Amount' }
+            delivery: { $ref: '#/components/schemas/Amount' }
+            total: { $ref: '#/components/schemas/Amount' }
         delivery:
           allOf:
             - $ref: '#/components/schemas/OrderDelivery'
