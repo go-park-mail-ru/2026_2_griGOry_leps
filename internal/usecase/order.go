@@ -410,6 +410,9 @@ func (uc *OrderUsecase) Pay(ctx context.Context, userID, id int32, method string
 		if err != nil {
 			return err
 		}
+		if err := uc.lockListings(ctx, order); err != nil {
+			return err
+		}
 		if err := uc.settle(ctx, &order); err != nil {
 			return err
 		}
@@ -433,6 +436,14 @@ func (uc *OrderUsecase) Pay(ctx context.Context, userID, id int32, method string
 		return domain.Order{}, err
 	}
 	return uc.orders.Get(ctx, id)
+}
+
+func (uc *OrderUsecase) lockListings(ctx context.Context, order domain.Order) error {
+	ids := orderListingIDs(order)
+	if len(ids) == 0 {
+		return nil
+	}
+	return uc.carts.LockListings(ctx, ids)
 }
 
 func (uc *OrderUsecase) ownForUpdate(ctx context.Context, userID, id int32) (domain.Order, error) {
@@ -480,10 +491,8 @@ func (uc *OrderUsecase) TestPayment(ctx context.Context, token string, success b
 		if order.PaymentToken == nil || *order.PaymentToken != token {
 			return nil
 		}
-		if ids := orderListingIDs(order); len(ids) > 0 {
-			if err := uc.carts.LockListings(ctx, ids); err != nil {
-				return err
-			}
+		if err := uc.lockListings(ctx, order); err != nil {
+			return err
 		}
 		if err := uc.settle(ctx, &order); err != nil {
 			return err
