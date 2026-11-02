@@ -2,12 +2,12 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/jackc/pgx/v5"
 )
 
 type SessionRepository struct {
@@ -19,7 +19,7 @@ func NewSessionRepository(db DB) *SessionRepository {
 }
 
 func (r *SessionRepository) Create(ctx context.Context, id string, userID int32, expiresAt time.Time) error {
-	_, err := conn(ctx, r.db).Exec(ctx, createSessionQuery, id, userID, expiresAt)
+	_, err := conn(ctx, r.db).ExecContext(ctx, createSessionQuery, id, userID, expiresAt)
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
@@ -28,8 +28,8 @@ func (r *SessionRepository) Create(ctx context.Context, id string, userID int32,
 
 func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Session, error) {
 	var session domain.Session
-	err := conn(ctx, r.db).QueryRow(ctx, getSessionQuery, id).Scan(&session.ID, &session.UserID, &session.ExpiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := conn(ctx, r.db).QueryRowContext(ctx, getSessionQuery, id).Scan(&session.ID, &session.UserID, &session.ExpiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Session{}, domain.ErrSessionNotFound
 	}
 	if err != nil {
@@ -40,7 +40,7 @@ func (r *SessionRepository) GetByID(ctx context.Context, id string) (domain.Sess
 
 // Delete ничего не возвращает, если сессии уже нет: выход идемпотентный.
 func (r *SessionRepository) Delete(ctx context.Context, id string) error {
-	_, err := conn(ctx, r.db).Exec(ctx, deleteSessionQuery, id)
+	_, err := conn(ctx, r.db).ExecContext(ctx, deleteSessionQuery, id)
 	if err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}
@@ -48,7 +48,7 @@ func (r *SessionRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *SessionRepository) DeleteOthers(ctx context.Context, userID int32, keepID string) error {
-	_, err := conn(ctx, r.db).Exec(ctx, deleteOtherSessionsQuery, userID, keepID)
+	_, err := conn(ctx, r.db).ExecContext(ctx, deleteOtherSessionsQuery, userID, keepID)
 	if err != nil {
 		return fmt.Errorf("delete other sessions: %w", err)
 	}
@@ -56,7 +56,7 @@ func (r *SessionRepository) DeleteOthers(ctx context.Context, userID int32, keep
 }
 
 func (r *SessionRepository) DeleteAll(ctx context.Context, userID int32) error {
-	_, err := conn(ctx, r.db).Exec(ctx, deleteUserSessionsQuery, userID)
+	_, err := conn(ctx, r.db).ExecContext(ctx, deleteUserSessionsQuery, userID)
 	if err != nil {
 		return fmt.Errorf("delete user sessions: %w", err)
 	}

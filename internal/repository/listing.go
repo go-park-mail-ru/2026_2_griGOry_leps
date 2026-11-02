@@ -2,11 +2,10 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -28,7 +27,7 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		catName    string
 		catPath    string
 	)
-	err := db.QueryRow(ctx, getListingQuery, id, viewerID).Scan(
+	err := db.QueryRowContext(ctx, getListingQuery, id, viewerID).Scan(
 		&l.ID, &l.Seller.ID, &categoryID, &catName, &catPath,
 		&l.Title, &l.Description, &l.Price, &l.IsFree, &l.IsNegotiable, &l.Condition,
 		&l.City, &l.Address, &l.HasDelivery, &l.Status, &l.CloseReason,
@@ -37,7 +36,7 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		&l.Seller.Rating, &l.Seller.ReviewsCount,
 		&l.InCart,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Listing{}, domain.ErrListingNotFound
 	}
 	if err != nil {
@@ -48,11 +47,11 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		l.Category = &domain.ListingCategory{ID: *categoryID, Name: catName, Path: catPath}
 	}
 
-	rows, err := db.Query(ctx, listingPhotosQuery, id)
+	rows, err := db.QueryContext(ctx, listingPhotosQuery, id)
 	if err != nil {
 		return domain.Listing{}, fmt.Errorf("get listing photos: %w", err)
 	}
-	l.Photos, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.ListingPhoto, error) {
+	l.Photos, err = collectRows(rows, func(row scanner) (domain.ListingPhoto, error) {
 		var p domain.ListingPhoto
 		err := row.Scan(&p.ID, &p.URL)
 		return p, err
@@ -68,26 +67,26 @@ func (r *ListingRepository) GetStateForUpdate(ctx context.Context, id int32) (do
 	db := conn(ctx, r.db)
 
 	var s domain.ListingState
-	err := db.QueryRow(ctx, getListingStateForUpdateQuery, id).Scan(
+	err := db.QueryRowContext(ctx, getListingStateForUpdateQuery, id).Scan(
 		&s.UserID, &s.Status, &s.CategoryID, &s.Title, &s.Description, &s.Price,
 		&s.IsFree, &s.IsNegotiable, &s.Condition, &s.Address, &s.HasDelivery,
 	)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ListingState{}, domain.ErrListingNotFound
 	}
 	if err != nil {
 		return domain.ListingState{}, fmt.Errorf("lock listing: %w", err)
 	}
 
-	rows, err := db.Query(ctx, listingPhotosQuery, id)
+	rows, err := db.QueryContext(ctx, listingPhotosQuery, id)
 	if err != nil {
 		return domain.ListingState{}, fmt.Errorf("get listing photos: %w", err)
 	}
-	s.PhotoIDs, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (int32, error) {
-		var photoID int32
+	s.PhotoIDs, err = collectRows(rows, func(row scanner) (int32, error) {
+		var id int32
 		var url string
-		err := row.Scan(&photoID, &url)
-		return photoID, err
+		err := row.Scan(&id, &url)
+		return id, err
 	})
 	if err != nil {
 		return domain.ListingState{}, fmt.Errorf("scan listing photos: %w", err)
@@ -97,7 +96,7 @@ func (r *ListingRepository) GetStateForUpdate(ctx context.Context, id int32) (do
 
 func (r *ListingRepository) Create(ctx context.Context, s domain.ListingState) (int32, error) {
 	var id int32
-	err := conn(ctx, r.db).QueryRow(ctx, createListingQuery,
+	err := conn(ctx, r.db).QueryRowContext(ctx, createListingQuery,
 		s.UserID, s.Status, s.CategoryID, s.Title, s.Description, s.Price,
 		s.IsFree, s.IsNegotiable, s.Condition, s.Address, s.HasDelivery,
 	).Scan(&id)
@@ -108,7 +107,7 @@ func (r *ListingRepository) Create(ctx context.Context, s domain.ListingState) (
 }
 
 func (r *ListingRepository) Update(ctx context.Context, id int32, s domain.ListingState) error {
-	_, err := conn(ctx, r.db).Exec(ctx, updateListingQuery, id,
+	_, err := conn(ctx, r.db).ExecContext(ctx, updateListingQuery, id,
 		s.Status, s.CategoryID, s.Title, s.Description, s.Price,
 		s.IsFree, s.IsNegotiable, s.Condition, s.Address, s.HasDelivery,
 	)
@@ -124,11 +123,11 @@ func (r *ListingRepository) SetPhotos(ctx context.Context, userID, listingID int
 		photoIDs = []int32{}
 	}
 
-	rows, err := db.Query(ctx, lockOwnPhotosQuery, photoIDs, userID, listingID)
+	rows, err := db.QueryContext(ctx, lockOwnPhotosQuery, photoIDs, userID, listingID)
 	if err != nil {
 		return nil, fmt.Errorf("lock photos: %w", err)
 	}
-	found, err := pgx.CollectRows(rows, pgx.RowTo[int32])
+	found, err := collectRows(rows, scanValue[int32])
 	if err != nil {
 		return nil, fmt.Errorf("scan photos: %w", err)
 	}
@@ -136,19 +135,19 @@ func (r *ListingRepository) SetPhotos(ctx context.Context, userID, listingID int
 		return nil, domain.ErrInvalidPhotoID
 	}
 
-	rows, err = db.Query(ctx, detachMissingPhotosQuery, listingID, photoIDs)
+	rows, err = db.QueryContext(ctx, detachMissingPhotosQuery, listingID, photoIDs)
 	if err != nil {
 		return nil, fmt.Errorf("detach photos: %w", err)
 	}
-	removed, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	removed, err := collectRows(rows, scanValue[string])
 	if err != nil {
 		return nil, fmt.Errorf("scan detached photos: %w", err)
 	}
 
-	if _, err := db.Exec(ctx, shiftPhotoPositionsQuery, listingID); err != nil {
+	if _, err := db.ExecContext(ctx, shiftPhotoPositionsQuery, listingID); err != nil {
 		return nil, fmt.Errorf("shift photos: %w", err)
 	}
-	if _, err := db.Exec(ctx, attachPhotosQuery, listingID, photoIDs); err != nil {
+	if _, err := db.ExecContext(ctx, attachPhotosQuery, listingID, photoIDs); err != nil {
 		return nil, fmt.Errorf("attach photos: %w", err)
 	}
 	return removed, nil
@@ -157,23 +156,23 @@ func (r *ListingRepository) SetPhotos(ctx context.Context, userID, listingID int
 func (r *ListingRepository) Delete(ctx context.Context, id int32) ([]string, error) {
 	db := conn(ctx, r.db)
 
-	rows, err := db.Query(ctx, deleteListingPhotosQuery, id)
+	rows, err := db.QueryContext(ctx, deleteListingPhotosQuery, id)
 	if err != nil {
 		return nil, fmt.Errorf("get listing photos: %w", err)
 	}
-	urls, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	urls, err := collectRows(rows, scanValue[string])
 	if err != nil {
 		return nil, fmt.Errorf("scan listing photos: %w", err)
 	}
 
-	if _, err := db.Exec(ctx, deleteListingQuery, id); err != nil {
+	if _, err := db.ExecContext(ctx, deleteListingQuery, id); err != nil {
 		return nil, fmt.Errorf("delete listing: %w", err)
 	}
 	return urls, nil
 }
 
 func (r *ListingRepository) Close(ctx context.Context, id int32, reason string) error {
-	if _, err := conn(ctx, r.db).Exec(ctx, closeListingQuery, id, reason); err != nil {
+	if _, err := conn(ctx, r.db).ExecContext(ctx, closeListingQuery, id, reason); err != nil {
 		return fmt.Errorf("close listing: %w", err)
 	}
 	return nil
@@ -181,18 +180,18 @@ func (r *ListingRepository) Close(ctx context.Context, id int32, reason string) 
 
 func (r *ListingRepository) IsLeafCategory(ctx context.Context, id int32) (bool, error) {
 	var ok bool
-	if err := conn(ctx, r.db).QueryRow(ctx, isLeafCategoryQuery, id).Scan(&ok); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, isLeafCategoryQuery, id).Scan(&ok); err != nil {
 		return false, fmt.Errorf("check category: %w", err)
 	}
 	return ok, nil
 }
 
 func (r *ListingRepository) ListCategories(ctx context.Context) ([]domain.Category, error) {
-	rows, err := conn(ctx, r.db).Query(ctx, listCategoriesQuery)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, listCategoriesQuery)
 	if err != nil {
 		return nil, fmt.Errorf("list categories: %w", err)
 	}
-	categories, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Category, error) {
+	categories, err := collectRows(rows, func(row scanner) (domain.Category, error) {
 		var c domain.Category
 		err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug)
 		return c, err
@@ -205,26 +204,26 @@ func (r *ListingRepository) ListCategories(ctx context.Context) ([]domain.Catego
 
 func (r *ListingRepository) CreatePhoto(ctx context.Context, userID int32, url string) (int32, error) {
 	var id int32
-	if err := conn(ctx, r.db).QueryRow(ctx, createPhotoQuery, userID, url).Scan(&id); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, createPhotoQuery, userID, url).Scan(&id); err != nil {
 		return 0, fmt.Errorf("create photo: %w", err)
 	}
 	return id, nil
 }
 
 func (r *ListingRepository) ApproveModeration(ctx context.Context) (int64, error) {
-	tag, err := conn(ctx, r.db).Exec(ctx, approveModerationQuery)
+	tag, err := conn(ctx, r.db).ExecContext(ctx, approveModerationQuery)
 	if err != nil {
 		return 0, fmt.Errorf("approve listings: %w", err)
 	}
-	return tag.RowsAffected(), nil
+	return tag.RowsAffected()
 }
 
 func (r *ListingRepository) DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error) {
-	rows, err := conn(ctx, r.db).Query(ctx, deleteStalePhotosQuery, before)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, deleteStalePhotosQuery, before)
 	if err != nil {
 		return nil, fmt.Errorf("delete stale photos: %w", err)
 	}
-	urls, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	urls, err := collectRows(rows, scanValue[string])
 	if err != nil {
 		return nil, fmt.Errorf("scan stale photos: %w", err)
 	}
@@ -233,8 +232,8 @@ func (r *ListingRepository) DeleteStalePhotos(ctx context.Context, before time.T
 
 func (r *ListingRepository) ActiveOrder(ctx context.Context, listingID int32) (int32, bool, error) {
 	var id int32
-	err := conn(ctx, r.db).QueryRow(ctx, activeOrderForListingQuery, listingID).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := conn(ctx, r.db).QueryRowContext(ctx, activeOrderForListingQuery, listingID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {

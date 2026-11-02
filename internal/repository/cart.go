@@ -2,10 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -18,8 +17,8 @@ func NewCartRepository(db DB) *CartRepository {
 	return &CartRepository{db: db}
 }
 
-func scanCartEntries(rows pgx.Rows) ([]domain.CartEntry, error) {
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.CartEntry, error) {
+func scanCartEntries(rows *sql.Rows) ([]domain.CartEntry, error) {
+	return collectRows(rows, func(row scanner) (domain.CartEntry, error) {
 		var e domain.CartEntry
 		err := row.Scan(&e.ListingID, &e.Title, &e.Price, &e.ImageURL, &e.Address, &e.HasDelivery, &e.Status, &e.Reserved,
 			&e.Seller.ID, &e.Seller.FirstName, &e.Seller.Avatar, &e.Seller.Rating)
@@ -28,7 +27,7 @@ func scanCartEntries(rows pgx.Rows) ([]domain.CartEntry, error) {
 }
 
 func (r *CartRepository) Entries(ctx context.Context, userID int32) ([]domain.CartEntry, error) {
-	rows, err := conn(ctx, r.db).Query(ctx, getCartQuery, userID)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, getCartQuery, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get cart: %w", err)
 	}
@@ -40,7 +39,7 @@ func (r *CartRepository) Entries(ctx context.Context, userID int32) ([]domain.Ca
 }
 
 func (r *CartRepository) EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error) {
-	rows, err := conn(ctx, r.db).Query(ctx, cartEntriesByIDsQuery, userID, ids)
+	rows, err := conn(ctx, r.db).QueryContext(ctx, cartEntriesByIDsQuery, userID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("get cart entries: %w", err)
 	}
@@ -52,18 +51,16 @@ func (r *CartRepository) EntriesByIDs(ctx context.Context, userID int32, ids []i
 }
 
 func (r *CartRepository) LockListings(ctx context.Context, ids []int32) error {
-	rows, err := conn(ctx, r.db).Query(ctx, lockAdsQuery, ids)
-	if err != nil {
+	if _, err := conn(ctx, r.db).ExecContext(ctx, lockAdsQuery, ids); err != nil {
 		return fmt.Errorf("lock listings: %w", err)
 	}
-	rows.Close()
-	return rows.Err()
+	return nil
 }
 
 func (r *CartRepository) ListingForCart(ctx context.Context, userID, listingID int32) (domain.CartListing, error) {
 	var l domain.CartListing
-	err := conn(ctx, r.db).QueryRow(ctx, getAdForCartQuery, userID, listingID).Scan(&l.SellerID, &l.Status, &l.Reserved)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := conn(ctx, r.db).QueryRowContext(ctx, getAdForCartQuery, userID, listingID).Scan(&l.SellerID, &l.Status, &l.Reserved)
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.CartListing{}, domain.ErrListingNotFound
 	}
 	if err != nil {
@@ -75,17 +72,17 @@ func (r *CartRepository) ListingForCart(ctx context.Context, userID, listingID i
 func (r *CartRepository) Add(ctx context.Context, userID, listingID, sellerID int32) error {
 	db := conn(ctx, r.db)
 	var cartID int32
-	if err := db.QueryRow(ctx, ensureCartQuery, userID).Scan(&cartID); err != nil {
+	if err := db.QueryRowContext(ctx, ensureCartQuery, userID).Scan(&cartID); err != nil {
 		return fmt.Errorf("ensure cart: %w", err)
 	}
-	if _, err := db.Exec(ctx, addCartItemQuery, cartID, listingID, sellerID); err != nil {
+	if _, err := db.ExecContext(ctx, addCartItemQuery, cartID, listingID, sellerID); err != nil {
 		return fmt.Errorf("add cart item: %w", err)
 	}
 	return nil
 }
 
 func (r *CartRepository) Remove(ctx context.Context, userID int32, ids []int32) error {
-	if _, err := conn(ctx, r.db).Exec(ctx, removeCartItemsQuery, userID, ids); err != nil {
+	if _, err := conn(ctx, r.db).ExecContext(ctx, removeCartItemsQuery, userID, ids); err != nil {
 		return fmt.Errorf("remove cart items: %w", err)
 	}
 	return nil
@@ -93,7 +90,7 @@ func (r *CartRepository) Remove(ctx context.Context, userID int32, ids []int32) 
 
 func (r *CartRepository) Count(ctx context.Context, userID int32) (int, error) {
 	var n int
-	if err := conn(ctx, r.db).QueryRow(ctx, countCartQuery, userID).Scan(&n); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, countCartQuery, userID).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count cart: %w", err)
 	}
 	return n, nil
