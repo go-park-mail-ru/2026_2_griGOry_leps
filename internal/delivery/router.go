@@ -20,7 +20,7 @@ const (
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
 	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
 	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler,
-	verifyHandler *EmailVerificationHandler) http.Handler {
+	verifyHandler *EmailVerificationHandler, cartHandler *CartHandler, orderHandler *OrderHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -87,6 +87,23 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle(listingPath, auth(listingHandler.Delete)).Methods(http.MethodDelete)
 	r.Handle(listingPath+"/close", auth(listingHandler.Close)).Methods(http.MethodPost)
 
+	r.Handle("/api/cart", auth(cartHandler.Get)).Methods(http.MethodGet)
+	r.Handle("/api/cart/items", auth(cartHandler.Add)).Methods(http.MethodPost)
+	r.Handle("/api/cart/items/bulk-add", auth(cartHandler.BulkAdd)).Methods(http.MethodPost)
+	r.Handle("/api/cart/items/bulk-delete", auth(cartHandler.BulkRemove)).Methods(http.MethodPost)
+	r.Handle("/api/cart/items/{listing_id:[0-9]+}", auth(cartHandler.Remove)).Methods(http.MethodDelete)
+
+	r.Handle("/api/checkout/quote", verified(orderHandler.Quote)).Methods(http.MethodPost)
+	r.Handle("/api/orders", verified(orderHandler.Create)).Methods(http.MethodPost)
+	const orderPath = "/api/orders/{order_id:[0-9]+}"
+	r.Handle(orderPath, auth(orderHandler.Get)).Methods(http.MethodGet)
+	r.Handle(orderPath+"/payment", verified(orderHandler.Pay)).Methods(http.MethodPost)
+
+	const paymentPath = testPaymentPath + "{token:[0-9a-f]{64}}"
+	r.HandleFunc(paymentPath, orderHandler.TestPaymentPage).Methods(http.MethodGet)
+	r.HandleFunc(paymentPath+"/success", orderHandler.TestPaymentResult(true)).Methods(http.MethodGet)
+	r.HandleFunc(paymentPath+"/fail", orderHandler.TestPaymentResult(false)).Methods(http.MethodGet)
+
 	r.PathPrefix("/uploads/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
@@ -138,7 +155,7 @@ func corsMiddleware(origin string, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader)
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+requestIDHeader+", "+csrfHeader+", "+idempotencyHeader)
 		w.Header().Set("Access-Control-Expose-Headers", requestIDHeader+", Retry-After")
 
 		if r.Method == http.MethodOptions {
