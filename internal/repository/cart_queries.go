@@ -43,7 +43,7 @@ const getAdForCartQuery = `
     SELECT a.user_id, a.status
     FROM ad a
     WHERE a.id = $1
-    FOR SHARE
+    FOR KEY SHARE
 `
 
 const ensureCartQuery = `

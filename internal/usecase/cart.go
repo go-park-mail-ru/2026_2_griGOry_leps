@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -82,6 +83,7 @@ func (uc *CartUsecase) BulkAdd(ctx context.Context, userID int32, ids []int32) (
 	if err != nil {
 		return 0, nil, err
 	}
+	slices.Sort(ids)
 
 	var (
 		count   int

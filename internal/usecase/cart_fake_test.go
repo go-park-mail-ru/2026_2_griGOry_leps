@@ -10,6 +10,7 @@ import (
 type cartRepoFake struct {
 	catalog map[int32]domain.CartEntry
 	carts   map[int32][]int32
+	checked []int32
 }
 
 func newCartRepoFake() *cartRepoFake {
@@ -45,6 +46,7 @@ func (r *cartRepoFake) EntriesByIDs(ctx context.Context, userID int32, ids []int
 }
 
 func (r *cartRepoFake) ListingForCart(_ context.Context, listingID int32) (domain.CartListing, error) {
+	r.checked = append(r.checked, listingID)
 	e, ok := r.catalog[listingID]
 	if !ok {
 		return domain.CartListing{}, domain.ErrListingNotFound
