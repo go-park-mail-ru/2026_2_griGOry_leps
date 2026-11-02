@@ -130,3 +130,11 @@ func TestCart_DeletedListingStaysInCart(t *testing.T) {
 	require.Nil(t, items[1].DeliveryFrom)
 	require.Equal(t, int64(19000), *items[0].DeliveryFrom)
 }
+
+func TestCart_BulkAddLocksInIDOrder(t *testing.T) {
+	uc, repo := newCartEnv()
+	_, skipped, err := uc.BulkAdd(context.Background(), buyerID, []int32{201, 999, 101, 102})
+	require.NoError(t, err)
+	require.Equal(t, []int32{101, 102, 201, 999}, repo.checked)
+	require.Equal(t, []int32{999}, skipped)
+}
