@@ -1,5 +1,9 @@
 package repository
 
+const lockBuyerQuery = `
+    SELECT pg_advisory_xact_lock(hashtext('orders'), $1)
+`
+
 const orderIDByKeyQuery = `
     SELECT id FROM orders WHERE buyer_id = $1 AND idempotency_key = $2
 `

@@ -190,7 +190,7 @@ func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.Orde
 
 	var orderID int32
 	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.users.LockByID(ctx, userID); err != nil {
+		if err := uc.orders.LockBuyer(ctx, userID); err != nil {
 			return err
 		}
 		id, ok, err := uc.orders.FindByKey(ctx, userID, in.IdempotencyKey)
@@ -231,7 +231,7 @@ func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.Orde
 	if err != nil {
 		return domain.Order{}, err
 	}
-	return uc.orders.Get(ctx, orderID)
+	return uc.Get(ctx, userID, orderID)
 }
 
 func (uc *OrderUsecase) buildOrder(ctx context.Context, userID int32, in domain.OrderInput, entries []domain.CartEntry) (domain.Order, error) {

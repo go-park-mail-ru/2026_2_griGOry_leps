@@ -126,6 +126,7 @@ type CartRepository interface {
 }
 
 type OrderRepository interface {
+	LockBuyer(ctx context.Context, buyerID int32) error
 	FindByKey(ctx context.Context, buyerID int32, key string) (int32, bool, error)
 	CancelOwnOverlapping(ctx context.Context, buyerID int32, listingIDs []int32) error
 	Create(ctx context.Context, o domain.Order, key string) (int32, error)
