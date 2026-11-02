@@ -18,6 +18,7 @@ import (
 
 type authStub struct {
 	err      error
+	verified bool
 	register func(context.Context, string, string, string, string) (domain.User, domain.Session, error)
 }
 
@@ -39,7 +40,7 @@ func (s authStub) Logout(ctx context.Context, id string) error {
 }
 
 func (s authStub) Me(ctx context.Context, id string) (domain.User, error) {
-	return domain.User{ID: 1, FirstName: "Иван"}, s.err
+	return domain.User{ID: 1, FirstName: "Иван", EmailVerified: s.verified}, s.err
 }
 
 func newAuthHandler() *AuthHandler { return NewAuthHandler(authStub{}, false) }
