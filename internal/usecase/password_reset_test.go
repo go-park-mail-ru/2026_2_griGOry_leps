@@ -88,6 +88,11 @@ func (m mailerFake) SendPasswordReset(_ context.Context, to, link string) error 
 	return nil
 }
 
+func (m mailerFake) SendEmailVerification(_ context.Context, to, link string) error {
+	m.sent <- sentMail{to: to, link: link}
+	return nil
+}
+
 type resetEnv struct {
 	uc       *PasswordResetUsecase
 	users    *userRepoFake
@@ -110,7 +115,7 @@ func newResetEnv(t *testing.T) resetEnv {
 	require.NoError(t, err)
 
 	return resetEnv{
-		uc:       NewPasswordResetUsecase(users, sessions, resets, mailerFake{sent: mails}, txFake{}, "http://front.test/reset-password"),
+		uc:       NewPasswordResetUsecase(users, sessions, resets, &verifierFake{}, mailerFake{sent: mails}, txFake{}, "http://front.test/reset-password"),
 		users:    users,
 		sessions: sessions,
 		resets:   resets,
@@ -338,7 +343,7 @@ func TestResetPassword_LocksUserBeforeToken(t *testing.T) {
 	token := env.requestToken(t)
 	log := &lockLog{}
 	uc := NewPasswordResetUsecase(lockingUsers{env.users, log}, env.sessions, lockingResets{env.resets, log},
-		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+		&verifierFake{}, mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
 
 	require.NoError(t, uc.ResetPassword(context.Background(), token, "NewSecret1"))
 
@@ -351,7 +356,7 @@ func TestResetPassword_ExpiredTokenSkipsTransaction(t *testing.T) {
 	env.resets.resets[hashToken(token)].expiresAt = time.Now().Add(-time.Second)
 	log := &lockLog{}
 	uc := NewPasswordResetUsecase(lockingUsers{env.users, log}, env.sessions, lockingResets{env.resets, log},
-		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+		&verifierFake{}, mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
 
 	require.ErrorIs(t, uc.ResetPassword(context.Background(), token, "NewSecret1"), domain.ErrInvalidResetToken)
 	require.Empty(t, log.events)
@@ -370,7 +375,7 @@ func (r emailChangedRepo) GetByID(ctx context.Context, id int32) (domain.User, e
 func TestRequestReset_EmailChangedBeforeLock(t *testing.T) {
 	env := newResetEnv(t)
 	uc := NewPasswordResetUsecase(emailChangedRepo{env.users}, env.sessions, env.resets,
-		mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
+		&verifierFake{}, mailerFake{sent: env.mails}, txFake{}, "http://front.test/reset-password")
 
 	require.NoError(t, uc.RequestReset(context.Background(), "anna@goget.pw"))
 
