@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -24,6 +25,13 @@ type PasswordResetUsecase interface {
 	RequestReset(ctx context.Context, login string) error
 	CheckToken(ctx context.Context, token string) (string, error)
 	ResetPassword(ctx context.Context, token, password string) error
+}
+
+type EmailVerificationUsecase interface {
+	Verify(ctx context.Context, token string) (domain.EmailVerifyResult, error)
+	Resend(ctx context.Context, userID int32) (string, time.Duration, error)
+	ResendByToken(ctx context.Context, token string) (string, time.Duration, error)
+	CancelEmailChange(ctx context.Context, userID int32) error
 }
 
 type AdUsecase interface {

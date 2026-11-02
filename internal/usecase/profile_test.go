@@ -52,6 +52,7 @@ type profileEnv struct {
 	users    *userRepoFake
 	sessions *sessionRepoFake
 	resets   *resetRepoFake
+	verifier *verifierFake
 	storage  *storageFake
 	userID   int32
 }
@@ -62,6 +63,7 @@ func newProfileEnv(t *testing.T) profileEnv {
 	sessions := newSessionRepoFake()
 	resets := newResetRepoFake()
 	storage := newStorageFake()
+	verifier := &verifierFake{}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte("Secret123"), bcrypt.MinCost)
 	require.NoError(t, err)
@@ -69,10 +71,11 @@ func newProfileEnv(t *testing.T) profileEnv {
 	require.NoError(t, err)
 
 	return profileEnv{
-		uc:       NewProfileUsecase(users, sessions, resets, storage, txFake{}),
+		uc:       NewProfileUsecase(users, sessions, resets, verifier, storage, txFake{}),
 		users:    users,
 		sessions: sessions,
 		resets:   resets,
+		verifier: verifier,
 		storage:  storage,
 		userID:   user.ID,
 	}
@@ -230,7 +233,7 @@ func TestChangePassword_WeakNew(t *testing.T) {
 func TestChangePassword_TxError(t *testing.T) {
 	env := newProfileEnv(t)
 	txErr := errors.New("commit failed")
-	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.storage, failingTx{err: txErr})
+	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.verifier, env.storage, failingTx{err: txErr})
 
 	err := uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1")
 
@@ -360,7 +363,7 @@ func TestUploadAvatar_StorageError(t *testing.T) {
 func TestUploadAvatar_TxErrorRemovesNewFile(t *testing.T) {
 	env := newProfileEnv(t)
 	txErr := errors.New("commit failed")
-	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.storage, failingTx{err: txErr})
+	uc := NewProfileUsecase(env.users, env.sessions, env.resets, env.verifier, env.storage, failingTx{err: txErr})
 
 	_, err := uc.UploadAvatar(context.Background(), env.userID, pngBytes(t))
 
@@ -374,7 +377,7 @@ func TestChangePassword_PasswordChangedConcurrently(t *testing.T) {
 	addSession(t, env, "phone", env.userID)
 	before, err := env.users.GetByID(context.Background(), env.userID)
 	require.NoError(t, err)
-	uc := NewProfileUsecase(passwordChangedRepo{env.users}, env.sessions, env.resets, env.storage, txFake{})
+	uc := NewProfileUsecase(passwordChangedRepo{env.users}, env.sessions, env.resets, env.verifier, env.storage, txFake{})
 
 	err = uc.ChangePassword(context.Background(), env.userID, "current", "Secret123", "NewSecret1")
 
