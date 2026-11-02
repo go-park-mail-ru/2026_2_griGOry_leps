@@ -364,16 +364,21 @@ func (uc *OrderUsecase) startPayment(order *domain.Order) error {
 	return nil
 }
 
-func (uc *OrderUsecase) place(ctx context.Context, order domain.Order) error {
-	if err := uc.orders.MarkSold(ctx, order.ID); err != nil {
-		return err
-	}
+func orderListingIDs(order domain.Order) []int32 {
 	ids := make([]int32, 0, len(order.Items))
 	for _, it := range order.Items {
 		if it.ListingID != nil {
 			ids = append(ids, *it.ListingID)
 		}
 	}
+	return ids
+}
+
+func (uc *OrderUsecase) place(ctx context.Context, order domain.Order) error {
+	if err := uc.orders.MarkSold(ctx, order.ID); err != nil {
+		return err
+	}
+	ids := orderListingIDs(order)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -474,6 +479,11 @@ func (uc *OrderUsecase) TestPayment(ctx context.Context, token string, success b
 		}
 		if order.PaymentToken == nil || *order.PaymentToken != token {
 			return nil
+		}
+		if ids := orderListingIDs(order); len(ids) > 0 {
+			if err := uc.carts.LockListings(ctx, ids); err != nil {
+				return err
+			}
 		}
 		if err := uc.settle(ctx, &order); err != nil {
 			return err
