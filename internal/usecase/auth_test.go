@@ -14,7 +14,7 @@ import (
 )
 
 func newTestUsecase() *AuthUsecase {
-	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), txFake{})
+	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), &verifierFake{}, txFake{})
 }
 
 func TestNormalizeEmail(t *testing.T) {
@@ -321,7 +321,7 @@ func (f failingTx) WithinTx(ctx context.Context, fn func(ctx context.Context) er
 
 func TestRegister_TxError(t *testing.T) {
 	commitErr := errors.New("commit failed")
-	uc := NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), failingTx{err: commitErr})
+	uc := NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), &verifierFake{}, failingTx{err: commitErr})
 
 	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Иван", "+79001234567")
 	require.ErrorIs(t, err, commitErr)
@@ -339,11 +339,11 @@ func TestLogin_PasswordChangedBeforeSessionCreated(t *testing.T) {
 	users := newUserRepoFake()
 	sessions := newSessionRepoFake()
 	ctx := context.Background()
-	_, _, err := NewAuthUsecase(users, sessions, txFake{}).Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
+	_, _, err := NewAuthUsecase(users, sessions, &verifierFake{}, txFake{}).Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.NoError(t, err)
 	sessions.sessions = make(map[string]domain.Session)
 
-	uc := NewAuthUsecase(passwordChangedRepo{users}, sessions, txFake{})
+	uc := NewAuthUsecase(passwordChangedRepo{users}, sessions, &verifierFake{}, txFake{})
 	_, _, err = uc.Login(ctx, "a@b.ru", "Secret123")
 
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)

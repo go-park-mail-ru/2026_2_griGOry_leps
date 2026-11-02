@@ -219,6 +219,10 @@ func (h *ListingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	publish := req.Publish == nil || *req.Publish
+	if publish && !emailVerified(r.Context()) {
+		writeError(r.Context(), w, http.StatusForbidden, domain.ErrEmailNotVerified.Error())
+		return
+	}
 	listing, err := h.listings.Create(r.Context(), userIDFromContext(r.Context()), req.fields(), publish)
 	if err != nil {
 		writeListingError(w, r, "create listing", err)
@@ -238,6 +242,10 @@ func (h *ListingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Publish != nil && *req.Publish && !emailVerified(r.Context()) {
+		writeError(r.Context(), w, http.StatusForbidden, domain.ErrEmailNotVerified.Error())
+		return
+	}
 	listing, err := h.listings.Update(r.Context(), userIDFromContext(r.Context()), id, req.fields(), req.Publish)
 	if err != nil {
 		writeListingError(w, r, "update listing", err)

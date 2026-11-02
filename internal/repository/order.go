@@ -19,6 +19,13 @@ func NewOrderRepository(db DB) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
+func (r *OrderRepository) LockBuyer(ctx context.Context, buyerID int32) error {
+	if _, err := conn(ctx, r.db).Exec(ctx, lockBuyerQuery, buyerID); err != nil {
+		return fmt.Errorf("lock buyer orders: %w", err)
+	}
+	return nil
+}
+
 func (r *OrderRepository) FindByKey(ctx context.Context, buyerID int32, key string) (int32, bool, error) {
 	var id int32
 	err := conn(ctx, r.db).QueryRow(ctx, orderIDByKeyQuery, buyerID, key).Scan(&id)
