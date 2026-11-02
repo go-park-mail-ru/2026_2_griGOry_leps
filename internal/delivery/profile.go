@@ -80,6 +80,7 @@ type updateProfileRequest struct {
 	Phone     *string `json:"phone"`
 	Email     *string `json:"email"`
 	CityID    *int32  `json:"city_id"`
+	City      *string `json:"city"`
 	About     *string `json:"about"`
 }
 
@@ -113,6 +114,7 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Phone:     req.Phone,
 		Email:     req.Email,
 		CityID:    req.CityID,
+		City:      req.City,
 		About:     req.About,
 	})
 	if err != nil {
@@ -144,6 +146,8 @@ func profileErrorField(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrInvalidCity):
 		return "city_id"
+	case errors.Is(err, domain.ErrInvalidCityName):
+		return "city"
 	case errors.Is(err, domain.ErrAboutTooLong):
 		return "about"
 	}

@@ -3,23 +3,23 @@
 
 BEGIN;
 
-INSERT INTO category (category_id, name, slug) OVERRIDING SYSTEM VALUE VALUES
-    (1, 'Авто', 'auto'),
-    (2, 'Недвижимость', 'realty'),
-    (3, 'Жильё для путешествий', 'rent'),
-    (4, 'Для дома и дачи', 'home'),
-    (5, 'Запчасти', 'parts'),
-    (6, 'Услуги', 'services'),
-    (7, 'Электроника', 'electronics'),
-    (8, 'Работа и подработка', 'jobs'),
-    (9, 'Бизнес 360', 'biznes'),
-    (10, 'Одежда, обувь, аксессуары', 'clothes'),
-    (11, 'Животные', 'pets'),
-    (12, 'Детские товары', 'kids'),
-    (13, 'Красота и здоровье', 'beauty'),
-    (14, 'Спорт и отдых', 'sport'),
-    (15, 'Книги и журналы', 'books'),
-    (16, 'Хобби и фото', 'hobby')
+INSERT INTO category (category_id, name, slug, delivery_allowed) OVERRIDING SYSTEM VALUE VALUES
+    (1, 'Авто', 'auto', false),
+    (2, 'Недвижимость', 'realty', false),
+    (3, 'Жильё для путешествий', 'rent', false),
+    (4, 'Для дома и дачи', 'home', true),
+    (5, 'Запчасти', 'parts', true),
+    (6, 'Услуги', 'services', false),
+    (7, 'Электроника', 'electronics', true),
+    (8, 'Работа и подработка', 'jobs', false),
+    (9, 'Бизнес 360', 'biznes', true),
+    (10, 'Одежда, обувь, аксессуары', 'clothes', true),
+    (11, 'Животные', 'pets', true),
+    (12, 'Детские товары', 'kids', true),
+    (13, 'Красота и здоровье', 'beauty', true),
+    (14, 'Спорт и отдых', 'sport', true),
+    (15, 'Книги и журналы', 'books', true),
+    (16, 'Хобби и фото', 'hobby', true)
 ON CONFLICT DO NOTHING;
 
 SELECT setval(pg_get_serial_sequence('category', 'category_id'), (SELECT max(category_id) FROM category));

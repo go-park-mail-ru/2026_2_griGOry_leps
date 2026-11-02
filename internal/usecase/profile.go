@@ -8,6 +8,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"log/slog"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -20,6 +21,8 @@ const (
 	maxAboutLength  = 500
 	maxAvatarPixels = 4096 * 4096
 )
+
+var cityFormat = regexp.MustCompile(`^\p{L}[\p{L} .'-]{0,99}$`)
 
 type ProfileUsecase struct {
 	users    UserRepository
@@ -148,6 +151,14 @@ func normalizeProfileUpdate(upd *domain.ProfileUpdate) error {
 		return domain.ErrInvalidCity
 	}
 
+	if upd.City != nil {
+		city := normalizeCity(*upd.City)
+		if city != "" && !cityFormat.MatchString(city) {
+			return domain.ErrInvalidCityName
+		}
+		upd.City = &city
+	}
+
 	if upd.About != nil {
 		about := strings.TrimSpace(*upd.About)
 		if utf8.RuneCountInString(about) > maxAboutLength {
@@ -157,6 +168,15 @@ func normalizeProfileUpdate(upd *domain.ProfileUpdate) error {
 	}
 
 	return nil
+}
+
+func normalizeCity(city string) string {
+	city = strings.Join(strings.Fields(city), " ")
+	first, size := utf8.DecodeRuneInString(city)
+	if size == 0 {
+		return ""
+	}
+	return strings.ToUpper(string(first)) + city[size:]
 }
 
 func (uc *ProfileUsecase) ChangePassword(ctx context.Context, userID int32, sessionID, current, next string) error {

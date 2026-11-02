@@ -19,7 +19,7 @@ func NewAddressRepository(db DB) *AddressRepository {
 
 func scanAddress(row scanner) (domain.Address, error) {
 	var a domain.Address
-	err := row.Scan(&a.ID, &a.UserID, &a.Street, &a.House, &a.Comment, &a.IsDefault, &a.CreatedAt)
+	err := row.Scan(&a.ID, &a.UserID, &a.City, &a.Street, &a.House, &a.Apartment, &a.Comment, &a.IsDefault, &a.CreatedAt)
 	return a, err
 }
 
@@ -65,7 +65,7 @@ func (r *AddressRepository) GetForUpdate(ctx context.Context, userID, id int32) 
 
 func (r *AddressRepository) Create(ctx context.Context, a domain.Address) (domain.Address, error) {
 	created, err := scanAddress(conn(ctx, r.db).QueryRowContext(ctx, createAddressQuery,
-		a.UserID, a.Street, a.House, a.Comment, a.IsDefault))
+		a.UserID, a.City, a.Street, a.House, a.Apartment, a.Comment, a.IsDefault))
 	if err != nil {
 		return domain.Address{}, fmt.Errorf("create address: %w", err)
 	}
@@ -74,7 +74,7 @@ func (r *AddressRepository) Create(ctx context.Context, a domain.Address) (domai
 
 func (r *AddressRepository) Update(ctx context.Context, a domain.Address) (domain.Address, error) {
 	updated, err := scanAddress(conn(ctx, r.db).QueryRowContext(ctx, updateAddressQuery,
-		a.ID, a.UserID, a.Street, a.House, a.Comment, a.IsDefault))
+		a.ID, a.UserID, a.City, a.Street, a.House, a.Apartment, a.Comment, a.IsDefault))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Address{}, domain.ErrAddressNotFound
 	}
