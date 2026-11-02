@@ -132,6 +132,8 @@ type OrderRepository interface {
 	Create(ctx context.Context, o domain.Order, key string) (int32, error)
 	Get(ctx context.Context, id int32) (domain.Order, error)
 	GetForUpdate(ctx context.Context, id int32) (domain.Order, error)
+	IDByToken(ctx context.Context, token string) (int32, error)
 	UpdatePayment(ctx context.Context, o domain.Order) error
 	MarkSold(ctx context.Context, orderID int32) error
+	Due(ctx context.Context, now time.Time) ([]int32, error)
 }

@@ -45,6 +45,7 @@ var (
 	ErrInvalidPaymentMethod = errors.New("invalid payment method")
 	ErrInvalidIdempotency   = errors.New("invalid Idempotency-Key header")
 	ErrOrderNotFound        = errors.New("order not found")
+	ErrOrderNotPayable      = errors.New("order is not payable")
 	ErrListingHasOrder      = errors.New("listing has active order")
 )
 

@@ -35,7 +35,8 @@ info:
     действует 30 минут и срабатывает один раз. Пока почта не подтверждена
     (`email_verified` = false), нельзя публиковать объявления (`publish` = true
     в `POST /listings` и `PATCH /listings/{id}`), менять адреса доставки, жаловаться
-    на продавцов и оформлять заказы (`POST /checkout/quote`, `POST /orders`) — эти
+    на продавцов и оформлять и оплачивать заказы (`POST /checkout/quote`, `POST /orders`,
+    `POST /orders/{id}/payment`) — эти
     ручки отвечают 403 `email not verified`. Корзина доступна без подтверждения. Черновики, правка,
     снятие и удаление своих объявлений, профиль и пароль доступны. Сброс пароля
     по ссылке из письма тоже подтверждает почту.
@@ -1374,6 +1375,8 @@ paths:
         - `card` и `sbp` — заказ `awaiting_payment`, клиент переходит на
           `payment.confirmation_url`; `placed` сервер ставит сам после
           подтверждения платежа. Без оплаты в течение часа — `cancelled`.
+          Пока платёжный провайдер не подключён, `confirmation_url` ведёт на
+          тестовую страницу банка `GET /test-payments/{token}`.
 
         | Поле | Правило |
         | --- | --- |
@@ -1488,8 +1491,54 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: order is not payable }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
+
+  /test-payments/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentPage
+      summary: Тестовая страница банка
+      description: |
+        Заглушка вместо платёжного провайдера. HTML-страница с суммой заказа
+        и кнопками «Оплатить» и «Отклонить».
+      security: []
+      responses:
+        '200':
+          description: HTML-страница
+          content:
+            text/html:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+
+  /test-payments/{token}/{result}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      - name: result
+        in: path
+        required: true
+        schema: { type: string, enum: [success, fail] }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentResult
+      summary: Результат тестовой оплаты
+      description: |
+        `success` переводит оплату в `processing`, через несколько секунд заказ
+        становится `placed`; `fail` — оплата `failed`, заказ продолжает ждать оплаты.
+        После этого перенаправляет на `<фронт>/orders/{order_id}`.
+      security: []
+      responses:
+        '303':
+          description: Перенаправление на страницу заказа
+        '404': { $ref: '#/components/responses/OrderNotFound' }
 
 components:
   securitySchemes:

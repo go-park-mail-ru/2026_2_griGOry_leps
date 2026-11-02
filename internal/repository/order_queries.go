@@ -55,6 +55,10 @@ const orderItemsQuery = `
     SELECT ad_id, seller_id, title, price, image_url FROM order_item WHERE order_id = $1 ORDER BY id
 `
 
+const orderIDByTokenQuery = `
+    SELECT id FROM orders WHERE payment_token = $1
+`
+
 const updateOrderPaymentQuery = `
     UPDATE orders
     SET status = $2, payment_method = $3, payment_status = $4, payment_token = $5, payment_confirm_at = $6,
@@ -67,12 +71,20 @@ const markOrderSoldQuery = `
     WHERE id IN (SELECT ad_id FROM order_item WHERE order_id = $1 AND ad_id IS NOT NULL)
 `
 
+const dueOrdersQuery = `
+    SELECT id FROM orders
+    WHERE status = 'awaiting_payment'
+      AND ((payment_status = 'processing' AND payment_confirm_at <= $1) OR pay_until <= $1)
+    ORDER BY id
+`
+
 const activeOrderForListingQuery = `
     SELECT o.id
     FROM order_item oi
     JOIN orders o ON o.id = oi.order_id
     WHERE oi.ad_id = $1
-      AND (o.status = 'placed' OR (o.status = 'awaiting_payment' AND o.pay_until > now()))
+      AND (o.status = 'placed' OR (o.status = 'awaiting_payment'
+           AND (o.payment_status = 'processing' OR o.pay_until > now())))
     ORDER BY o.id DESC
     LIMIT 1
 `

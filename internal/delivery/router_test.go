@@ -33,7 +33,7 @@ func newTestRouterWithUploads(dir string) http.Handler {
 	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
 		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), NewListingHandler(nil), newCSRFHandler(),
 		NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}), NewSellerHandler(&sellerStub{}),
-		NewEmailVerificationHandler(&verifyStub{}), NewCartHandler(nil), NewOrderHandler(nil))
+		NewEmailVerificationHandler(&verifyStub{}), NewCartHandler(nil), NewOrderHandler(nil, "http://api.test", "http://front.test"))
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -183,6 +183,7 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 		{http.MethodPost, "/api/checkout/quote"},
 		{http.MethodPost, "/api/orders"},
 		{http.MethodGet, "/api/orders/1"},
+		{http.MethodPost, "/api/orders/1/payment"},
 	} {
 		token, tokenRec := fetchCSRFToken(t, newCSRFHandler())
 		req := httptest.NewRequest(route.method, route.path, nil)

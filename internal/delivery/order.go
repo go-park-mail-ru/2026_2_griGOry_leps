@@ -2,8 +2,12 @@ package delivery
 
 import (
 	"errors"
+	"fmt"
+	"html/template"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -11,14 +15,19 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-const idempotencyHeader = "Idempotency-Key"
+const (
+	testPaymentPath   = "/api/test-payments/"
+	idempotencyHeader = "Idempotency-Key"
+)
 
 type OrderHandler struct {
-	orders OrderUsecase
+	orders         OrderUsecase
+	publicURL      string
+	frontendOrigin string
 }
 
-func NewOrderHandler(orders OrderUsecase) *OrderHandler {
-	return &OrderHandler{orders: orders}
+func NewOrderHandler(orders OrderUsecase, publicURL, frontendOrigin string) *OrderHandler {
+	return &OrderHandler{orders: orders, publicURL: publicURL, frontendOrigin: frontendOrigin}
 }
 
 type orderItemResponse struct {
@@ -99,6 +108,10 @@ type createOrderRequest struct {
 	PaymentMethod string               `json:"payment_method"`
 }
 
+type payOrderRequest struct {
+	Method string `json:"method"`
+}
+
 type orderTotalsResponse struct {
 	Items    string `json:"items"`
 	Delivery string `json:"delivery"`
@@ -171,6 +184,10 @@ func newQuoteResponse(q domain.CheckoutQuote) quoteResponse {
 	return resp
 }
 
+func (h *OrderHandler) paymentURL(token string) string {
+	return h.publicURL + testPaymentPath + token
+}
+
 func (h *OrderHandler) newOrderResponse(o domain.Order) orderResponse {
 	resp := orderResponse{
 		ID:     o.ID,
@@ -201,6 +218,10 @@ func (h *OrderHandler) newOrderResponse(o domain.Order) orderResponse {
 	}
 	if o.Status == domain.OrderAwaitingPayment {
 		resp.PayUntil = o.PayUntil
+		if o.PaymentStatus == domain.PaymentPending && o.PaymentToken != nil {
+			url := h.paymentURL(*o.PaymentToken)
+			resp.Payment.ConfirmationURL = &url
+		}
 	}
 	return resp
 }
@@ -269,6 +290,98 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(r.Context(), w, http.StatusOK, h.newOrderResponse(order))
 }
 
+func (h *OrderHandler) Pay(w http.ResponseWriter, r *http.Request) {
+	id, ok := orderID(r)
+	if !ok {
+		writeError(r.Context(), w, http.StatusNotFound, domain.ErrOrderNotFound.Error())
+		return
+	}
+	var req payOrderRequest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	order, err := h.orders.Pay(r.Context(), userIDFromContext(r.Context()), id, req.Method)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidPaymentMethod) {
+			writeFieldError(r.Context(), w, http.StatusBadRequest, "method", err.Error())
+			return
+		}
+		writeOrderError(w, r, "retry payment", err)
+		return
+	}
+	writeJSON(r.Context(), w, http.StatusOK, h.newOrderResponse(order))
+}
+
+var testPaymentPage = template.Must(template.New("pay").Parse(`<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Тестовая оплата</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f4f5;font-family:system-ui,sans-serif;color:#141417}
+main{width:min(380px,calc(100% - 32px));padding:28px;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+h1{margin:0 0 6px;font-size:20px}p{margin:0 0 20px;color:#525259}strong{display:block;margin-bottom:24px;font-size:28px}
+a{display:block;margin-top:10px;padding:12px;border-radius:10px;text-align:center;text-decoration:none;font-weight:600}
+.ok{background:#0866ff;color:#fff}.fail{background:#f4f4f5;color:#141417}
+</style></head>
+<body><main>
+<h1>Тестовый банк</h1>
+<p>Заказ № {{.Number}} · {{.Method}}. Деньги не списываются, это заглушка вместо платёжного провайдера.</p>
+<strong>{{.Total}} ₽</strong>
+<a id="ok" class="ok" href="{{.OK}}">Оплатить</a>
+<a id="fail" class="fail" href="{{.Fail}}">Отклонить</a>
+</main></body></html>`))
+
+func (h *OrderHandler) TestPaymentPage(w http.ResponseWriter, r *http.Request) {
+	token := mux.Vars(r)["token"]
+	order, err := h.orders.PaymentPage(r.Context(), token)
+	if err != nil {
+		writeOrderError(w, r, "test payment page", err)
+		return
+	}
+
+	method := "Картой"
+	if order.PaymentMethod == domain.PaymentSBP {
+		method = "СБП"
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	err = testPaymentPage.Execute(w, map[string]any{
+		"Number": order.Number(),
+		"Method": method,
+		"Total":  formatRubles(order.ItemsTotal + order.DeliveryTotal),
+		"OK":     testPaymentPath + token + "/success",
+		"Fail":   testPaymentPath + token + "/fail",
+	})
+	if err != nil {
+		slog.ErrorContext(r.Context(), "render test payment page", "err", err)
+	}
+}
+
+func (h *OrderHandler) TestPaymentResult(success bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := h.orders.TestPayment(r.Context(), mux.Vars(r)["token"], success)
+		if err != nil {
+			writeOrderError(w, r, "test payment", err)
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("%s/orders/%d", h.frontendOrigin, id), http.StatusSeeOther)
+	}
+}
+
+func formatRubles(kopecks int64) string {
+	digits := strconv.FormatInt(kopecks/100, 10)
+	var b strings.Builder
+	for i, r := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteRune('\u00a0')
+		}
+		b.WriteRune(r)
+	}
+	if rest := kopecks % 100; rest != 0 {
+		fmt.Fprintf(&b, ",%02d", rest)
+	}
+	return b.String()
+}
+
 func orderErrorField(err error) string {
 	switch {
 	case errors.Is(err, domain.ErrDeliveryNotAvailable):
@@ -302,6 +415,8 @@ func writeOrderError(w http.ResponseWriter, r *http.Request, op string, err erro
 		writeError(ctx, w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, domain.ErrOrderNotFound):
 		writeError(ctx, w, http.StatusNotFound, err.Error())
+	case errors.Is(err, domain.ErrOrderNotPayable):
+		writeError(ctx, w, http.StatusConflict, err.Error())
 	default:
 		writeCartError(w, r, op, err)
 	}

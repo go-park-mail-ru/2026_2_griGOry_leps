@@ -12,6 +12,7 @@ type cartRepoFake struct {
 	catalog map[int32]domain.CartEntry
 	carts   map[int32][]int32
 	orders  *orderRepoFake
+	locked  [][]int32
 	checked []int32
 }
 
@@ -55,7 +56,10 @@ func (r *cartRepoFake) EntriesByIDs(ctx context.Context, userID int32, ids []int
 	return entries, nil
 }
 
-func (r *cartRepoFake) LockListings(context.Context, []int32) error { return nil }
+func (r *cartRepoFake) LockListings(_ context.Context, ids []int32) error {
+	r.locked = append(r.locked, ids)
+	return nil
+}
 
 func (r *cartRepoFake) ListingForCart(_ context.Context, userID, listingID int32) (domain.CartListing, error) {
 	r.checked = append(r.checked, listingID)
@@ -97,10 +101,11 @@ func newOrderRepoFake(carts *cartRepoFake, now *time.Time) *orderRepoFake {
 
 func (r *orderRepoFake) reserved(viewerID, listingID int32) bool {
 	for _, o := range r.orders {
-		if o.Status != domain.OrderAwaitingPayment || o.PayUntil == nil || !o.PayUntil.After(*r.now) {
+		if o.Status != domain.OrderAwaitingPayment {
 			continue
 		}
-		if o.BuyerID == viewerID && o.PaymentStatus != domain.PaymentProcessing {
+		active := o.PayUntil != nil && o.PayUntil.After(*r.now) && o.BuyerID != viewerID
+		if o.PaymentStatus != domain.PaymentProcessing && !active {
 			continue
 		}
 		for _, it := range o.Items {
@@ -155,6 +160,15 @@ func (r *orderRepoFake) GetForUpdate(ctx context.Context, id int32) (domain.Orde
 	return r.Get(ctx, id)
 }
 
+func (r *orderRepoFake) IDByToken(_ context.Context, token string) (int32, error) {
+	for id, o := range r.orders {
+		if o.PaymentToken != nil && *o.PaymentToken == token {
+			return id, nil
+		}
+	}
+	return 0, domain.ErrOrderNotFound
+}
+
 func (r *orderRepoFake) UpdatePayment(_ context.Context, o domain.Order) error {
 	stored := r.orders[o.ID]
 	stored.Status, stored.PaymentMethod, stored.PaymentStatus = o.Status, o.PaymentMethod, o.PaymentStatus
@@ -170,4 +184,18 @@ func (r *orderRepoFake) MarkSold(_ context.Context, orderID int32) error {
 		r.carts.catalog[*it.ListingID] = e
 	}
 	return nil
+}
+
+func (r *orderRepoFake) Due(_ context.Context, now time.Time) ([]int32, error) {
+	var ids []int32
+	for id, o := range r.orders {
+		if o.Status != domain.OrderAwaitingPayment {
+			continue
+		}
+		processed := o.PaymentStatus == domain.PaymentProcessing && o.PaymentConfirmAt != nil && !now.Before(*o.PaymentConfirmAt)
+		if processed || (o.PayUntil != nil && !now.Before(*o.PayUntil)) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
