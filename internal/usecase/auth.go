@@ -32,11 +32,12 @@ var dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("not-a-real-passwo
 type AuthUsecase struct {
 	users    UserRepository
 	sessions SessionRepository
+	verifier EmailVerifier
 	tx       Transactor
 }
 
-func NewAuthUsecase(users UserRepository, sessions SessionRepository, tx Transactor) *AuthUsecase {
-	return &AuthUsecase{users: users, sessions: sessions, tx: tx}
+func NewAuthUsecase(users UserRepository, sessions SessionRepository, verifier EmailVerifier, tx Transactor) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions, verifier: verifier, tx: tx}
 }
 
 func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName, phone string) (domain.User, domain.Session, error) {
@@ -64,6 +65,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 
 	var user domain.User
 	var session domain.Session
+	var sendLink func()
 	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var err error
 		user, err = uc.users.Create(ctx, email, string(hash), firstName, phone)
@@ -75,12 +77,18 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, firstName,
 		if err != nil {
 			return err
 		}
+		if err := uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt); err != nil {
+			return err
+		}
 
-		return uc.sessions.Create(ctx, session.ID, session.UserID, session.ExpiresAt)
+		sendLink, err = uc.verifier.IssueLink(ctx, user.ID, user.Email)
+		return err
 	})
 	if err != nil {
 		return domain.User{}, domain.Session{}, err
 	}
+
+	sendLink()
 
 	user.PasswordHash = ""
 

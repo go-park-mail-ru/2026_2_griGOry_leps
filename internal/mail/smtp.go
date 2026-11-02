@@ -38,6 +38,14 @@ func (m *SMTP) SendPasswordReset(ctx context.Context, to, link string) error {
 	return m.send(ctx, to, msg)
 }
 
+func (m *SMTP) SendEmailVerification(ctx context.Context, to, link string) error {
+	msg, err := emailVerificationMessage(m.from, to, link)
+	if err != nil {
+		return err
+	}
+	return m.send(ctx, to, msg)
+}
+
 func (m *SMTP) send(ctx context.Context, to string, msg []byte) error {
 	conn, err := m.dial(ctx)
 	if err != nil {

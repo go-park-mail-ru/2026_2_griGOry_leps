@@ -88,6 +88,8 @@ func TestProfile_Get(t *testing.T) {
 		"email": "anna@goget.pw",
 		"first_name": "Анна",
 		"phone": "+79990000001",
+		"email_verified": false,
+		"pending_email": null,
 		"phone_verified": false,
 		"city": {"id": 1, "name": "Москва"},
 		"about": "Продаю вещи",
@@ -160,6 +162,17 @@ func TestProfile_Update_Errors(t *testing.T) {
 			require.Equal(t, tt.field, decodeBody(t, rec)["field"])
 		})
 	}
+}
+
+func TestProfile_Update_EmailLinkCooldown(t *testing.T) {
+	rec := httptest.NewRecorder()
+	stub := profileStub{err: &domain.CooldownError{Wait: 42 * time.Second}}
+
+	NewProfileHandler(stub).Update(rec, withAuth(httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"email":"new@goget.pw"}`))))
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.Equal(t, "42", rec.Header().Get("Retry-After"))
+	require.JSONEq(t, `{"error":"too many requests"}`, rec.Body.String())
 }
 
 func TestProfile_Update_InternalError(t *testing.T) {
