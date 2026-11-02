@@ -232,3 +232,17 @@ func TestOrder_ReplayReturnsOrderEvenWhenListingsAreSold(t *testing.T) {
 	require.Equal(t, first.ID, again.ID)
 	require.Len(t, e.orders.orders, 1)
 }
+
+func TestOrder_ReplayAfterDeadlineReturnsCancelled(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	first, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+	require.Equal(t, domain.OrderAwaitingPayment, first.Status)
+
+	*e.now = e.now.Add(time.Hour)
+	again, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+	require.Equal(t, first.ID, again.ID)
+	require.Equal(t, domain.OrderCancelled, again.Status)
+}

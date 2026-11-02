@@ -110,6 +110,8 @@ func (r *orderRepoFake) reserved(viewerID, listingID int32) bool {
 	return false
 }
 
+func (r *orderRepoFake) LockBuyer(context.Context, int32) error { return nil }
+
 func (r *orderRepoFake) FindByKey(_ context.Context, buyerID int32, key string) (int32, bool, error) {
 	id, ok := r.keys[key]
 	if ok && r.orders[id].BuyerID != buyerID {
