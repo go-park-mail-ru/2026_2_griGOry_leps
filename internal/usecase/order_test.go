@@ -310,3 +310,22 @@ func TestOrder_ReplayAfterDeadlineReturnsCancelled(t *testing.T) {
 	require.Equal(t, first.ID, again.ID)
 	require.Equal(t, domain.OrderCancelled, again.Status)
 }
+
+func TestOrder_BankConfirmationLocksListingsAndRechecksDeadline(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	o, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+	e.carts.locked = nil
+
+	*e.now = e.now.Add(time.Hour)
+	_, err = e.uc.TestPayment(ctx, *o.PaymentToken, true)
+	require.NoError(t, err)
+	require.Len(t, e.carts.locked, 1)
+	require.ElementsMatch(t, []int32{101, 201}, e.carts.locked[0])
+
+	stored := e.orders.orders[o.ID]
+	require.Equal(t, domain.OrderCancelled, stored.Status)
+	require.Equal(t, domain.PaymentPending, stored.PaymentStatus)
+	require.False(t, e.orders.reserved(strangerID, 101))
+}

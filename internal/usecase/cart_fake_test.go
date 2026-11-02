@@ -12,6 +12,7 @@ type cartRepoFake struct {
 	catalog map[int32]domain.CartEntry
 	carts   map[int32][]int32
 	orders  *orderRepoFake
+	locked  [][]int32
 }
 
 func newCartRepoFake() *cartRepoFake {
@@ -54,7 +55,10 @@ func (r *cartRepoFake) EntriesByIDs(ctx context.Context, userID int32, ids []int
 	return entries, nil
 }
 
-func (r *cartRepoFake) LockListings(context.Context, []int32) error { return nil }
+func (r *cartRepoFake) LockListings(_ context.Context, ids []int32) error {
+	r.locked = append(r.locked, ids)
+	return nil
+}
 
 func (r *cartRepoFake) ListingForCart(_ context.Context, userID, listingID int32) (domain.CartListing, error) {
 	if _, ok := r.catalog[listingID]; !ok {
