@@ -20,7 +20,7 @@ func NewCartRepository(db DB) *CartRepository {
 func scanCartEntries(rows *sql.Rows) ([]domain.CartEntry, error) {
 	return collectRows(rows, func(row scanner) (domain.CartEntry, error) {
 		var e domain.CartEntry
-		err := row.Scan(&e.ListingID, &e.Title, &e.Price, &e.ImageURL, &e.Address, &e.HasDelivery, &e.Status,
+		err := row.Scan(&e.ListingID, &e.Title, &e.Price, &e.ImageURL, &e.Address, &e.HasDelivery, &e.Status, &e.Reserved,
 			&e.Seller.ID, &e.Seller.FirstName, &e.Seller.Avatar, &e.Seller.Rating)
 		return e, err
 	})
@@ -38,9 +38,28 @@ func (r *CartRepository) Entries(ctx context.Context, userID int32) ([]domain.Ca
 	return entries, nil
 }
 
-func (r *CartRepository) ListingForCart(ctx context.Context, listingID int32) (domain.CartListing, error) {
+func (r *CartRepository) EntriesByIDs(ctx context.Context, userID int32, ids []int32) ([]domain.CartEntry, error) {
+	rows, err := conn(ctx, r.db).QueryContext(ctx, cartEntriesByIDsQuery, userID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get cart entries: %w", err)
+	}
+	entries, err := scanCartEntries(rows)
+	if err != nil {
+		return nil, fmt.Errorf("scan cart entries: %w", err)
+	}
+	return entries, nil
+}
+
+func (r *CartRepository) LockListings(ctx context.Context, ids []int32) error {
+	if _, err := conn(ctx, r.db).ExecContext(ctx, lockAdsQuery, ids); err != nil {
+		return fmt.Errorf("lock listings: %w", err)
+	}
+	return nil
+}
+
+func (r *CartRepository) ListingForCart(ctx context.Context, userID, listingID int32) (domain.CartListing, error) {
 	var l domain.CartListing
-	err := conn(ctx, r.db).QueryRowContext(ctx, getAdForCartQuery, listingID).Scan(&l.SellerID, &l.Status)
+	err := conn(ctx, r.db).QueryRowContext(ctx, getAdForCartQuery, userID, listingID).Scan(&l.SellerID, &l.Status, &l.Reserved)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.CartListing{}, domain.ErrListingNotFound
 	}

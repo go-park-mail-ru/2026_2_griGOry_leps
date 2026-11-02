@@ -18,6 +18,7 @@ func TestCartErrors(t *testing.T) {
 		code int
 		body string
 	}{
+		{&domain.ItemsUnavailableError{ListingIDs: []int32{3, 4}}, http.StatusConflict, `{"error":"cart items are unavailable","listing_ids":[3,4]}`},
 		{domain.ErrInvalidListingIDs, http.StatusBadRequest, `{"error":"invalid request body"}`},
 		{domain.ErrOwnListing, http.StatusForbidden, `{"error":"cannot add own listing"}`},
 		{domain.ErrListingUnavailable, http.StatusConflict, `{"error":"listing is unavailable"}`},
@@ -25,7 +26,7 @@ func TestCartErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		rec := httptest.NewRecorder()
-		writeCartError(rec, httptest.NewRequest(http.MethodPost, "/api/cart/items", nil), "test", tt.err)
+		writeCartError(rec, httptest.NewRequest(http.MethodPost, "/api/checkout/quote", nil), "test", tt.err)
 		require.Equal(t, tt.code, rec.Code, tt.err.Error())
 		require.JSONEq(t, tt.body, rec.Body.String())
 	}

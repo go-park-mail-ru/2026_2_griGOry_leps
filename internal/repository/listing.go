@@ -229,3 +229,15 @@ func (r *ListingRepository) DeleteStalePhotos(ctx context.Context, before time.T
 	}
 	return urls, nil
 }
+
+func (r *ListingRepository) ActiveOrder(ctx context.Context, listingID int32) (int32, bool, error) {
+	var id int32
+	err := conn(ctx, r.db).QueryRowContext(ctx, activeOrderForListingQuery, listingID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("active order for listing: %w", err)
+	}
+	return id, true, nil
+}

@@ -191,7 +191,10 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 func writeCartError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	ctx := r.Context()
+	var unavailable *domain.ItemsUnavailableError
 	switch {
+	case errors.As(err, &unavailable):
+		writeJSON(ctx, w, http.StatusConflict, map[string]any{"error": err.Error(), "listing_ids": unavailable.ListingIDs})
 	case errors.Is(err, domain.ErrInvalidListingIDs):
 		writeError(ctx, w, http.StatusBadRequest, "invalid request body")
 	case errors.Is(err, domain.ErrListingNotFound):

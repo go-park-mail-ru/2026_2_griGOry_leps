@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Port           string
 	FrontendOrigin string
+	PublicURL      string
 	CookieSecure   bool
 	LogLevel       slog.Level
 	CSRFSecret     string
@@ -31,6 +32,7 @@ func Load() *Config {
 	return &Config{
 		Port:           getEnv("PORT", "8080"),
 		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
+		PublicURL:      getEnv("PUBLIC_URL", "http://localhost:8080"),
 		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
 		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
 		CSRFSecret:     os.Getenv("CSRF_SECRET"),

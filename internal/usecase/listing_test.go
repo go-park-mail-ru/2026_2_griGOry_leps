@@ -28,6 +28,7 @@ type listingRepoFake struct {
 	closed map[int32]string
 
 	categories []domain.Category
+	orders     map[int32]int32
 }
 
 func newListingRepoFake() *listingRepoFake {
@@ -147,6 +148,11 @@ func (r *listingRepoFake) Close(_ context.Context, id int32, reason string) erro
 
 func (r *listingRepoFake) IsLeafCategory(_ context.Context, id int32) (bool, error) {
 	return r.leaves[id], nil
+}
+
+func (r *listingRepoFake) ActiveOrder(_ context.Context, listingID int32) (int32, bool, error) {
+	id, ok := r.orders[listingID]
+	return id, ok, nil
 }
 
 func (r *listingRepoFake) ListCategories(context.Context) ([]domain.Category, error) {

@@ -340,6 +340,7 @@ func listingID(r *http.Request) (int32, bool) {
 
 func writeListingError(w http.ResponseWriter, r *http.Request, op string, err error) {
 	ctx := r.Context()
+	var orderErr *domain.ListingOrderError
 	if field := listingErrorField(err); field != "" {
 		writeFieldError(ctx, w, http.StatusBadRequest, field, err.Error())
 		return
@@ -350,6 +351,10 @@ func writeListingError(w http.ResponseWriter, r *http.Request, op string, err er
 		writeError(ctx, w, http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(ctx, w, http.StatusForbidden, err.Error())
+	case errors.As(err, &orderErr):
+		writeJSON(ctx, w, http.StatusConflict, map[string]any{
+			"error": err.Error(), "order_id": orderErr.OrderID, "order_number": orderErr.OrderNumber,
+		})
 	case errors.Is(err, domain.ErrListingSold),
 		errors.Is(err, domain.ErrListingNotDraft),
 		errors.Is(err, domain.ErrListingNotActive):

@@ -61,7 +61,7 @@ func (uc *CartUsecase) Add(ctx context.Context, userID, listingID int32) (int, e
 }
 
 func (uc *CartUsecase) add(ctx context.Context, userID, listingID int32) error {
-	l, err := uc.carts.ListingForCart(ctx, listingID)
+	l, err := uc.carts.ListingForCart(ctx, userID, listingID)
 	if err != nil {
 		return err
 	}
@@ -72,6 +72,9 @@ func (uc *CartUsecase) add(ctx context.Context, userID, listingID int32) error {
 	case domain.AdStatusDraft, domain.AdStatusModeration, domain.AdStatusRejected:
 		return domain.ErrListingNotFound
 	case domain.AdStatusActive:
+		if l.Reserved {
+			return domain.ErrListingUnavailable
+		}
 	default:
 		return domain.ErrListingUnavailable
 	}

@@ -34,8 +34,10 @@ info:
     После регистрации на почту уходит ссылка `<фронт>/verify-email?token=…`, она
     действует 30 минут и срабатывает один раз. Пока почта не подтверждена
     (`email_verified` = false), нельзя публиковать объявления (`publish` = true
-    в `POST /listings` и `PATCH /listings/{id}`), менять адреса доставки и жаловаться
-    на продавцов — эти ручки отвечают 403 `email not verified`. Черновики, правка,
+    в `POST /listings` и `PATCH /listings/{id}`), менять адреса доставки, жаловаться
+    на продавцов и оформлять и оплачивать заказы (`POST /checkout/quote`, `POST /orders`,
+    `POST /orders/{id}/payment`) — эти
+    ручки отвечают 403 `email not verified`. Корзина доступна без подтверждения. Черновики, правка,
     снятие и удаление своих объявлений, профиль и пароль доступны. Сброс пароля
     по ссылке из письма тоже подтверждает почту.
 
@@ -1041,7 +1043,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Закрыть можно только активное объявление
+          description: Закрыть можно только активное объявление без неоплаченного заказа
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1353,7 +1355,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequestBody' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders:
@@ -1363,12 +1365,18 @@ paths:
       summary: Оформить покупку
       description: |
         Повтор запроса с тем же `Idempotency-Key` возвращает уже созданный заказ.
-        После успеха товары заказа убираются из корзины.
+        Товары заказа убираются из корзины, когда заказ становится `placed`;
+        пока заказ ждёт оплаты, они остаются в корзине покупателя, а для остальных
+        покупателей становятся недоступными (`unavailable_reason` = `sold`).
+        Новое оформление с теми же объявлениями отменяет неоплаченный заказ
+        этого же покупателя.
 
         - `cod` — заказ сразу `placed`, `payment.status` = `on_delivery`.
         - `card` и `sbp` — заказ `awaiting_payment`, клиент переходит на
           `payment.confirmation_url`; `placed` сервер ставит сам после
           подтверждения платежа. Без оплаты в течение часа — `cancelled`.
+          Пока платёжный провайдер не подключён, `confirmation_url` ведёт на
+          тестовую страницу банка `GET /test-payments/{token}`.
 
         | Поле | Правило |
         | --- | --- |
@@ -1408,6 +1416,7 @@ paths:
                 idempotencyKey: { value: { error: invalid Idempotency-Key header } }
                 bySeller: { value: { error: delivery method is not available, field: delivery.by_seller } }
                 address: { value: { error: delivery address is required, field: delivery.address } }
+                date: { value: { error: delivery date is required, field: delivery.date } }
                 timeSlot: { value: { error: delivery time slot is required, field: delivery.time_slot } }
                 comment: { value: { error: comment must be at most 200 characters, field: delivery.comment } }
                 recipientName: { value: { error: first name is required, field: recipient.first_name } }
@@ -1415,7 +1424,7 @@ paths:
                 paymentMethod: { value: { error: invalid payment method, field: payment_method } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders/{order_id}:
@@ -1482,8 +1491,54 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: order is not payable }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
+
+  /test-payments/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentPage
+      summary: Тестовая страница банка
+      description: |
+        Заглушка вместо платёжного провайдера. HTML-страница с суммой заказа
+        и кнопками «Оплатить» и «Отклонить».
+      security: []
+      responses:
+        '200':
+          description: HTML-страница
+          content:
+            text/html:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+
+  /test-payments/{token}/{result}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      - name: result
+        in: path
+        required: true
+        schema: { type: string, enum: [success, fail] }
+    get:
+      tags: [Заказы]
+      operationId: testPaymentResult
+      summary: Результат тестовой оплаты
+      description: |
+        `success` переводит оплату в `processing`, через несколько секунд заказ
+        становится `placed`; `fail` — оплата `failed`, заказ продолжает ждать оплаты.
+        После этого перенаправляет на `<фронт>/orders/{order_id}`.
+      security: []
+      responses:
+        '303':
+          description: Перенаправление на страницу заказа
+        '404': { $ref: '#/components/responses/OrderNotFound' }
 
 components:
   securitySchemes:
@@ -1552,6 +1607,14 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: invalid csrf token }
+    InvalidCSRFOrUnverified:
+      description: Невалидный CSRF-токен или почта пользователя не подтверждена
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            csrf: { value: { error: invalid csrf token } }
+            unverified: { value: { error: email not verified } }
     InternalError:
       description: Внутренняя ошибка сервера
       content:
@@ -1733,6 +1796,12 @@ components:
       type: string
       pattern: '^\d{1,10}\.\d{2}$'
       example: '15000.00'
+
+    Amount:
+      type: string
+      pattern: '^\d+\.\d{2}$'
+      example: '45300.00'
+      description: Сумма нескольких цен, поэтому без ограничения на число цифр.
 
     PriceFilter:
       type: string
@@ -2411,7 +2480,7 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/OrderItem' }
-        items_total: { $ref: '#/components/schemas/Price' }
+        items_total: { $ref: '#/components/schemas/Amount' }
         sellers:
           type: array
           items:
@@ -2526,9 +2595,9 @@ components:
           required: [items, delivery, total]
           description: Считает сервер.
           properties:
-            items: { $ref: '#/components/schemas/Price' }
-            delivery: { $ref: '#/components/schemas/Price' }
-            total: { $ref: '#/components/schemas/Price' }
+            items: { $ref: '#/components/schemas/Amount' }
+            delivery: { $ref: '#/components/schemas/Amount' }
+            total: { $ref: '#/components/schemas/Amount' }
         delivery:
           allOf:
             - $ref: '#/components/schemas/OrderDelivery'
