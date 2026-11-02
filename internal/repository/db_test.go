@@ -1,5 +1,3 @@
-//go:build integration
-
 package repository
 
 import (
@@ -15,6 +13,8 @@ import (
 	"time"
 
 	"database/sql"
+	"github.com/DATA-DOG/go-sqlmock"
+
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -25,7 +25,9 @@ import (
 func newTestPool(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
-	require.NotEmpty(t, dsn, "set TEST_DATABASE_URL to a dedicated test database")
+	if dsn == "" {
+		t.Skip("integration test requires TEST_DATABASE_URL")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -107,4 +109,12 @@ func newTestAdRepository(t *testing.T, ads []domain.Ad) *AdRepository {
 		require.NoError(t, err)
 	}
 	return NewAdRepository(pool)
+}
+
+func newSQLMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
+	t.Helper()
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	t.Cleanup(func() { defer db.Close(); require.NoError(t, mock.ExpectationsWereMet()) })
+	return db, mock
 }

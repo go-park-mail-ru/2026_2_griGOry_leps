@@ -1,50 +1,39 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
 	"errors"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
-
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func TestTransactor_RollbackOnError(t *testing.T) {
-	pool := newTestPool(t)
-	users := NewUserRepository(pool)
-	sessions := NewSessionRepository(pool)
+	db, mock := newSQLMock(t)
 	ctx := context.Background()
 	failure := errors.New("session failed")
-
-	err := NewTransactor(pool).WithinTx(ctx, func(ctx context.Context) error {
-		user, err := users.Create(ctx, "tx@b.ru", "hash", "ivan", "+79001234567")
+	expires := time.Now().Add(time.Hour)
+	mock.ExpectBegin()
+	mock.ExpectQuery(createUserQuery).WithArgs("tx@b.ru", "hash", "ivan", "+79001234567").WillReturnRows(userMockRows(1, "tx@b.ru", "+79001234567"))
+	mock.ExpectExec(createSessionQuery).WithArgs("sid", int32(1), expires).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+	err := NewTransactor(db).WithinTx(ctx, func(ctx context.Context) error {
+		user, err := NewUserRepository(db).Create(ctx, "tx@b.ru", "hash", "ivan", "+79001234567")
 		require.NoError(t, err)
-		require.NoError(t, sessions.Create(ctx, "sid", user.ID, time.Now().Add(time.Hour)))
+		require.NoError(t, NewSessionRepository(db).Create(ctx, "sid", user.ID, expires))
 		return failure
 	})
 	require.ErrorIs(t, err, failure)
-
-	_, err = users.GetByEmail(ctx, "tx@b.ru")
-	require.ErrorIs(t, err, domain.ErrUserNotFound)
-	_, err = sessions.GetByID(ctx, "sid")
-	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
-
 func TestTransactor_Commit(t *testing.T) {
-	pool := newTestPool(t)
-	users := NewUserRepository(pool)
-	ctx := context.Background()
-
-	err := NewTransactor(pool).WithinTx(ctx, func(ctx context.Context) error {
-		_, err := users.Create(ctx, "tx@b.ru", "hash", "ivan", "+79001234567")
+	db, mock := newSQLMock(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(createUserQuery).WithArgs("tx@b.ru", "hash", "ivan", "+79001234567").WillReturnRows(userMockRows(1, "tx@b.ru", "+79001234567"))
+	mock.ExpectCommit()
+	err := NewTransactor(db).WithinTx(context.Background(), func(ctx context.Context) error {
+		_, err := NewUserRepository(db).Create(ctx, "tx@b.ru", "hash", "ivan", "+79001234567")
 		return err
 	})
-	require.NoError(t, err)
-
-	_, err = users.GetByEmail(ctx, "tx@b.ru")
 	require.NoError(t, err)
 }

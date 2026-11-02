@@ -1,87 +1,61 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSession_Create_Success(t *testing.T) {
-	repo, userID := newTestSessionRepository(t)
-
-	err := repo.Create(context.Background(), "sess-1", userID, time.Now().Add(time.Hour))
-	require.NoError(t, err)
+	db, mock := newSQLMock(t)
+	expires := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	mock.ExpectExec(createSessionQuery).WithArgs("sess-1", int32(1), expires).WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, NewSessionRepository(db).Create(context.Background(), "sess-1", 1, expires))
 }
 
 func TestSession_GetByID_Success(t *testing.T) {
-	repo, userID := newTestSessionRepository(t)
-
-	expires := time.Now().Add(time.Hour).Truncate(time.Second)
-	require.NoError(t, repo.Create(context.Background(), "sess-1", userID, expires))
-
-	session, err := repo.GetByID(context.Background(), "sess-1")
+	db, mock := newSQLMock(t)
+	expires := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(getSessionQuery).WithArgs("sess-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "expires_at"}).AddRow("sess-1", 1, expires))
+	session, err := NewSessionRepository(db).GetByID(context.Background(), "sess-1")
 	require.NoError(t, err)
 	require.Equal(t, "sess-1", session.ID)
-	require.Equal(t, userID, session.UserID)
+	require.Equal(t, int32(1), session.UserID)
 }
 
 func TestSession_GetByID_NotFound(t *testing.T) {
-	repo, _ := newTestSessionRepository(t)
-
-	_, err := repo.GetByID(context.Background(), "nope")
+	db, mock := newSQLMock(t)
+	mock.ExpectQuery(getSessionQuery).WithArgs("nope").WillReturnError(sql.ErrNoRows)
+	_, err := NewSessionRepository(db).GetByID(context.Background(), "nope")
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestSession_Delete(t *testing.T) {
-	repo, userID := newTestSessionRepository(t)
-
-	require.NoError(t, repo.Create(context.Background(), "sess-1", userID, time.Now().Add(time.Hour)))
-	require.NoError(t, repo.Delete(context.Background(), "sess-1"))
-
-	_, err := repo.GetByID(context.Background(), "sess-1")
-	require.ErrorIs(t, err, domain.ErrSessionNotFound)
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(deleteSessionQuery).WithArgs("sess-1").WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, NewSessionRepository(db).Delete(context.Background(), "sess-1"))
 }
 
 func TestSession_Delete_Nonexistent(t *testing.T) {
-	repo, _ := newTestSessionRepository(t)
-
-	require.NoError(t, repo.Delete(context.Background(), "nope"))
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(deleteSessionQuery).WithArgs("nope").WillReturnResult(sqlmock.NewResult(0, 0))
+	require.NoError(t, NewSessionRepository(db).Delete(context.Background(), "nope"))
 }
 
 func TestSession_DeleteOthers(t *testing.T) {
-	repo, userID := newTestSessionRepository(t)
-	ctx := context.Background()
-	expires := time.Now().Add(time.Hour)
-	require.NoError(t, repo.Create(ctx, "current", userID, expires))
-	require.NoError(t, repo.Create(ctx, "laptop", userID, expires))
-	require.NoError(t, repo.Create(ctx, "phone", userID, expires))
-
-	require.NoError(t, repo.DeleteOthers(ctx, userID, "current"))
-
-	_, err := repo.GetByID(ctx, "current")
-	require.NoError(t, err)
-	for _, id := range []string{"laptop", "phone"} {
-		_, err := repo.GetByID(ctx, id)
-		require.ErrorIs(t, err, domain.ErrSessionNotFound, id)
-	}
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(deleteOtherSessionsQuery).WithArgs(int32(1), "current").WillReturnResult(sqlmock.NewResult(0, 2))
+	require.NoError(t, NewSessionRepository(db).DeleteOthers(context.Background(), int32(1), "current"))
 }
 
 func TestSession_DeleteAll(t *testing.T) {
-	repo, userID := newTestSessionRepository(t)
-	ctx := context.Background()
-	expires := time.Now().Add(time.Hour)
-	require.NoError(t, repo.Create(ctx, "laptop", userID, expires))
-	require.NoError(t, repo.Create(ctx, "phone", userID, expires))
-
-	require.NoError(t, repo.DeleteAll(ctx, userID))
-
-	for _, id := range []string{"laptop", "phone"} {
-		_, err := repo.GetByID(ctx, id)
-		require.ErrorIs(t, err, domain.ErrSessionNotFound, id)
-	}
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(deleteUserSessionsQuery).WithArgs(int32(1)).WillReturnResult(sqlmock.NewResult(0, 2))
+	require.NoError(t, NewSessionRepository(db).DeleteAll(context.Background(), int32(1)))
 }

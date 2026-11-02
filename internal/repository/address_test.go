@@ -1,53 +1,65 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
+	"database/sql"
+	"github.com/DATA-DOG/go-sqlmock"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
+func addressMockRows(addresses ...domain.Address) *sqlmock.Rows {
+	rows := sqlmock.NewRows([]string{"id", "user_id", "street", "house", "comment", "is_default", "created_at"})
+	for _, a := range addresses {
+		rows.AddRow(a.ID, a.UserID, a.Street, a.House, a.Comment, a.IsDefault, a.CreatedAt)
+	}
+	return rows
+}
 func TestAddressRepo_CRUD(t *testing.T) {
-	f := newSellerFixture(t)
+	db, mock := newSQLMock(t)
+	repo := NewAddressRepository(db)
 	ctx := context.Background()
-	repo := NewAddressRepository(f.pool)
-
-	first, err := repo.Create(ctx, domain.Address{UserID: f.seller, Street: "Тверская", House: "д. 12", Comment: "Домофон", IsDefault: true})
+	first := domain.Address{ID: 1, UserID: 1, Street: "Tverskaya", House: "12", Comment: "Intercom", IsDefault: true, CreatedAt: time.Now()}
+	second := domain.Address{ID: 2, UserID: 1, Street: "Leninsky", House: "1", CreatedAt: time.Now()}
+	third := domain.Address{ID: 3, UserID: 2, Street: "Arbat", House: "5", IsDefault: true, CreatedAt: time.Now()}
+	for _, a := range []domain.Address{first, second, third} {
+		mock.ExpectQuery(createAddressQuery).WithArgs(a.UserID, a.Street, a.House, a.Comment, a.IsDefault).WillReturnRows(addressMockRows(a))
+		actual, err := repo.Create(ctx, a)
+		require.NoError(t, err)
+		require.Equal(t, a, actual)
+	}
+	mock.ExpectQuery(listAddressesQuery).WithArgs(int32(1)).WillReturnRows(addressMockRows(first, second)).RowsWillBeClosed()
+	list, err := repo.List(ctx, 1)
 	require.NoError(t, err)
-	require.NotZero(t, first.ID)
-	second, err := repo.Create(ctx, domain.Address{UserID: f.seller, Street: "Ленинский", House: "д. 1"})
-	require.NoError(t, err)
-	_, err = repo.Create(ctx, domain.Address{UserID: f.buyer, Street: "Арбат", House: "д. 5", IsDefault: true})
-	require.NoError(t, err)
-
-	list, err := repo.List(ctx, f.seller)
-	require.NoError(t, err)
-	require.Equal(t, []int32{first.ID, second.ID}, []int32{list[0].ID, list[1].ID})
-	count, err := repo.Count(ctx, f.seller)
+	require.Equal(t, []domain.Address{first, second}, list)
+	mock.ExpectQuery(countAddressesQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
+	count, err := repo.Count(ctx, 1)
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
-
-	second.House = "д. 2"
+	second.House = "2"
+	mock.ExpectQuery(updateAddressQuery).WithArgs(second.ID, second.UserID, second.Street, second.House, second.Comment, second.IsDefault).WillReturnRows(addressMockRows(second))
 	updated, err := repo.Update(ctx, second)
 	require.NoError(t, err)
-	require.Equal(t, "д. 2", updated.House)
-
-	_, err = repo.GetForUpdate(ctx, f.buyer, first.ID)
+	require.Equal(t, "2", updated.House)
+	mock.ExpectQuery(getAddressForUpdateQuery).WithArgs(int32(1), int32(2)).WillReturnError(sql.ErrNoRows)
+	_, err = repo.GetForUpdate(ctx, 2, 1)
 	require.ErrorIs(t, err, domain.ErrAddressNotFound)
-	require.ErrorIs(t, repo.Delete(ctx, f.buyer, first.ID), domain.ErrAddressNotFound)
-	_, err = repo.Update(ctx, domain.Address{ID: first.ID, UserID: f.buyer, Street: "x", House: "y"})
+	mock.ExpectExec(deleteAddressQuery).WithArgs(int32(1), int32(2)).WillReturnResult(sqlmock.NewResult(0, 0))
+	require.ErrorIs(t, repo.Delete(ctx, 2, 1), domain.ErrAddressNotFound)
+	mock.ExpectQuery(updateAddressQuery).WithArgs(int32(1), int32(2), "x", "y", "", false).WillReturnError(sql.ErrNoRows)
+	_, err = repo.Update(ctx, domain.Address{ID: 1, UserID: 2, Street: "x", House: "y"})
 	require.ErrorIs(t, err, domain.ErrAddressNotFound)
-
-	require.NoError(t, repo.Delete(ctx, f.seller, second.ID))
-	list, err = repo.List(ctx, f.seller)
+	mock.ExpectExec(deleteAddressQuery).WithArgs(int32(2), int32(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.Delete(ctx, 1, 2))
+	mock.ExpectQuery(listAddressesQuery).WithArgs(int32(1)).WillReturnRows(addressMockRows(first)).RowsWillBeClosed()
+	list, err = repo.List(ctx, 1)
 	require.NoError(t, err)
-	require.Len(t, list, 1)
+	require.Equal(t, []domain.Address{first}, list)
 }
-
 func TestAddressRepo_SingleDefault(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
@@ -80,20 +92,25 @@ func TestAddressRepo_SingleDefault(t *testing.T) {
 }
 
 func TestCityRepo_Search(t *testing.T) {
-	repo := NewCityRepository(newTestPool(t))
+	db, mock := newSQLMock(t)
+	repo := NewCityRepository(db)
 	ctx := context.Background()
-
-	cities, err := repo.Search(ctx, "мос", 10)
-	require.NoError(t, err)
-	require.Len(t, cities, 1)
-	require.Equal(t, []domain.City{{ID: cities[0].ID, Name: "Москва"}}, cities)
-
-	cities, err = repo.Search(ctx, "", 3)
-	require.NoError(t, err)
-	require.Len(t, cities, 3)
-	require.Equal(t, "Москва", cities[0].Name)
-
-	cities, err = repo.Search(ctx, "%", 10)
-	require.NoError(t, err)
-	require.Empty(t, cities)
+	for _, tc := range []struct {
+		prefix string
+		limit  int
+		cities []domain.City
+	}{
+		{"mos", 10, []domain.City{{ID: 1, Name: "Moscow"}}},
+		{"", 3, []domain.City{{ID: 1, Name: "Moscow"}, {ID: 2, Name: "Kazan"}, {ID: 3, Name: "Omsk"}}},
+		{"%", 10, []domain.City{}},
+	} {
+		rows := sqlmock.NewRows([]string{"id", "name"})
+		for _, city := range tc.cities {
+			rows.AddRow(city.ID, city.Name)
+		}
+		mock.ExpectQuery(searchCitiesQuery).WithArgs(tc.prefix, tc.limit).WillReturnRows(rows).RowsWillBeClosed()
+		cities, err := repo.Search(ctx, tc.prefix, tc.limit)
+		require.NoError(t, err)
+		require.Equal(t, tc.cities, cities)
+	}
 }

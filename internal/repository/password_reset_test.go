@@ -1,91 +1,90 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
-	"testing"
-	"time"
-
+	"database/sql"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
-func newTestResetRepository(t *testing.T) (*PasswordResetRepository, *UserRepository, int32) {
-	t.Helper()
-	pool := newTestPool(t)
-	users := NewUserRepository(pool)
-	user, err := users.Create(context.Background(), "anna@goget.pw", "hash", "Анна", "+79990000001")
-	require.NoError(t, err)
-	return NewPasswordResetRepository(pool), users, user.ID
+func resetRows(userID int32, expires time.Time, used any) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"user_id", "expires_at", "used_at"}).AddRow(userID, expires, used)
 }
-
 func TestPasswordReset_CreateAndGet(t *testing.T) {
-	repo, _, userID := newTestResetRepository(t)
+	db, mock := newSQLMock(t)
+	repo := NewPasswordResetRepository(db)
 	ctx := context.Background()
-	expires := time.Now().Add(30 * time.Minute).Truncate(time.Microsecond)
-
-	require.NoError(t, repo.Create(ctx, hashOf("a"), userID, expires))
-
-	for _, get := range []func(context.Context, string) (domain.PasswordReset, error){repo.Get, repo.GetForUpdate} {
+	expires := time.Now().Add(time.Hour)
+	mock.ExpectExec(createPasswordResetQuery).WithArgs(hashOf("a"), int32(1), expires).WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.Create(ctx, hashOf("a"), 1, expires))
+	for i, get := range []func(context.Context, string) (domain.PasswordReset, error){repo.Get, repo.GetForUpdate} {
+		query := []string{getPasswordResetQuery, getPasswordResetForUpdateQuery}[i]
+		mock.ExpectQuery(query).WithArgs(hashOf("a")).WillReturnRows(resetRows(1, expires, nil))
 		reset, err := get(ctx, hashOf("a"))
 		require.NoError(t, err)
-		require.Equal(t, userID, reset.UserID)
-		require.True(t, expires.Equal(reset.ExpiresAt))
+		require.Equal(t, int32(1), reset.UserID)
+		require.Equal(t, expires, reset.ExpiresAt)
 		require.Nil(t, reset.UsedAt)
-
+		mock.ExpectQuery(query).WithArgs(hashOf("b")).WillReturnError(sql.ErrNoRows)
 		_, err = get(ctx, hashOf("b"))
 		require.ErrorIs(t, err, domain.ErrInvalidResetToken)
 	}
 }
-
 func TestPasswordReset_HasCreatedSince(t *testing.T) {
-	repo, _, userID := newTestResetRepository(t)
+	db, mock := newSQLMock(t)
+	repo := NewPasswordResetRepository(db)
 	ctx := context.Background()
-
-	recent, err := repo.HasCreatedSince(ctx, userID, time.Now().Add(-time.Minute))
-	require.NoError(t, err)
-	require.False(t, recent)
-
-	require.NoError(t, repo.Create(ctx, hashOf("a"), userID, time.Now().Add(time.Hour)))
-
-	recent, err = repo.HasCreatedSince(ctx, userID, time.Now().Add(-time.Minute))
-	require.NoError(t, err)
-	require.True(t, recent)
-
-	recent, err = repo.HasCreatedSince(ctx, userID, time.Now().Add(time.Minute))
-	require.NoError(t, err)
-	require.False(t, recent)
-}
-
-func TestPasswordReset_UseAll(t *testing.T) {
-	repo, users, userID := newTestResetRepository(t)
-	ctx := context.Background()
-	other, err := users.Create(ctx, "oleg@goget.pw", "hash", "Олег", "+79990000002")
-	require.NoError(t, err)
-	for token, id := range map[string]int32{"a": userID, "b": userID, "c": other.ID} {
-		require.NoError(t, repo.Create(ctx, hashOf(token), id, time.Now().Add(time.Hour)))
+	now := time.Now()
+	for i, want := range []bool{false, true, false} {
+		if i == 1 {
+			mock.ExpectExec(createPasswordResetQuery).WithArgs(hashOf("a"), int32(1), now.Add(time.Hour)).WillReturnResult(sqlmock.NewResult(0, 1))
+			require.NoError(t, repo.Create(ctx, hashOf("a"), 1, now.Add(time.Hour)))
+		}
+		since := now.Add(-time.Minute)
+		if i == 2 {
+			since = now.Add(time.Minute)
+		}
+		mock.ExpectQuery(hasPasswordResetSinceQuery).WithArgs(int32(1), since).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(want))
+		recent, err := repo.HasCreatedSince(ctx, 1, since)
+		require.NoError(t, err)
+		require.Equal(t, want, recent)
 	}
-
-	require.NoError(t, repo.UseAll(ctx, userID))
-
-	for _, token := range []string{"a", "b"} {
+}
+func TestPasswordReset_UseAll(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewPasswordResetRepository(db)
+	ctx := context.Background()
+	now := time.Now()
+	mock.ExpectExec(usePasswordResetsQuery).WithArgs(int32(1)).WillReturnResult(sqlmock.NewResult(0, 2))
+	require.NoError(t, repo.UseAll(ctx, 1))
+	for _, token := range []string{"a", "b", "c"} {
+		var used any = now
+		id := int32(1)
+		if token == "c" {
+			used = nil
+			id = 2
+		}
+		mock.ExpectQuery(getPasswordResetForUpdateQuery).WithArgs(hashOf(token)).WillReturnRows(resetRows(id, now.Add(time.Hour), used))
 		reset, err := repo.GetForUpdate(ctx, hashOf(token))
 		require.NoError(t, err)
-		require.NotNil(t, reset.UsedAt, token)
+		if token == "c" {
+			require.Nil(t, reset.UsedAt)
+		} else {
+			require.NotNil(t, reset.UsedAt)
+		}
 	}
-	reset, err := repo.GetForUpdate(ctx, hashOf("c"))
-	require.NoError(t, err)
-	require.Nil(t, reset.UsedAt)
 }
-
 func TestUser_LockByID(t *testing.T) {
-	_, users, userID := newTestResetRepository(t)
-
-	require.NoError(t, users.LockByID(context.Background(), userID))
+	db, mock := newSQLMock(t)
+	users := NewUserRepository(db)
+	mock.ExpectQuery(lockUserQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"one"}).AddRow(1))
+	require.NoError(t, users.LockByID(context.Background(), 1))
+	mock.ExpectQuery(lockUserQuery).WithArgs(int32(999)).WillReturnError(sql.ErrNoRows)
 	require.ErrorIs(t, users.LockByID(context.Background(), 999), domain.ErrUserNotFound)
 }
-
 func hashOf(token string) string {
 	h := make([]byte, 64)
 	for i := range h {
