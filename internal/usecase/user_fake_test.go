@@ -138,6 +138,7 @@ func (r *userRepoFake) UpdateProfile(_ context.Context, id int32, upd domain.Pro
 	}
 	if upd.Email != nil {
 		delete(r.byEmail, user.Email)
+		user.EmailVerified = user.EmailVerified && user.Email == *upd.Email
 		user.Email = *upd.Email
 		r.byEmail[user.Email] = id
 	}
@@ -182,6 +183,56 @@ func (r *userRepoFake) UpdatePassword(_ context.Context, id int32, passwordHash 
 		return domain.ErrUserNotFound
 	}
 	user.PasswordHash = passwordHash
+	r.users[id] = user
+	return nil
+}
+
+func (r *userRepoFake) SetEmailVerified(_ context.Context, id int32) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	user.EmailVerified = true
+	r.users[id] = user
+	return nil
+}
+
+func (r *userRepoFake) SetPendingEmail(_ context.Context, id int32, email *string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	user.PendingEmail = ""
+	if email != nil {
+		user.PendingEmail = *email
+	}
+	r.users[id] = user
+	return nil
+}
+
+func (r *userRepoFake) ConfirmPendingEmail(_ context.Context, id int32) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	if user.PendingEmail == "" {
+		return domain.ErrNoPendingEmail
+	}
+	if other, ok := r.byEmail[user.PendingEmail]; ok && other != id {
+		return domain.ErrEmailTaken
+	}
+	delete(r.byEmail, user.Email)
+	user.Email, user.PendingEmail, user.EmailVerified = user.PendingEmail, "", true
+	r.byEmail[user.Email] = id
 	r.users[id] = user
 	return nil
 }
