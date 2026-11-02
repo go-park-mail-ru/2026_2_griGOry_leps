@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"database/sql"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestProfileRepository(t *testing.T) (*UserRepository, *pgxpool.Pool, int32) {
+func newTestProfileRepository(t *testing.T) (*UserRepository, *sql.DB, int32) {
 	t.Helper()
 	pool := newTestPool(t)
 	repo := NewUserRepository(pool)
@@ -22,10 +22,10 @@ func newTestProfileRepository(t *testing.T) (*UserRepository, *pgxpool.Pool, int
 	return repo, pool, user.ID
 }
 
-func cityID(t *testing.T, pool *pgxpool.Pool, name string) int32 {
+func cityID(t *testing.T, pool *sql.DB, name string) int32 {
 	t.Helper()
 	var id int32
-	require.NoError(t, pool.QueryRow(context.Background(), "SELECT city_id FROM city WHERE name = $1", name).Scan(&id))
+	require.NoError(t, pool.QueryRowContext(context.Background(), "SELECT city_id FROM city WHERE name = $1", name).Scan(&id))
 	return id
 }
 
@@ -57,7 +57,7 @@ func TestProfile_RatingFromReviewsOnOwnAds(t *testing.T) {
 	ctx := context.Background()
 	buyer, err := repo.Create(ctx, "buyer@goget.pw", "hash", "Олег", "+79990000002")
 	require.NoError(t, err)
-	_, err = pool.Exec(ctx, `
+	_, err = pool.ExecContext(ctx, `
 		WITH ads AS (
 			INSERT INTO ad (title, price, user_id) VALUES ('Велосипед', 100, $1), ('Самокат', 200, $1)
 			RETURNING id
@@ -96,7 +96,7 @@ func TestProfile_UpdatePartial(t *testing.T) {
 func TestProfile_UpdatePhoneResetsVerification(t *testing.T) {
 	repo, pool, userID := newTestProfileRepository(t)
 	ctx := context.Background()
-	_, err := pool.Exec(ctx, "UPDATE user_account SET phone_verified = true WHERE user_id = $1", userID)
+	_, err := pool.ExecContext(ctx, "UPDATE user_account SET phone_verified = true WHERE user_id = $1", userID)
 	require.NoError(t, err)
 
 	same := "+79990000001"

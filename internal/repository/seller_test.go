@@ -17,7 +17,7 @@ import (
 func (f sellerFixture) review(t *testing.T, authorID, adID int32, rating float64, age time.Duration) int32 {
 	t.Helper()
 	var id int32
-	err := f.pool.QueryRow(context.Background(), `INSERT INTO review (user_id, ad_id, text, rating, created_at)
+	err := f.pool.QueryRowContext(context.Background(), `INSERT INTO review (user_id, ad_id, text, rating, created_at)
 		VALUES ($1, $2, 'Отзыв', $3, now() - $4::float8 * interval '1 second') RETURNING rew_id`,
 		authorID, adID, rating, age.Seconds()).Scan(&id)
 	require.NoError(t, err)
@@ -29,7 +29,7 @@ func (f sellerFixture) reviewWithPhotos(t *testing.T, authorID, adID int32, rati
 	t.Helper()
 	id := f.review(t, authorID, adID, rating, age)
 	for i, url := range photos {
-		_, err := f.pool.Exec(context.Background(), `INSERT INTO review_image (rew_id, url, position) VALUES ($1, $2, $3)`,
+		_, err := f.pool.ExecContext(context.Background(), `INSERT INTO review_image (rew_id, url, position) VALUES ($1, $2, $3)`,
 			id, url, len(photos)-i)
 		require.NoError(t, err)
 	}
@@ -46,7 +46,7 @@ func (f sellerFixture) author(t *testing.T, email, phone string) int32 {
 func TestSellerRepo_Get(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
-	_, err := f.pool.Exec(ctx, `UPDATE user_account
+	_, err := f.pool.ExecContext(ctx, `UPDATE user_account
 		SET phone_verified = true, city_id = (SELECT city_id FROM city WHERE name = 'Москва') WHERE user_id = $1`, f.seller)
 	require.NoError(t, err)
 
@@ -177,7 +177,7 @@ func TestSellerRepo_CreateReport(t *testing.T) {
 	require.NoError(t, err)
 
 	var reason, comment string
-	require.NoError(t, f.pool.QueryRow(ctx, `SELECT reason, comment FROM seller_report WHERE seller_id = $1`, f.seller).
+	require.NoError(t, f.pool.QueryRowContext(ctx, `SELECT reason, comment FROM seller_report WHERE seller_id = $1`, f.seller).
 		Scan(&reason, &comment))
 	require.Equal(t, "rude", reason)
 	require.Equal(t, "Хамил", comment)
@@ -196,7 +196,7 @@ func TestSellerRepo_ReviewsSurviveListingDeletion(t *testing.T) {
 
 	var sellerID int32
 	var title string
-	require.NoError(t, f.pool.QueryRow(ctx, `SELECT seller_id, listing_title FROM review WHERE rew_id = $1`, id).
+	require.NoError(t, f.pool.QueryRowContext(ctx, `SELECT seller_id, listing_title FROM review WHERE rew_id = $1`, id).
 		Scan(&sellerID, &title))
 	require.Equal(t, f.seller, sellerID)
 	require.Equal(t, "Велосипед", title)
@@ -233,7 +233,7 @@ func TestSellerRepo_TriggerTakesSellerFromListing(t *testing.T) {
 
 	var sellerID int32
 	var title string
-	err := f.pool.QueryRow(ctx, `INSERT INTO review (user_id, ad_id, rating, seller_id, listing_title)
+	err := f.pool.QueryRowContext(ctx, `INSERT INTO review (user_id, ad_id, rating, seller_id, listing_title)
 		VALUES ($1, $2, 5, $1, 'Чужое') RETURNING seller_id, listing_title`, f.buyer, bike).Scan(&sellerID, &title)
 	require.NoError(t, err)
 	require.Equal(t, f.seller, sellerID)
@@ -245,7 +245,7 @@ func TestSellerRepo_RatingMustBeOneToFive(t *testing.T) {
 
 	for i, rating := range []float64{0, 0.5, 5.5} {
 		ad := f.ad(t, 2, fmt.Sprintf("Велосипед %d", i), 100, domain.AdStatusActive, time.Hour)
-		_, err := f.pool.Exec(context.Background(), `INSERT INTO review (user_id, ad_id, rating) VALUES ($1, $2, $3)`,
+		_, err := f.pool.ExecContext(context.Background(), `INSERT INTO review (user_id, ad_id, rating) VALUES ($1, $2, $3)`,
 			f.buyer, ad, rating)
 		var pgErr *pgconn.PgError
 		require.ErrorAs(t, err, &pgErr, rating)
