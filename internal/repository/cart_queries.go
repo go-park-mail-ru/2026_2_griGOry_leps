@@ -58,7 +58,7 @@ const getAdForCartQuery = `
     SELECT a.user_id, a.status, ` + reservedByOthers + `
     FROM ad a
     WHERE a.id = $2
-    FOR SHARE OF a
+    FOR KEY SHARE OF a
 `
 
 const ensureCartQuery = `
