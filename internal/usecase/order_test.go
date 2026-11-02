@@ -347,3 +347,10 @@ func TestOrder_PayLocksListingsAndRechecksDeadline(t *testing.T) {
 	require.Equal(t, domain.OrderCancelled, stored.Status)
 	require.False(t, e.orders.reserved(strangerID, 101))
 }
+
+func TestAddressText(t *testing.T) {
+	require.Equal(t, "Тверская, 12", addressText(domain.Address{Street: "Тверская", House: "12"}))
+	require.Equal(t, "Москва, Тверская, 12, кв. 34, домофон 34", addressText(domain.Address{
+		City: "Москва", Street: "Тверская", House: "12", Apartment: "34", Comment: "домофон 34",
+	}))
+}

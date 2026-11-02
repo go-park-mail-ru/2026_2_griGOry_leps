@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -129,6 +130,9 @@ func (r *userRepoFake) UpdateProfile(_ context.Context, id int32, upd domain.Pro
 			return domain.ErrInvalidCity
 		}
 		p.City = &domain.City{ID: *upd.CityID, Name: name}
+	}
+	if upd.City != nil {
+		p.City = r.namedCity(*upd.City)
 	}
 	if upd.About != nil {
 		p.About = *upd.About
@@ -258,4 +262,18 @@ func (r *userRepoFake) UpdateAvatar(_ context.Context, id int32, avatar string) 
 	p.Avatar = avatar
 	r.extra[id] = p
 	return nil
+}
+
+func (r *userRepoFake) namedCity(name string) *domain.City {
+	if name == "" {
+		return nil
+	}
+	for id, existing := range r.cities {
+		if strings.EqualFold(existing, name) {
+			return &domain.City{ID: id, Name: existing}
+		}
+	}
+	id := int32(len(r.cities) + 1)
+	r.cities[id] = name
+	return &domain.City{ID: id, Name: name}
 }

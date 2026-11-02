@@ -154,6 +154,8 @@ func TestUpdateProfile_ValidationErrors(t *testing.T) {
 		{"bad email", domain.ProfileUpdate{Email: ptr("not-an-email")}, domain.ErrInvalidEmail},
 		{"zero city", domain.ProfileUpdate{CityID: ptr(int32(0))}, domain.ErrInvalidCity},
 		{"unknown city", domain.ProfileUpdate{CityID: ptr(int32(99))}, domain.ErrInvalidCity},
+		{"city with digits", domain.ProfileUpdate{City: ptr("Москва 2")}, domain.ErrInvalidCityName},
+		{"long city", domain.ProfileUpdate{City: ptr(strings.Repeat("я", 101))}, domain.ErrInvalidCityName},
 		{"long about", domain.ProfileUpdate{About: ptr(strings.Repeat("я", maxAboutLength+1))}, domain.ErrAboutTooLong},
 	}
 
@@ -166,6 +168,23 @@ func TestUpdateProfile_ValidationErrors(t *testing.T) {
 			require.ErrorIs(t, err, tt.want)
 		})
 	}
+}
+
+func TestUpdateProfile_CityByName(t *testing.T) {
+	env := newProfileEnv(t)
+	ctx := context.Background()
+
+	p, err := env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{City: ptr("  москва ")})
+	require.NoError(t, err)
+	require.Equal(t, &domain.City{ID: 1, Name: "Москва"}, p.City)
+
+	p, err = env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{City: ptr("нижний  тагил")})
+	require.NoError(t, err)
+	require.Equal(t, "Нижний тагил", p.City.Name)
+
+	p, err = env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{City: ptr(" ")})
+	require.NoError(t, err)
+	require.Nil(t, p.City)
 }
 
 func TestUpdateProfile_AboutLimitInCharacters(t *testing.T) {

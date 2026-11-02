@@ -263,3 +263,36 @@ func TestProfile_PasswordHashLockWaitsForChange(t *testing.T) {
 	require.Equal(t, "new-hash", <-loginHash)
 	require.NoError(t, <-loginDone)
 }
+
+func TestProfile_UpdateCityByName(t *testing.T) {
+	repo, pool, userID := newTestProfileRepository(t)
+	ctx := context.Background()
+	city := func(name string) error {
+		return repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{City: &name})
+	}
+
+	require.NoError(t, city("москва"))
+	p, err := repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, &domain.City{ID: cityID(t, pool, "Москва"), Name: "Москва"}, p.City)
+
+	require.NoError(t, city("Тверь"))
+	require.NoError(t, city("тверь"))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "Тверь", p.City.Name)
+	var count int
+	require.NoError(t, pool.QueryRowContext(ctx, "SELECT count(*) FROM city WHERE lower(name) = 'тверь'").Scan(&count))
+	require.Equal(t, 1, count)
+
+	about := "Продаю велосипеды"
+	require.NoError(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{About: &about}))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "Тверь", p.City.Name)
+
+	require.NoError(t, city(""))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Nil(t, p.City)
+}

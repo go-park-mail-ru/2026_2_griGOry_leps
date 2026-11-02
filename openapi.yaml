@@ -480,10 +480,12 @@ paths:
       summary: Изменить профиль
       description: |
         Меняет только переданные поля, остальные не трогает. Принимаются только
-        `first_name`, `phone`, `email`, `city_id`, `about`; любые другие поля игнорируются.
+        `first_name`, `phone`, `email`, `city`, `city_id`, `about`; любые другие поля игнорируются.
 
-        При смене `city_id` сервер обновляет город для доставки; новые объявления
-        получают город из профиля.
+        Город удобнее передавать названием в `city`: регистр не важен, если такого города
+        ещё нет — он добавится в справочник, пустая строка убирает город из профиля.
+        `city_id` остаётся для выбора из `GET /cities`; если пришли оба, побеждает `city`.
+        Новые объявления получают город из профиля.
 
         Смена `email`:
         - почта ещё не подтверждена — заменяется сразу, на новую уходит ссылка
@@ -522,6 +524,7 @@ paths:
                 invalidPhone: { value: { error: invalid phone number, field: phone } }
                 invalidEmail: { value: { error: invalid email, field: email } }
                 invalidCity: { value: { error: invalid city_id, field: city_id } }
+                invalidCityName: { value: { error: city must be 1-100 letters, field: city } }
                 aboutTooLong: { value: { error: about must be at most 500 characters, field: about } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/EmailOrPhoneTaken' }
@@ -1014,7 +1017,8 @@ paths:
       operationId: closeListing
       summary: Снять с продажи
       description: |
-        Только автор. Статус становится `closed`, причину видит только автор.
+        Только автор. Снять можно активное объявление или объявление на проверке.
+        Статус становится `closed`, причину видит только автор.
         Объявление пропадает из ленты и со страницы продавца, а в чужих корзинах
         становится недоступным (`unavailable_reason` = `closed`).
       security:
@@ -1043,7 +1047,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Закрыть можно только активное объявление без неоплаченного заказа
+          description: Объявление не активно и не на проверке или по нему есть неоплаченный заказ
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1688,10 +1692,13 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
           examples:
             badBody: { value: { error: invalid request body } }
+            missingCity: { value: { error: city is required, field: city } }
+            longCity: { value: { error: city must be at most 100 characters, field: city } }
             missingStreet: { value: { error: street is required, field: street } }
             longStreet: { value: { error: street must be at most 200 characters, field: street } }
             missingHouse: { value: { error: house is required, field: house } }
             longHouse: { value: { error: house must be at most 50 characters, field: house } }
+            longApartment: { value: { error: apartment must be at most 20 characters, field: apartment } }
             longComment: { value: { error: comment must be at most 200 characters, field: comment } }
     OrderNotFound:
       description: Заказа нет или он чужой
@@ -1743,6 +1750,7 @@ components:
             price: { value: { error: invalid price, field: price } }
             condition: { value: { error: invalid condition, field: condition } }
             address: { value: { error: address is required, field: address } }
+            delivery: { value: { error: delivery is not available in this category, field: has_delivery } }
     CartCount:
       description: Число позиций в корзине после операции
       content:
@@ -1868,6 +1876,11 @@ components:
           description: Те же правила, что при регистрации.
           example: '+79001234567'
         email: { type: string, format: email, example: timur@mail.ru }
+        city:
+          type: string
+          maxLength: 100
+          example: Тверь
+          description: Буквы, пробелы, точка, дефис и апостроф. Пустая строка убирает город.
         city_id: { type: integer, example: 1 }
         about: { type: string, maxLength: 500, description: Может быть пустой строкой. }
 
@@ -1968,11 +1981,14 @@ components:
 
     CategoryNode:
       type: object
-      required: [id, name, slug, children]
+      required: [id, name, slug, delivery_allowed, children]
       properties:
         id: { type: integer, example: 3 }
         name: { type: string, example: Спорт и отдых }
         slug: { type: string, example: sport }
+        delivery_allowed:
+          type: boolean
+          description: Можно ли в этой категории отправлять доставкой. Нет — у недвижимости, авто, услуг, работы.
         children:
           type: array
           description: Пустой массив у листа.
@@ -2174,7 +2190,9 @@ components:
           nullable: true
         city: { type: string, example: Москва, description: Из профиля автора на момент создания. }
         address: { type: string, nullable: true, example: 'Москва, м. Сокол' }
-        has_delivery: { type: boolean, description: «Готов отправить через доставку». }
+        has_delivery:
+          type: boolean
+          description: «Готов отправить через доставку». Только в категориях с `delivery_allowed`, иначе 400.
         attributes:
           type: array
           description: Характеристики по категории, только чтение.
@@ -2360,11 +2378,13 @@ components:
     # ------------------------------------------------ Адреса
     Address:
       type: object
-      required: [id, street, house, comment, is_default]
+      required: [id, city, street, house, apartment, comment, is_default]
       properties:
         id: { type: integer, example: 1 }
-        street: { type: string, maxLength: 200, example: 'Москва, ул. Тверская' }
-        house: { type: string, maxLength: 50, example: 'д. 12, кв. 34' }
+        city: { type: string, maxLength: 100, example: Москва, description: 'Пустая строка у адресов, созданных до разделения полей.' }
+        street: { type: string, maxLength: 200, example: 'ул. Тверская' }
+        house: { type: string, maxLength: 50, example: 'д. 12' }
+        apartment: { type: string, maxLength: 20, example: '34' }
         comment: { type: string, maxLength: 200, example: Домофон 34 }
         is_default: { type: boolean }
 
@@ -2372,8 +2392,10 @@ components:
       type: object
       description: Любое подмножество полей; пробелы по краям обрезаются.
       properties:
+        city: { type: string, minLength: 1, maxLength: 100 }
         street: { type: string, minLength: 1, maxLength: 200 }
         house: { type: string, minLength: 1, maxLength: 50 }
+        apartment: { type: string, maxLength: 20, description: Может быть пустой строкой. }
         comment: { type: string, maxLength: 200 }
         is_default: { type: boolean }
 
@@ -2381,7 +2403,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/UpdateAddressRequest'
         - type: object
-          required: [street, house]
+          required: [city, street, house]
 
     # ------------------------------------------------ Корзина
     ListingIdsRequest:

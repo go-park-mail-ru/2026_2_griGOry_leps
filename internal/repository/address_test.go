@@ -16,9 +16,12 @@ func TestAddressRepo_CRUD(t *testing.T) {
 	ctx := context.Background()
 	repo := NewAddressRepository(f.pool)
 
-	first, err := repo.Create(ctx, domain.Address{UserID: f.seller, Street: "Тверская", House: "д. 12", Comment: "Домофон", IsDefault: true})
+	first, err := repo.Create(ctx, domain.Address{UserID: f.seller, City: "Москва", Street: "Тверская", House: "д. 12",
+		Apartment: "34", Comment: "Домофон", IsDefault: true})
 	require.NoError(t, err)
 	require.NotZero(t, first.ID)
+	require.Equal(t, "Москва", first.City)
+	require.Equal(t, "34", first.Apartment)
 	second, err := repo.Create(ctx, domain.Address{UserID: f.seller, Street: "Ленинский", House: "д. 1"})
 	require.NoError(t, err)
 	_, err = repo.Create(ctx, domain.Address{UserID: f.buyer, Street: "Арбат", House: "д. 5", IsDefault: true})
@@ -31,10 +34,12 @@ func TestAddressRepo_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 
-	second.House = "д. 2"
+	second.House, second.City, second.Apartment = "д. 2", "Химки", "5"
 	updated, err := repo.Update(ctx, second)
 	require.NoError(t, err)
 	require.Equal(t, "д. 2", updated.House)
+	require.Equal(t, "Химки", updated.City)
+	require.Equal(t, "5", updated.Apartment)
 
 	_, err = repo.GetForUpdate(ctx, f.buyer, first.ID)
 	require.ErrorIs(t, err, domain.ErrAddressNotFound)
