@@ -24,7 +24,7 @@ func adCardFields(ad *domain.Ad) []any {
 }
 
 func scanAds(rows *sql.Rows) ([]domain.Ad, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	ads := make([]domain.Ad, 0)
 	for rows.Next() {
 		var ad domain.Ad
@@ -110,12 +110,12 @@ func (r *AdRepository) ListByUser(ctx context.Context, f domain.MyAdFilter) ([]d
 				count  int
 			)
 			if err := rows.Scan(&status, &count); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("scan my ads count: %w", err)
 			}
 			counts[status] = count
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("read my ads count: %w", err)
 		}

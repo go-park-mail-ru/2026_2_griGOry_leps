@@ -71,7 +71,7 @@ func (r *SellerRepository) ListAds(ctx context.Context, f domain.SellerAdFilter)
 		if err != nil {
 			return fmt.Errorf("list seller categories: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		page.Categories = make([]domain.SellerCategory, 0)
 		for rows.Next() {
 			var c domain.SellerCategory
@@ -123,7 +123,7 @@ func listReviews(ctx context.Context, tx *sql.Tx, f domain.ReviewFilter) ([]doma
 	if err != nil {
 		return nil, fmt.Errorf("list seller reviews: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	reviews := make([]domain.Review, 0)
 	for rows.Next() {
@@ -151,7 +151,7 @@ func reviewSummary(ctx context.Context, tx *sql.Tx, sellerID int32) (domain.Revi
 	if err != nil {
 		return domain.ReviewSummary{}, fmt.Errorf("get rating distribution: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var stars, count int
 		if err := rows.Scan(&stars, &count); err != nil {

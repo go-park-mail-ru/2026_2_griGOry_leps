@@ -28,7 +28,7 @@ func (r *AddressRepository) List(ctx context.Context, userID int32) ([]domain.Ad
 	if err != nil {
 		return nil, fmt.Errorf("list addresses: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	addresses := make([]domain.Address, 0)
 	for rows.Next() {

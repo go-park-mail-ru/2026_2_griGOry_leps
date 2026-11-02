@@ -28,7 +28,7 @@ func (r *CityRepository) Search(ctx context.Context, prefix string, limit int) (
 	if err != nil {
 		return nil, fmt.Errorf("search cities: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cities := make([]domain.City, 0)
 	for rows.Next() {

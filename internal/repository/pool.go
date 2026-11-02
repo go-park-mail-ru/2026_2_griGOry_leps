@@ -26,7 +26,7 @@ func NewPool(ctx context.Context, url string) (*sql.DB, error) {
 	pool.SetConnMaxLifetime(time.Hour)
 	pool.SetConnMaxIdleTime(30 * time.Minute)
 	if err := pool.PingContext(ctx); err != nil {
-		pool.Close()
+		_ = pool.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 	return pool, nil

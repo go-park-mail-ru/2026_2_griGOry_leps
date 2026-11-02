@@ -3,7 +3,7 @@ package repository
 import "database/sql"
 
 func collectRows[T any](rows *sql.Rows, scan func(scanner) (T, error)) ([]T, error) {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	result := make([]T, 0)
 	for rows.Next() {
 		value, err := scan(rows)
