@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"database/sql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 type sellerFixture struct {
-	pool   *pgxpool.Pool
+	pool   *sql.DB
 	seller int32
 	buyer  int32
 }
@@ -30,7 +30,7 @@ func newSellerFixture(t *testing.T) sellerFixture {
 	buyer, err := users.Create(ctx, "buyer@goget.pw", "hash", "Анна", "+79990000002")
 	require.NoError(t, err)
 
-	_, err = pool.Exec(ctx, `INSERT INTO category (category_id, parent_id, name, slug) OVERRIDING SYSTEM VALUE VALUES
+	_, err = pool.ExecContext(ctx, `INSERT INTO category (category_id, parent_id, name, slug) OVERRIDING SYSTEM VALUE VALUES
 		(1, NULL, 'Спорт и отдых', 'sport'), (2, 1, 'Велосипеды', 'bikes'), (3, NULL, 'Книги', 'books')`)
 	require.NoError(t, err)
 
@@ -40,7 +40,7 @@ func newSellerFixture(t *testing.T) sellerFixture {
 func (f sellerFixture) ad(t *testing.T, categoryID int32, title string, price int64, status string, age time.Duration) int32 {
 	t.Helper()
 	var id int32
-	err := f.pool.QueryRow(context.Background(), `INSERT INTO ad
+	err := f.pool.QueryRowContext(context.Background(), `INSERT INTO ad
 		(user_id, category_id, title, price, city, status, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, 'Москва', $5, now() - $6::float8 * interval '1 second', now() - $6::float8 * interval '1 second')
 		RETURNING id`, f.seller, categoryID, title, price, status, age.Seconds()).Scan(&id)
@@ -86,10 +86,10 @@ func TestAdRepo_ListByUser_DraftWithoutPriceAndClosed(t *testing.T) {
 	ctx := context.Background()
 
 	var draft int32
-	require.NoError(t, f.pool.QueryRow(ctx,
+	require.NoError(t, f.pool.QueryRowContext(ctx,
 		`INSERT INTO ad (user_id, title, status) VALUES ($1, 'Без цены', 'draft') RETURNING id`, f.seller).Scan(&draft))
 	closed := f.ad(t, 2, "Велосипед", 100, domain.AdStatusActive, time.Hour)
-	_, err := f.pool.Exec(ctx, `UPDATE ad SET status = 'closed', close_reason = 'changed_mind' WHERE id = $1`, closed)
+	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET status = 'closed', close_reason = 'changed_mind' WHERE id = $1`, closed)
 	require.NoError(t, err)
 
 	items, counts, err := NewAdRepository(f.pool).ListByUser(ctx, domain.MyAdFilter{UserID: f.seller, Limit: 10})
@@ -106,7 +106,7 @@ func TestAdRepo_IsFreeInFeed(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
 	id := f.ad(t, 3, "Отдам книги", 0, domain.AdStatusActive, time.Hour)
-	_, err := f.pool.Exec(ctx, `UPDATE ad SET is_free = true WHERE id = $1`, id)
+	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET is_free = true WHERE id = $1`, id)
 	require.NoError(t, err)
 
 	items, _, err := NewAdRepository(f.pool).List(ctx, domain.AdFilter{Limit: 10})

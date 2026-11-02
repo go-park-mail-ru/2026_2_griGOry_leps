@@ -2,12 +2,12 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/jackc/pgx/v5"
 )
 
 type EmailVerificationRepository struct {
@@ -19,7 +19,7 @@ func NewEmailVerificationRepository(db DB) *EmailVerificationRepository {
 }
 
 func (r *EmailVerificationRepository) Create(ctx context.Context, tokenHash string, userID int32, email string, expiresAt time.Time) error {
-	_, err := conn(ctx, r.db).Exec(ctx, createEmailVerificationQuery, tokenHash, userID, email, expiresAt)
+	_, err := conn(ctx, r.db).ExecContext(ctx, createEmailVerificationQuery, tokenHash, userID, email, expiresAt)
 	if err != nil {
 		return fmt.Errorf("create email verification: %w", err)
 	}
@@ -28,7 +28,7 @@ func (r *EmailVerificationRepository) Create(ctx context.Context, tokenHash stri
 
 func (r *EmailVerificationRepository) LastCreatedAt(ctx context.Context, userID int32) (time.Time, error) {
 	var last *time.Time
-	if err := conn(ctx, r.db).QueryRow(ctx, lastEmailVerificationQuery, userID).Scan(&last); err != nil {
+	if err := conn(ctx, r.db).QueryRowContext(ctx, lastEmailVerificationQuery, userID).Scan(&last); err != nil {
 		return time.Time{}, fmt.Errorf("last email verification: %w", err)
 	}
 	if last == nil {
@@ -47,8 +47,8 @@ func (r *EmailVerificationRepository) GetForUpdate(ctx context.Context, tokenHas
 
 func (r *EmailVerificationRepository) get(ctx context.Context, query, tokenHash string) (domain.EmailVerification, error) {
 	var v domain.EmailVerification
-	err := conn(ctx, r.db).QueryRow(ctx, query, tokenHash).Scan(&v.UserID, &v.Email, &v.ExpiresAt, &v.UsedAt)
-	if errors.Is(err, pgx.ErrNoRows) {
+	err := conn(ctx, r.db).QueryRowContext(ctx, query, tokenHash).Scan(&v.UserID, &v.Email, &v.ExpiresAt, &v.UsedAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.EmailVerification{}, domain.ErrInvalidVerifyToken
 	}
 	if err != nil {
@@ -58,7 +58,7 @@ func (r *EmailVerificationRepository) get(ctx context.Context, query, tokenHash 
 }
 
 func (r *EmailVerificationRepository) UseAll(ctx context.Context, userID int32) error {
-	_, err := conn(ctx, r.db).Exec(ctx, useEmailVerificationsQuery, userID)
+	_, err := conn(ctx, r.db).ExecContext(ctx, useEmailVerificationsQuery, userID)
 	if err != nil {
 		return fmt.Errorf("use email verifications: %w", err)
 	}

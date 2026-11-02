@@ -24,11 +24,11 @@ func NewCityRepository(db DB) *CityRepository {
 }
 
 func (r *CityRepository) Search(ctx context.Context, prefix string, limit int) ([]domain.City, error) {
-	rows, err := r.db.Query(ctx, searchCitiesQuery, prefix, limit)
+	rows, err := r.db.QueryContext(ctx, searchCitiesQuery, prefix, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search cities: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cities := make([]domain.City, 0)
 	for rows.Next() {
