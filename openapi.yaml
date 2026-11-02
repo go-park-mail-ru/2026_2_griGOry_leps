@@ -34,8 +34,9 @@ info:
     После регистрации на почту уходит ссылка `<фронт>/verify-email?token=…`, она
     действует 30 минут и срабатывает один раз. Пока почта не подтверждена
     (`email_verified` = false), нельзя публиковать объявления (`publish` = true
-    в `POST /listings` и `PATCH /listings/{id}`), менять адреса доставки и жаловаться
-    на продавцов — эти ручки отвечают 403 `email not verified`. Черновики, правка,
+    в `POST /listings` и `PATCH /listings/{id}`), менять адреса доставки, жаловаться
+    на продавцов и оформлять заказы (`POST /checkout/quote`, `POST /orders`) — эти
+    ручки отвечают 403 `email not verified`. Корзина доступна без подтверждения. Черновики, правка,
     снятие и удаление своих объявлений, профиль и пароль доступны. Сброс пароля
     по ссылке из письма тоже подтверждает почту.
 
@@ -1353,7 +1354,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequestBody' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders:
@@ -1420,7 +1421,7 @@ paths:
                 paymentMethod: { value: { error: invalid payment method, field: payment_method } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/CartItemsUnavailable' }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /orders/{order_id}:
@@ -1557,6 +1558,14 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: invalid csrf token }
+    InvalidCSRFOrUnverified:
+      description: Невалидный CSRF-токен или почта пользователя не подтверждена
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            csrf: { value: { error: invalid csrf token } }
+            unverified: { value: { error: email not verified } }
     InternalError:
       description: Внутренняя ошибка сервера
       content:

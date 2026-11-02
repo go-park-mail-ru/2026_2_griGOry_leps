@@ -179,6 +179,10 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 		{http.MethodPatch, "/api/me/addresses/1"},
 		{http.MethodDelete, "/api/me/addresses/1"},
 		{http.MethodPost, "/api/sellers/5/reports"},
+		{http.MethodGet, "/api/cart"},
+		{http.MethodPost, "/api/checkout/quote"},
+		{http.MethodPost, "/api/orders"},
+		{http.MethodGet, "/api/orders/1"},
 	} {
 		token, tokenRec := fetchCSRFToken(t, newCSRFHandler())
 		req := httptest.NewRequest(route.method, route.path, nil)
