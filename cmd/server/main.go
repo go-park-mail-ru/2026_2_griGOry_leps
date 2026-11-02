@@ -42,7 +42,7 @@ func main() {
 		slog.Error("connect to database", "err", err)
 		os.Exit(1)
 	}
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	slog.Info("connected to PostgreSQL")
 

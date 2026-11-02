@@ -14,44 +14,49 @@ import (
 	"testing"
 	"time"
 
+	"database/sql"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
 )
 
 // Каждый тест получает отдельную схему и реальные таблицы из миграции.
-func newTestPool(t *testing.T) *pgxpool.Pool {
+func newTestPool(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	require.NotEmpty(t, dsn, "set TEST_DATABASE_URL to a dedicated test database")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	admin, err := pgxpool.New(ctx, dsn)
+	adminCfg, err := pgx.ParseConfig(dsn)
 	require.NoError(t, err)
-	t.Cleanup(admin.Close)
+	admin := stdlib.OpenDB(*adminCfg)
+	err = admin.PingContext(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = admin.Close() })
 
 	var token [8]byte
 	_, err = rand.Read(token[:])
 	require.NoError(t, err)
 	schema := pgx.Identifier{"repo_test_" + hex.EncodeToString(token[:])}.Sanitize()
-	_, err = admin.Exec(ctx, "CREATE SCHEMA "+schema)
+	_, err = admin.ExecContext(ctx, "CREATE SCHEMA "+schema)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, err := admin.Exec(ctx, "DROP SCHEMA "+schema+" CASCADE")
+		_, err := admin.ExecContext(ctx, "DROP SCHEMA "+schema+" CASCADE")
 		require.NoError(t, err)
 	})
 
-	cfg, err := pgxpool.ParseConfig(dsn)
+	cfg, err := pgx.ParseConfig(dsn)
 	require.NoError(t, err)
-	cfg.ConnConfig.RuntimeParams["search_path"] = schema
-	cfg.ConnConfig.RuntimeParams["statement_timeout"] = "5000"
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	cfg.RuntimeParams["search_path"] = schema
+	cfg.RuntimeParams["statement_timeout"] = "5000"
+	pool := stdlib.OpenDB(*cfg)
+	err = pool.PingContext(ctx)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	t.Cleanup(func() { _ = pool.Close() })
 
 	files, err := filepath.Glob("../../migrations/*.sql")
 	require.NoError(t, err)
@@ -61,7 +66,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		require.NoError(t, err)
 		up, _, ok := strings.Cut(string(migration), "-- +goose Down")
 		require.True(t, ok, file)
-		_, err = pool.Exec(ctx, up)
+		_, err = pool.ExecContext(ctx, up)
 		require.NoError(t, err, file)
 	}
 	return pool
@@ -90,11 +95,11 @@ func newTestAdRepository(t *testing.T, ads []domain.Ad) *AdRepository {
 	user, err := NewUserRepository(pool).Create(ctx, "seller@example.com", "hash", "Иван", "+79001234567")
 	require.NoError(t, err)
 	// Фиксированные ID принадлежат только изолированным тестовым данным.
-	_, err = pool.Exec(ctx, `INSERT INTO category (category_id, name, slug)
+	_, err = pool.ExecContext(ctx, `INSERT INTO category (category_id, name, slug)
 		OVERRIDING SYSTEM VALUE VALUES (1, 'Транспорт', 'transport'), (2, 'Книги', 'books')`)
 	require.NoError(t, err)
 	for _, ad := range ads {
-		_, err = pool.Exec(ctx, `INSERT INTO ad
+		_, err = pool.ExecContext(ctx, `INSERT INTO ad
 			(id, user_id, category_id, title, description, price, city, has_delivery, status, created_at)
 			OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			ad.ID, user.ID, ad.CategoryID, ad.Title, ad.Description, ad.Price,

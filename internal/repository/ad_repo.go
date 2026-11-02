@@ -2,19 +2,17 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AdRepository struct {
-	pool *pgxpool.Pool
+	pool *sql.DB
 }
 
-func NewAdRepository(pool *pgxpool.Pool) *AdRepository {
+func NewAdRepository(pool *sql.DB) *AdRepository {
 	return &AdRepository{pool: pool}
 }
 
@@ -25,8 +23,8 @@ func adCardFields(ad *domain.Ad) []any {
 	}
 }
 
-func scanAds(rows pgx.Rows) ([]domain.Ad, error) {
-	defer rows.Close()
+func scanAds(rows *sql.Rows) ([]domain.Ad, error) {
+	defer func() { _ = rows.Close() }()
 	ads := make([]domain.Ad, 0)
 	for rows.Next() {
 		var ad domain.Ad
@@ -41,22 +39,18 @@ func scanAds(rows pgx.Rows) ([]domain.Ad, error) {
 	return ads, nil
 }
 
-func readOnly(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+func readOnly(ctx context.Context, pool *sql.DB, fn func(tx *sql.Tx) error) error {
+	tx, err := pool.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return fmt.Errorf("begin read tx: %w", err)
 	}
 
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = tx.Rollback(cleanupCtx)
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := fn(tx); err != nil {
 		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit read tx: %w", err)
 	}
 	return nil
@@ -77,13 +71,13 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 		ads   []domain.Ad
 		total int
 	)
-	err := readOnly(ctx, r.pool, func(tx pgx.Tx) error {
+	err := readOnly(ctx, r.pool, func(tx *sql.Tx) error {
 		args := []any{f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery}
-		if err := tx.QueryRow(ctx, countAdsQuery, args...).Scan(&total); err != nil {
+		if err := tx.QueryRowContext(ctx, countAdsQuery, args...).Scan(&total); err != nil {
 			return fmt.Errorf("count ads: %w", err)
 		}
 
-		rows, err := tx.Query(ctx, listAdsQuery, append(args, f.Sort, f.Limit, f.Offset)...)
+		rows, err := tx.QueryContext(ctx, listAdsQuery, append(args, f.Sort, f.Limit, f.Offset)...)
 		if err != nil {
 			return fmt.Errorf("list ads: %w", err)
 		}
@@ -105,8 +99,8 @@ func (r *AdRepository) ListByUser(ctx context.Context, f domain.MyAdFilter) ([]d
 		ads    []domain.Ad
 		counts = make(map[string]int)
 	)
-	err := readOnly(ctx, r.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, countMyAdsQuery, f.UserID)
+	err := readOnly(ctx, r.pool, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, countMyAdsQuery, f.UserID)
 		if err != nil {
 			return fmt.Errorf("count my ads: %w", err)
 		}
@@ -116,17 +110,17 @@ func (r *AdRepository) ListByUser(ctx context.Context, f domain.MyAdFilter) ([]d
 				count  int
 			)
 			if err := rows.Scan(&status, &count); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return fmt.Errorf("scan my ads count: %w", err)
 			}
 			counts[status] = count
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("read my ads count: %w", err)
 		}
 
-		rows, err = tx.Query(ctx, listMyAdsQuery, f.UserID, f.Status, f.Limit, f.Offset)
+		rows, err = tx.QueryContext(ctx, listMyAdsQuery, f.UserID, f.Status, f.Limit, f.Offset)
 		if err != nil {
 			return fmt.Errorf("list my ads: %w", err)
 		}
