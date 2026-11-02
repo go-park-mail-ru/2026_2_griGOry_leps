@@ -33,7 +33,7 @@ func newTestRouterWithUploads(dir string) http.Handler {
 	return NewRouter("http://front.test", dir, newAuthHandler(), NewPasswordResetHandler(resetStub{}),
 		NewProfileHandler(profileStub{}), NewAdHandler(panicAdUsecase{}), NewListingHandler(nil), newCSRFHandler(),
 		NewAddressHandler(&addressStub{}), NewCityHandler(cityStub{}), NewSellerHandler(&sellerStub{}),
-		NewEmailVerificationHandler(&verifyStub{}), NewCartHandler(nil), NewOrderHandler(nil))
+		NewEmailVerificationHandler(&verifyStub{}), NewCartHandler(nil), NewOrderHandler(nil, "http://api.test", "http://front.test"))
 }
 
 func TestRouter_SetsRequestIDHeader(t *testing.T) {
@@ -133,6 +133,7 @@ func TestRouter_SecurityHeaders(t *testing.T) {
 
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), csrfHeader)
+	require.Contains(t, rec.Header().Get("Access-Control-Allow-Headers"), idempotencyHeader)
 }
 
 func TestRouter_MeRequiresSession(t *testing.T) {
@@ -178,6 +179,11 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 		{http.MethodPatch, "/api/me/addresses/1"},
 		{http.MethodDelete, "/api/me/addresses/1"},
 		{http.MethodPost, "/api/sellers/5/reports"},
+		{http.MethodGet, "/api/cart"},
+		{http.MethodPost, "/api/checkout/quote"},
+		{http.MethodPost, "/api/orders"},
+		{http.MethodGet, "/api/orders/1"},
+		{http.MethodPost, "/api/orders/1/payment"},
 	} {
 		token, tokenRec := fetchCSRFToken(t, newCSRFHandler())
 		req := httptest.NewRequest(route.method, route.path, nil)
