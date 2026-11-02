@@ -93,11 +93,11 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle("/api/cart/items/bulk-delete", auth(cartHandler.BulkRemove)).Methods(http.MethodPost)
 	r.Handle("/api/cart/items/{listing_id:[0-9]+}", auth(cartHandler.Remove)).Methods(http.MethodDelete)
 
-	r.Handle("/api/checkout/quote", auth(orderHandler.Quote)).Methods(http.MethodPost)
-	r.Handle("/api/orders", auth(orderHandler.Create)).Methods(http.MethodPost)
+	r.Handle("/api/checkout/quote", verified(orderHandler.Quote)).Methods(http.MethodPost)
+	r.Handle("/api/orders", verified(orderHandler.Create)).Methods(http.MethodPost)
 	const orderPath = "/api/orders/{order_id:[0-9]+}"
 	r.Handle(orderPath, auth(orderHandler.Get)).Methods(http.MethodGet)
-	r.Handle(orderPath+"/payment", auth(orderHandler.Pay)).Methods(http.MethodPost)
+	r.Handle(orderPath+"/payment", verified(orderHandler.Pay)).Methods(http.MethodPost)
 
 	const paymentPath = testPaymentPath + "{token:[0-9a-f]{64}}"
 	r.HandleFunc(paymentPath, orderHandler.TestPaymentPage).Methods(http.MethodGet)
