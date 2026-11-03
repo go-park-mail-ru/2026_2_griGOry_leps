@@ -1,7 +1,6 @@
 package delivery
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,30 +9,23 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-type sellerStub struct {
-	err          error
-	adFilter     domain.SellerAdFilter
-	reviewFilter domain.ReviewFilter
-	report       domain.SellerReport
-}
-
 var sellerCreatedAt = time.Date(2022, 4, 10, 10, 0, 0, 0, time.UTC)
 
-func (s *sellerStub) Profile(_ context.Context, id int32) (domain.SellerProfile, error) {
+func testSellerProfile(id int32) domain.SellerProfile {
 	return domain.SellerProfile{
 		Seller: domain.Seller{
 			ID: id, FirstName: "Тимур", Avatar: "t.png", Rating: 4.8, ReviewsCount: 56, CreatedAt: sellerCreatedAt,
 		},
 		Location: "Москва", PhoneVerified: true, CompletedSalesCount: 140, ActiveListingsCount: 12,
-	}, s.err
+	}
 }
 
-func (s *sellerStub) Listings(_ context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error) {
-	s.adFilter = f
+func testSellerAdPage() domain.SellerAdPage {
 	return domain.SellerAdPage{
 		AdPage: domain.AdPage{
 			Items: []domain.Ad{{ID: 3, Title: "Велосипед", Price: kopecks(1500050), City: "Москва", CategoryID: 14,
@@ -41,11 +33,10 @@ func (s *sellerStub) Listings(_ context.Context, f domain.SellerAdFilter) (domai
 			Total: 1, Limit: 24,
 		},
 		Categories: []domain.SellerCategory{{ID: 14, Name: "Спорт и отдых", Count: 1}},
-	}, s.err
+	}
 }
 
-func (s *sellerStub) Reviews(_ context.Context, f domain.ReviewFilter) (domain.ReviewPage, error) {
-	s.reviewFilter = f
+func testReviewPage() domain.ReviewPage {
 	return domain.ReviewPage{
 		Items: []domain.Review{{
 			ID: 1, Author: domain.ReviewAuthor{ID: 9, FirstName: "Анна"}, Rating: 5, Text: "Отлично",
@@ -53,12 +44,7 @@ func (s *sellerStub) Reviews(_ context.Context, f domain.ReviewFilter) (domain.R
 		}},
 		Total: 1, Limit: 10,
 		ReviewSummary: domain.ReviewSummary{Rating: 5, Distribution: map[int]int{5: 1}},
-	}, s.err
-}
-
-func (s *sellerStub) Report(_ context.Context, report domain.SellerReport) error {
-	s.report = report
-	return s.err
+	}
 }
 
 func sellerRequest(method, target, body string, id string) *http.Request {
@@ -69,7 +55,9 @@ func sellerRequest(method, target, body string, id string) *http.Request {
 func TestSeller_Get(t *testing.T) {
 	rec := httptest.NewRecorder()
 
-	NewSellerHandler(&sellerStub{}).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/5", "", "5"))
+	mock := NewMockSellerUsecase(gomock.NewController(t))
+	mock.EXPECT().Profile(gomock.Any(), int32(5)).Return(testSellerProfile(5), nil)
+	NewSellerHandler(mock).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/5", "", "5"))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{
@@ -88,24 +76,26 @@ func TestSeller_Get(t *testing.T) {
 
 func TestSeller_Get_NotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewSellerHandler(&sellerStub{err: domain.ErrSellerNotFound}).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/5", "", "5"))
+	mock := NewMockSellerUsecase(gomock.NewController(t))
+	mock.EXPECT().Profile(gomock.Any(), int32(5)).Return(domain.SellerProfile{}, domain.ErrSellerNotFound)
+	NewSellerHandler(mock).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/5", "", "5"))
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Equal(t, "seller not found", decodeBody(t, rec)["error"])
 
 	rec = httptest.NewRecorder()
-	NewSellerHandler(&sellerStub{}).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/0", "", "0"))
+	NewSellerHandler(NewMockSellerUsecase(gomock.NewController(t))).Get(rec, sellerRequest(http.MethodGet, "/api/sellers/0", "", "0"))
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestSeller_Listings(t *testing.T) {
-	stub := &sellerStub{}
+	stub := NewMockSellerUsecase(gomock.NewController(t))
+	stub.EXPECT().Listings(gomock.Any(), domain.SellerAdFilter{SellerID: 5, CategoryID: 14, Sort: "price_asc", Limit: 60, Offset: 60}).Return(testSellerAdPage(), nil)
 	rec := httptest.NewRecorder()
 
 	NewSellerHandler(stub).Listings(rec, sellerRequest(http.MethodGet,
 		"/api/sellers/5/listings?category_id=14&sort=price_asc&limit=60&offset=60", "", "5"))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, domain.SellerAdFilter{SellerID: 5, CategoryID: 14, Sort: "price_asc", Limit: 60, Offset: 60}, stub.adFilter)
 	require.JSONEq(t, `{
 		"items": [{
 			"id": 3, "title": "Велосипед", "price": "15000.50", "is_free": false, "image_url": null,
@@ -119,24 +109,26 @@ func TestSeller_Listings(t *testing.T) {
 func TestSeller_Listings_BadParams(t *testing.T) {
 	for _, query := range []string{"category_id=0", "limit=0", "offset=-1"} {
 		rec := httptest.NewRecorder()
-		NewSellerHandler(&sellerStub{}).Listings(rec, sellerRequest(http.MethodGet, "/api/sellers/5/listings?"+query, "", "5"))
+		NewSellerHandler(NewMockSellerUsecase(gomock.NewController(t))).Listings(rec, sellerRequest(http.MethodGet, "/api/sellers/5/listings?"+query, "", "5"))
 		require.Equal(t, http.StatusBadRequest, rec.Code, query)
 	}
 
 	rec := httptest.NewRecorder()
-	NewSellerHandler(&sellerStub{err: domain.ErrInvalidSort}).Listings(rec, sellerRequest(http.MethodGet, "/api/sellers/5/listings", "", "5"))
+	mock := NewMockSellerUsecase(gomock.NewController(t))
+	mock.EXPECT().Listings(gomock.Any(), domain.SellerAdFilter{SellerID: 5}).Return(domain.SellerAdPage{}, domain.ErrInvalidSort)
+	NewSellerHandler(mock).Listings(rec, sellerRequest(http.MethodGet, "/api/sellers/5/listings", "", "5"))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
 func TestSeller_Reviews(t *testing.T) {
-	stub := &sellerStub{}
+	stub := NewMockSellerUsecase(gomock.NewController(t))
+	stub.EXPECT().Reviews(gomock.Any(), domain.ReviewFilter{SellerID: 5, Sort: "rating_asc", WithPhotos: true, Limit: 10}).Return(testReviewPage(), nil)
 	rec := httptest.NewRecorder()
 
 	NewSellerHandler(stub).Reviews(rec, sellerRequest(http.MethodGet,
 		"/api/sellers/5/reviews?sort=rating_asc&with_photos=true&limit=10", "", "5"))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, domain.ReviewFilter{SellerID: 5, Sort: "rating_asc", WithPhotos: true, Limit: 10}, stub.reviewFilter)
 	require.JSONEq(t, `{
 		"items": [{
 			"id": 1,
@@ -155,20 +147,20 @@ func TestSeller_Reviews(t *testing.T) {
 
 func TestSeller_Reviews_BadWithPhotos(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewSellerHandler(&sellerStub{}).Reviews(rec, sellerRequest(http.MethodGet, "/api/sellers/5/reviews?with_photos=maybe", "", "5"))
+	NewSellerHandler(NewMockSellerUsecase(gomock.NewController(t))).Reviews(rec, sellerRequest(http.MethodGet, "/api/sellers/5/reviews?with_photos=maybe", "", "5"))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Equal(t, "invalid with_photos", decodeBody(t, rec)["error"])
 }
 
 func TestSeller_Report(t *testing.T) {
-	stub := &sellerStub{}
+	stub := NewMockSellerUsecase(gomock.NewController(t))
+	stub.EXPECT().Report(gomock.Any(), domain.SellerReport{SellerID: 5, ReporterID: 7, Reason: "rude", Comment: "Хамил"}).Return(nil)
 	rec := httptest.NewRecorder()
 
 	NewSellerHandler(stub).Report(rec, withAuth(sellerRequest(http.MethodPost, "/api/sellers/5/reports",
 		`{"reason":"rude","comment":"Хамил"}`, "5")))
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
-	require.Equal(t, domain.SellerReport{SellerID: 5, ReporterID: 7, Reason: "rude", Comment: "Хамил"}, stub.report)
 }
 
 func TestSeller_Report_Errors(t *testing.T) {
@@ -184,7 +176,9 @@ func TestSeller_Report_Errors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		rec := httptest.NewRecorder()
-		NewSellerHandler(&sellerStub{err: tt.err}).Report(rec, withAuth(sellerRequest(http.MethodPost, "/api/sellers/5/reports",
+		mock := NewMockSellerUsecase(gomock.NewController(t))
+		mock.EXPECT().Report(gomock.Any(), domain.SellerReport{SellerID: 5, ReporterID: 7, Reason: "rude"}).Return(tt.err)
+		NewSellerHandler(mock).Report(rec, withAuth(sellerRequest(http.MethodPost, "/api/sellers/5/reports",
 			`{"reason":"rude"}`, "5")))
 
 		require.Equal(t, tt.status, rec.Code, tt.err)
@@ -196,6 +190,6 @@ func TestSeller_Report_Errors(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	NewSellerHandler(&sellerStub{}).Report(rec, withAuth(sellerRequest(http.MethodPost, "/api/sellers/5/reports", `{`, "5")))
+	NewSellerHandler(NewMockSellerUsecase(gomock.NewController(t))).Report(rec, withAuth(sellerRequest(http.MethodPost, "/api/sellers/5/reports", `{`, "5")))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

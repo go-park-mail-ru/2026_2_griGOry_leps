@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -36,7 +37,7 @@ func TestCartHandler_RejectsTrailingData(t *testing.T) {
 	for _, body := range []string{`{"listing_id":1}garbage`, `{"listing_id":1}{}`} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/cart/items", strings.NewReader(body))
-		NewCartHandler(nil).Add(rec, req)
+		NewCartHandler(NewMockCartUsecase(gomock.NewController(t))).Add(rec, req)
 		require.Equal(t, http.StatusBadRequest, rec.Code, body)
 	}
 }

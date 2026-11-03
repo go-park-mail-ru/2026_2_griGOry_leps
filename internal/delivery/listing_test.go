@@ -10,57 +10,18 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-type listingStub struct {
-	err        error
-	viewerID   int32
-	fields     domain.ListingFields
-	publish    bool
-	publishPtr *bool
-	reason     string
-}
-
-func (s *listingStub) listing() domain.Listing {
+func testListing() domain.Listing {
 	price := int64(1500050)
 	return domain.Listing{
 		ID: 7, Title: "Велосипед", Price: &price, Status: domain.AdStatusActive,
 		Photos: []domain.ListingPhoto{{ID: 1, URL: "/uploads/listings/a.jpg"}, {ID: 2, URL: "/uploads/listings/b.jpg"}},
 		Seller: domain.Seller{ID: 3, FirstName: "Анна", Avatar: "x.png"},
 	}
-}
-
-func (s *listingStub) Get(_ context.Context, _, viewerID int32) (domain.Listing, error) {
-	s.viewerID = viewerID
-	return s.listing(), s.err
-}
-
-func (s *listingStub) Create(_ context.Context, _ int32, f domain.ListingFields, publish bool) (domain.Listing, error) {
-	s.fields, s.publish = f, publish
-	return s.listing(), s.err
-}
-
-func (s *listingStub) Update(_ context.Context, _, _ int32, f domain.ListingFields, publish *bool) (domain.Listing, error) {
-	s.fields, s.publishPtr = f, publish
-	return s.listing(), s.err
-}
-
-func (s *listingStub) Delete(context.Context, int32, int32) error { return s.err }
-
-func (s *listingStub) Close(_ context.Context, _, _ int32, reason string) (domain.Listing, error) {
-	s.reason = reason
-	return s.listing(), s.err
-}
-
-func (s *listingStub) UploadPhoto(context.Context, int32, []byte) (domain.ListingPhoto, error) {
-	return domain.ListingPhoto{ID: 9, URL: "/uploads/listings/c.jpg"}, s.err
-}
-
-func (s *listingStub) Categories(context.Context) ([]domain.CategoryNode, error) {
-	return []domain.CategoryNode{{ID: 1, Name: "Спорт", Slug: "sport", DeliveryAllowed: true,
-		Children: []domain.CategoryNode{{ID: 2, Name: "Велосипеды", Slug: "bikes"}}}}, s.err
 }
 
 func listingRequestFor(method, body string) *http.Request {
@@ -75,7 +36,10 @@ func unverifiedListingRequest(method, body string) *http.Request {
 }
 
 func TestListing_UnverifiedCanOnlyKeepDrafts(t *testing.T) {
-	stub := &listingStub{}
+	stub := NewMockListingUsecase(gomock.NewController(t))
+	title := "Диван"
+	stub.EXPECT().Create(gomock.Any(), int32(1), domain.ListingFields{Title: &title}, false).Return(testListing(), nil)
+	stub.EXPECT().Update(gomock.Any(), int32(1), int32(7), domain.ListingFields{Title: &title}, (*bool)(nil)).Return(testListing(), nil)
 	h := NewListingHandler(stub)
 
 	rec := httptest.NewRecorder()
@@ -97,40 +61,41 @@ func TestListing_UnverifiedCanOnlyKeepDrafts(t *testing.T) {
 }
 
 func TestListing_UpdateDistinguishesNullAndMissing(t *testing.T) {
-	stub := &listingStub{}
+	stub := NewMockListingUsecase(gomock.NewController(t))
+	title, publish := "Новое", true
+	stub.EXPECT().Update(gomock.Any(), int32(1), int32(7), domain.ListingFields{Title: &title, Address: domain.Optional[string]{Set: true, Null: true}, Price: domain.Optional[string]{Set: true, Value: "100"}}, &publish).Return(testListing(), nil)
 	rec := httptest.NewRecorder()
 
 	NewListingHandler(stub).Update(rec, listingRequestFor(http.MethodPatch,
 		`{"title":"Новое","address":null,"price":"100","publish":true}`))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "Новое", *stub.fields.Title)
-	require.True(t, stub.fields.Address.Set && stub.fields.Address.Null)
-	require.Equal(t, domain.Optional[string]{Set: true, Value: "100"}, stub.fields.Price)
-	require.False(t, stub.fields.CategoryID.Set)
-	require.Nil(t, stub.fields.PhotoIDs)
-	require.True(t, *stub.publishPtr)
+
 }
 
 func TestListing_CreatePublishesByDefault(t *testing.T) {
-	stub := &listingStub{}
+	stub := NewMockListingUsecase(gomock.NewController(t))
+	title := "Диван"
+	photos := []int32{1, 2}
+	stub.EXPECT().Create(gomock.Any(), int32(1), domain.ListingFields{Title: &title, PhotoIDs: &photos}, true).Return(testListing(), nil)
+	stub.EXPECT().Create(gomock.Any(), int32(1), domain.ListingFields{Title: &title}, false).Return(testListing(), nil)
 	h := NewListingHandler(stub)
 
 	rec := httptest.NewRecorder()
 	h.Create(rec, listingRequestFor(http.MethodPost, `{"title":"Диван","photo_ids":[1,2]}`))
 	require.Equal(t, http.StatusCreated, rec.Code)
-	require.True(t, stub.publish)
-	require.Equal(t, []int32{1, 2}, *stub.fields.PhotoIDs)
 
 	rec = httptest.NewRecorder()
 	h.Create(rec, listingRequestFor(http.MethodPost, `{"title":"Диван","publish":false}`))
 	require.Equal(t, http.StatusCreated, rec.Code)
-	require.False(t, stub.publish)
+
 }
 
 func TestListing_ResponseShape(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewListingHandler(&listingStub{}).Get(rec, listingRequestFor(http.MethodGet, ""))
+	mock := NewMockListingUsecase(gomock.NewController(t))
+	mock.EXPECT().Get(gomock.Any(), int32(7), int32(1)).Return(testListing(), nil)
+	NewListingHandler(mock).Get(rec, listingRequestFor(http.MethodGet, ""))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var body map[string]any
@@ -164,7 +129,9 @@ func TestListing_ErrorStatuses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.err.Error(), func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			NewListingHandler(&listingStub{err: tc.err}).Update(rec, listingRequestFor(http.MethodPatch, `{}`))
+			mock := NewMockListingUsecase(gomock.NewController(t))
+			mock.EXPECT().Update(gomock.Any(), int32(1), int32(7), domain.ListingFields{}, (*bool)(nil)).Return(domain.Listing{}, tc.err)
+			NewListingHandler(mock).Update(rec, listingRequestFor(http.MethodPatch, `{}`))
 
 			require.Equal(t, tc.status, rec.Code)
 			var body map[string]string
@@ -176,13 +143,14 @@ func TestListing_ErrorStatuses(t *testing.T) {
 }
 
 func TestListing_CloseAndDelete(t *testing.T) {
-	stub := &listingStub{}
+	stub := NewMockListingUsecase(gomock.NewController(t))
+	stub.EXPECT().Close(gomock.Any(), int32(1), int32(7), "sold_elsewhere").Return(testListing(), nil)
+	stub.EXPECT().Delete(gomock.Any(), int32(1), int32(7)).Return(nil)
 	h := NewListingHandler(stub)
 
 	rec := httptest.NewRecorder()
 	h.Close(rec, listingRequestFor(http.MethodPost, `{"reason":"sold_elsewhere"}`))
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "sold_elsewhere", stub.reason)
 
 	rec = httptest.NewRecorder()
 	h.Close(rec, listingRequestFor(http.MethodPost, `{`))
@@ -194,7 +162,7 @@ func TestListing_CloseAndDelete(t *testing.T) {
 }
 
 func TestListing_BadBodyAndID(t *testing.T) {
-	h := NewListingHandler(&listingStub{})
+	h := NewListingHandler(NewMockListingUsecase(gomock.NewController(t)))
 
 	rec := httptest.NewRecorder()
 	h.Update(rec, listingRequestFor(http.MethodPatch, `{"price":15000}`))
@@ -208,34 +176,40 @@ func TestListing_BadBodyAndID(t *testing.T) {
 }
 
 func TestListing_GetWorksForGuestsAndUsers(t *testing.T) {
-	stub := &listingStub{}
+	stub := NewMockListingUsecase(gomock.NewController(t))
+	stub.EXPECT().Get(gomock.Any(), int32(7), int32(0)).Return(testListing(), nil).Times(2)
+	stub.EXPECT().Get(gomock.Any(), int32(7), int32(1)).Return(testListing(), nil)
+	auth := NewMockAuthUsecase(gomock.NewController(t))
+	auth.EXPECT().Me(gomock.Any(), "s").Return(domain.User{ID: 1}, nil)
 	router := mux.NewRouter()
-	router.Handle("/api/listings/{listing_id}", newAuthHandler().OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
+	router.Handle("/api/listings/{listing_id}", NewAuthHandler(auth, false).OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/listings/7", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, int32(0), stub.viewerID)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/listings/7", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s"})
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, int32(1), stub.viewerID)
 
+	expiredAuth := NewMockAuthUsecase(gomock.NewController(t))
+	expiredAuth.EXPECT().Me(gomock.Any(), "s").Return(domain.User{}, domain.ErrSessionExpired)
 	guest := mux.NewRouter()
-	guest.Handle("/api/listings/{listing_id}", NewAuthHandler(authStub{err: domain.ErrSessionExpired}, false).
+	guest.Handle("/api/listings/{listing_id}", NewAuthHandler(expiredAuth, false).
 		OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
 	rec = httptest.NewRecorder()
 	guest.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, int32(0), stub.viewerID)
+
 }
 
 func TestListingHandler_CategoriesAlwaysHasChildrenArray(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewListingHandler(&listingStub{}).Categories(rec, httptest.NewRequest(http.MethodGet, "/api/categories", nil))
+	mock := NewMockListingUsecase(gomock.NewController(t))
+	mock.EXPECT().Categories(gomock.Any()).Return([]domain.CategoryNode{{ID: 1, Name: "Спорт", Slug: "sport", DeliveryAllowed: true, Children: []domain.CategoryNode{{ID: 2, Name: "Велосипеды", Slug: "bikes"}}}}, nil)
+	NewListingHandler(mock).Categories(rec, httptest.NewRequest(http.MethodGet, "/api/categories", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `[{"id":1,"name":"Спорт","slug":"sport","delivery_allowed":true,
