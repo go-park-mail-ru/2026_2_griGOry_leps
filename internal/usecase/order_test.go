@@ -229,6 +229,23 @@ func TestOrder_ExpiresAfterAnHour(t *testing.T) {
 	require.Len(t, e.carts.carts[buyerID], 3)
 }
 
+func TestOrder_MaintenanceSkipsBrokenOrder(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	first, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+	in := courierInput(key2)
+	in.ListingIDs, in.BySeller = []int32{102}, in.BySeller[:1]
+	second, err := e.uc.Create(ctx, buyerID, in)
+	require.NoError(t, err)
+
+	*e.now = e.now.Add(time.Hour)
+	e.orders.failGet = first.ID
+	require.Error(t, e.uc.RunMaintenance(ctx))
+	require.Equal(t, domain.OrderAwaitingPayment, e.orders.orders[first.ID].Status)
+	require.Equal(t, domain.OrderCancelled, e.orders.orders[second.ID].Status)
+}
+
 func TestOrder_NewCheckoutCancelsOwnUnpaidOrder(t *testing.T) {
 	e := newOrderEnv(t)
 	ctx := context.Background()

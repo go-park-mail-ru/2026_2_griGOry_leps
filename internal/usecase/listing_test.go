@@ -445,6 +445,22 @@ func TestListing_CloseOnlyActiveOrModeration(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrListingNotActive)
 }
 
+func TestListing_UnpaidOrderBlocksCloseAndDelete(t *testing.T) {
+	e := newListingEnv()
+	ctx := context.Background()
+	l := e.active(t)
+	e.repo.orders = map[int32]int32{l.ID: 7}
+
+	var orderErr *domain.ListingOrderError
+	_, err := e.uc.Close(ctx, authorID, l.ID, "other")
+	require.ErrorAs(t, err, &orderErr)
+	require.Equal(t, int32(10007), orderErr.OrderNumber)
+	require.ErrorAs(t, e.uc.Delete(ctx, authorID, l.ID), &orderErr)
+
+	delete(e.repo.orders, l.ID)
+	require.NoError(t, e.uc.Delete(ctx, authorID, l.ID))
+}
+
 func TestListing_DeliveryOnlyWhereCategoryAllows(t *testing.T) {
 	e := newListingEnv()
 	ctx := context.Background()

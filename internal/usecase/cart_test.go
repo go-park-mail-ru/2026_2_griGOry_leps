@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -75,6 +76,26 @@ func TestCart_GroupsBySellerNewestFirst(t *testing.T) {
 	require.Equal(t, int32(102), cart.Groups[0].Items[0].ListingID)
 	require.Equal(t, int32(101), cart.Groups[0].Items[1].ListingID)
 	require.Equal(t, domain.ReasonSold, cart.Groups[1].Items[0].UnavailableReason())
+}
+
+func TestCart_ReservedByAnotherBuyer(t *testing.T) {
+	e := newOrderEnv(t)
+	ctx := context.Background()
+	_, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	require.NoError(t, err)
+	require.NoError(t, e.carts.Add(ctx, strangerID, 101, sellerA))
+
+	cart, err := NewCartUsecase(e.carts, txFake{}, testPrices).Get(ctx, strangerID)
+	require.NoError(t, err)
+	item := cart.Groups[0].Items[0]
+	require.Equal(t, domain.ReasonReserved, item.UnavailableReason())
+	require.Nil(t, item.DeliveryFrom)
+
+	*e.now = e.now.Add(time.Hour)
+	require.NoError(t, e.uc.RunMaintenance(ctx))
+	cart, err = NewCartUsecase(e.carts, txFake{}, testPrices).Get(ctx, strangerID)
+	require.NoError(t, err)
+	require.Empty(t, cart.Groups[0].Items[0].UnavailableReason())
 }
 
 func TestCart_EmptyCartHasNoGroups(t *testing.T) {
