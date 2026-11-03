@@ -173,16 +173,19 @@ func newSellerShortResponse(s domain.Seller) sellerShortResponse {
 }
 
 type categoryNodeResponse struct {
-	ID       int32                  `json:"id"`
-	Name     string                 `json:"name"`
-	Slug     string                 `json:"slug"`
-	Children []categoryNodeResponse `json:"children"`
+	ID              int32                  `json:"id"`
+	Name            string                 `json:"name"`
+	Slug            string                 `json:"slug"`
+	DeliveryAllowed bool                   `json:"delivery_allowed"`
+	Children        []categoryNodeResponse `json:"children"`
 }
 
 func newCategoryNodes(nodes []domain.CategoryNode) []categoryNodeResponse {
 	resp := make([]categoryNodeResponse, 0, len(nodes))
 	for _, n := range nodes {
-		resp = append(resp, categoryNodeResponse{ID: n.ID, Name: n.Name, Slug: n.Slug, Children: newCategoryNodes(n.Children)})
+		resp = append(resp, categoryNodeResponse{
+			ID: n.ID, Name: n.Name, Slug: n.Slug, DeliveryAllowed: n.DeliveryAllowed, Children: newCategoryNodes(n.Children),
+		})
 	}
 	return resp
 }
@@ -384,6 +387,8 @@ func listingErrorField(err error) string {
 	case errors.Is(err, domain.ErrAddressRequired),
 		errors.Is(err, domain.ErrAddressTooLong):
 		return "address"
+	case errors.Is(err, domain.ErrDeliveryNotAllowed):
+		return "has_delivery"
 	case errors.Is(err, domain.ErrInvalidCloseReason):
 		return "reason"
 	}

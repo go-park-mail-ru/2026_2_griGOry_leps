@@ -33,5 +33,6 @@ type ProfileUpdate struct {
 	Phone     *string
 	Email     *string
 	CityID    *int32
+	City      *string
 	About     *string
 }

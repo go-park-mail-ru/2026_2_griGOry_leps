@@ -115,3 +115,25 @@ func TestAdRepo_IsFreeInFeed(t *testing.T) {
 	require.True(t, items[0].IsFree)
 	require.Equal(t, int64(0), *items[0].Price)
 }
+
+func TestListingRepo_CategoryDelivery(t *testing.T) {
+	f := newSellerFixture(t)
+	ctx := context.Background()
+	repo := NewListingRepository(f.pool)
+	_, err := f.pool.ExecContext(ctx, "UPDATE category SET delivery_allowed = false WHERE slug = 'books'")
+	require.NoError(t, err)
+
+	allowed, err := repo.CategoryAllowsDelivery(ctx, 2)
+	require.NoError(t, err)
+	require.True(t, allowed)
+	allowed, err = repo.CategoryAllowsDelivery(ctx, 3)
+	require.NoError(t, err)
+	require.False(t, allowed)
+	_, err = repo.CategoryAllowsDelivery(ctx, 99)
+	require.ErrorIs(t, err, domain.ErrInvalidCategory)
+
+	categories, err := repo.ListCategories(ctx)
+	require.NoError(t, err)
+	require.True(t, categories[0].DeliveryAllowed)
+	require.False(t, categories[2].DeliveryAllowed)
+}

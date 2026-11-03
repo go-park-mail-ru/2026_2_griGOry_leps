@@ -101,7 +101,7 @@ func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profi
 
 func (r *UserRepository) UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error {
 	tag, err := conn(ctx, r.db).ExecContext(ctx, updateProfileQuery,
-		id, upd.FirstName, upd.Phone, upd.Email, upd.CityID, upd.About)
+		id, upd.FirstName, upd.Phone, upd.Email, upd.CityID, upd.About, upd.City)
 	if err != nil {
 		if domainErr := constraintError(err); domainErr != nil {
 			return domainErr

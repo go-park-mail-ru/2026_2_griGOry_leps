@@ -2,8 +2,10 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
@@ -346,4 +348,22 @@ func TestOrder_PayLocksListingsAndRechecksDeadline(t *testing.T) {
 	stored := e.orders.orders[o.ID]
 	require.Equal(t, domain.OrderCancelled, stored.Status)
 	require.False(t, e.orders.reserved(strangerID, 101))
+}
+
+func TestAddressText_FitsOrderColumn(t *testing.T) {
+	longest := addressText(domain.Address{
+		City:      strings.Repeat("я", maxCityLength),
+		Street:    strings.Repeat("я", maxStreetLength),
+		House:     strings.Repeat("я", maxHouseLength),
+		Apartment: strings.Repeat("я", maxApartmentLength),
+		Comment:   strings.Repeat("я", maxAddressCommentLength),
+	})
+	require.LessOrEqual(t, utf8.RuneCountInString(longest), 600)
+}
+
+func TestAddressText(t *testing.T) {
+	require.Equal(t, "Тверская, 12", addressText(domain.Address{Street: "Тверская", House: "12"}))
+	require.Equal(t, "Москва, Тверская, 12, кв. 34, домофон 34", addressText(domain.Address{
+		City: "Москва", Street: "Тверская", House: "12", Apartment: "34", Comment: "домофон 34",
+	}))
 }

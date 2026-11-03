@@ -186,6 +186,18 @@ func (r *ListingRepository) IsLeafCategory(ctx context.Context, id int32) (bool,
 	return ok, nil
 }
 
+func (r *ListingRepository) CategoryAllowsDelivery(ctx context.Context, id int32) (bool, error) {
+	var allowed bool
+	err := conn(ctx, r.db).QueryRowContext(ctx, categoryAllowsDeliveryQuery, id).Scan(&allowed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, domain.ErrInvalidCategory
+	}
+	if err != nil {
+		return false, fmt.Errorf("check category delivery: %w", err)
+	}
+	return allowed, nil
+}
+
 func (r *ListingRepository) ListCategories(ctx context.Context) ([]domain.Category, error) {
 	rows, err := conn(ctx, r.db).QueryContext(ctx, listCategoriesQuery)
 	if err != nil {
@@ -193,7 +205,7 @@ func (r *ListingRepository) ListCategories(ctx context.Context) ([]domain.Catego
 	}
 	categories, err := collectRows(rows, func(row scanner) (domain.Category, error) {
 		var c domain.Category
-		err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug)
+		err := row.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.DeliveryAllowed)
 		return c, err
 	})
 	if err != nil {

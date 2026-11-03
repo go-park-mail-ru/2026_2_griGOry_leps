@@ -123,8 +123,12 @@ const isLeafCategoryQuery = `
     )
 `
 
+const categoryAllowsDeliveryQuery = `
+    SELECT delivery_allowed FROM category WHERE category_id = $1
+`
+
 const listCategoriesQuery = `
-    SELECT category_id, parent_id, name, slug
+    SELECT category_id, parent_id, name, slug, delivery_allowed
     FROM category
     ORDER BY category_id
 `

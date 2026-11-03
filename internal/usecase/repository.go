@@ -108,6 +108,7 @@ type ListingRepository interface {
 	Delete(ctx context.Context, id int32) ([]string, error)
 	Close(ctx context.Context, id int32, reason string) error
 	IsLeafCategory(ctx context.Context, id int32) (bool, error)
+	CategoryAllowsDelivery(ctx context.Context, id int32) (bool, error)
 	ListCategories(ctx context.Context) ([]domain.Category, error)
 	CreatePhoto(ctx context.Context, userID int32, url string) (int32, error)
 	ApproveModeration(ctx context.Context) (int64, error)

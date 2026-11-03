@@ -21,8 +21,10 @@ func NewAddressHandler(addresses AddressUsecase) *AddressHandler {
 }
 
 type addressRequest struct {
+	City      *string `json:"city"`
 	Street    *string `json:"street"`
 	House     *string `json:"house"`
+	Apartment *string `json:"apartment"`
 	Comment   *string `json:"comment"`
 	IsDefault *bool   `json:"is_default"`
 }
@@ -30,8 +32,10 @@ type addressRequest struct {
 func addressResponse(a domain.Address) map[string]any {
 	return map[string]any{
 		"id":         a.ID,
+		"city":       a.City,
 		"street":     a.Street,
 		"house":      a.House,
+		"apartment":  a.Apartment,
 		"comment":    a.Comment,
 		"is_default": a.IsDefault,
 	}
@@ -44,15 +48,22 @@ func decodeAddress(w http.ResponseWriter, r *http.Request) (domain.AddressInput,
 		writeError(r.Context(), w, http.StatusBadRequest, "invalid request body")
 		return domain.AddressInput{}, false
 	}
-	return domain.AddressInput{Street: req.Street, House: req.House, Comment: req.Comment, IsDefault: req.IsDefault}, true
+	return domain.AddressInput{
+		City: req.City, Street: req.Street, House: req.House, Apartment: req.Apartment,
+		Comment: req.Comment, IsDefault: req.IsDefault,
+	}, true
 }
 
 func addressErrorField(err error) string {
 	switch {
+	case errors.Is(err, domain.ErrMissingCity), errors.Is(err, domain.ErrCityTooLong):
+		return "city"
 	case errors.Is(err, domain.ErrMissingStreet), errors.Is(err, domain.ErrStreetTooLong):
 		return "street"
 	case errors.Is(err, domain.ErrMissingHouse), errors.Is(err, domain.ErrHouseTooLong):
 		return "house"
+	case errors.Is(err, domain.ErrApartmentTooLong):
+		return "apartment"
 	case errors.Is(err, domain.ErrAddressCommentTooLong):
 		return "comment"
 	}

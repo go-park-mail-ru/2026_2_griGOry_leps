@@ -134,7 +134,7 @@ func str(s string) *string { return &s }
 func flag(b bool) *bool { return &b }
 
 func address(street string, isDefault bool) domain.AddressInput {
-	return domain.AddressInput{Street: str(street), House: str("д. 1"), Comment: str(""), IsDefault: flag(isDefault)}
+	return domain.AddressInput{City: str("Москва"), Street: str(street), House: str("д. 1"), Comment: str(""), IsDefault: flag(isDefault)}
 }
 
 func TestAddressUsecase_FirstAddressIsDefault(t *testing.T) {
@@ -145,6 +145,26 @@ func TestAddressUsecase_FirstAddressIsDefault(t *testing.T) {
 	require.True(t, a.IsDefault)
 	require.Equal(t, "Тверская", a.Street)
 	require.Equal(t, []int32{7}, repo.locked)
+}
+
+func TestAddressUsecase_CityAndApartment(t *testing.T) {
+	uc, _ := newAddressUsecase()
+	ctx := context.Background()
+
+	in := address("Тверская", false)
+	in.City, in.Apartment = str("  Химки "), str(" 12 ")
+	a, err := uc.Create(ctx, 7, in)
+	require.NoError(t, err)
+	require.Equal(t, "Химки", a.City)
+	require.Equal(t, "12", a.Apartment)
+
+	updated, err := uc.Update(ctx, 7, a.ID, domain.AddressInput{Apartment: str("")})
+	require.NoError(t, err)
+	require.Empty(t, updated.Apartment)
+	require.Equal(t, "Химки", updated.City)
+
+	_, err = uc.Update(ctx, 7, a.ID, domain.AddressInput{City: str(" ")})
+	require.ErrorIs(t, err, domain.ErrMissingCity)
 }
 
 func TestAddressUsecase_CreateDefaultMovesFlag(t *testing.T) {
@@ -223,12 +243,20 @@ func TestAddressUsecase_Validation(t *testing.T) {
 		in   domain.AddressInput
 		want error
 	}{
-		{"no street", domain.AddressInput{House: str("д. 1")}, domain.ErrMissingStreet},
-		{"blank street", domain.AddressInput{Street: str("  "), House: str("д. 1")}, domain.ErrMissingStreet},
-		{"long street", domain.AddressInput{Street: str(strings.Repeat("я", maxStreetLength+1)), House: str("д. 1")}, domain.ErrStreetTooLong},
-		{"no house", domain.AddressInput{Street: str("Тверская")}, domain.ErrMissingHouse},
-		{"long house", domain.AddressInput{Street: str("Тверская"), House: str(strings.Repeat("я", maxHouseLength+1))}, domain.ErrHouseTooLong},
-		{"long comment", domain.AddressInput{Street: str("Тверская"), House: str("д. 1"),
+		{"no city", domain.AddressInput{Street: str("Тверская"), House: str("д. 1")}, domain.ErrMissingCity},
+		{"blank city", domain.AddressInput{City: str(" "), Street: str("Тверская"), House: str("д. 1")}, domain.ErrMissingCity},
+		{"long city", domain.AddressInput{City: str(strings.Repeat("я", maxCityLength+1)), Street: str("Тверская"), House: str("д. 1")},
+			domain.ErrCityTooLong},
+		{"no street", domain.AddressInput{City: str("Москва"), House: str("д. 1")}, domain.ErrMissingStreet},
+		{"blank street", domain.AddressInput{City: str("Москва"), Street: str("  "), House: str("д. 1")}, domain.ErrMissingStreet},
+		{"long street", domain.AddressInput{City: str("Москва"), Street: str(strings.Repeat("я", maxStreetLength+1)), House: str("д. 1")},
+			domain.ErrStreetTooLong},
+		{"no house", domain.AddressInput{City: str("Москва"), Street: str("Тверская")}, domain.ErrMissingHouse},
+		{"long house", domain.AddressInput{City: str("Москва"), Street: str("Тверская"), House: str(strings.Repeat("я", maxHouseLength+1))},
+			domain.ErrHouseTooLong},
+		{"long apartment", domain.AddressInput{City: str("Москва"), Street: str("Тверская"), House: str("д. 1"),
+			Apartment: str(strings.Repeat("1", maxApartmentLength+1))}, domain.ErrApartmentTooLong},
+		{"long comment", domain.AddressInput{City: str("Москва"), Street: str("Тверская"), House: str("д. 1"),
 			Comment: str(strings.Repeat("я", maxAddressCommentLength+1))}, domain.ErrAddressCommentTooLong},
 	}
 	for _, tt := range tests {
