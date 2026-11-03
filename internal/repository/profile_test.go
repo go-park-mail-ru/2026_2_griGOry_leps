@@ -2,15 +2,16 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
-	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func newTestProfileRepository(t *testing.T) (*UserRepository, *sql.DB, int32) {
@@ -63,7 +64,7 @@ func TestProfile_UpdatePartial(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUserRepository(db)
 	city, about := int32(7), "Selling things"
-	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, about).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, about, nil).WillReturnResult(sqlmock.NewResult(0, 1))
 	require.NoError(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{CityID: &city, About: &about}))
 	want := domain.Profile{User: domain.User{ID: 1, FirstName: "Anna", Email: "anna@goget.pw"}, City: &domain.City{ID: city, Name: "Moscow"}, About: about}
 	mock.ExpectQuery(getProfileQuery).WithArgs(int32(1)).WillReturnRows(profileMockRows(want))
@@ -96,13 +97,13 @@ func TestProfile_UpdateErrors(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUserRepository(db)
 	email, phone, city := "other@goget.pw", "+79990000002", int32(100500)
-	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, email, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_email_key"})
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, email, nil, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_email_key"})
 	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{Email: &email}), domain.ErrEmailTaken)
-	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, phone, nil, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_phone_number_key"})
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, phone, nil, nil, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_phone_number_key"})
 	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{Phone: &phone}), domain.ErrPhoneTaken)
-	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, nil).WillReturnError(&pgconn.PgError{Code: "23503", ConstraintName: "user_account_city_id_fkey"})
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, nil, nil).WillReturnError(&pgconn.PgError{Code: "23503", ConstraintName: "user_account_city_id_fkey"})
 	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{CityID: &city}), domain.ErrInvalidCity)
-	mock.ExpectExec(updateProfileQuery).WithArgs(int32(999), nil, nil, nil, nil, nil).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(999), nil, nil, nil, nil, nil, nil).WillReturnResult(sqlmock.NewResult(0, 0))
 	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 999, domain.ProfileUpdate{}), domain.ErrUserNotFound)
 }
 
@@ -243,6 +244,39 @@ func TestProfile_PasswordHashLockWaitsForChange(t *testing.T) {
 	require.NoError(t, <-loginDone)
 }
 
+func TestProfile_UpdateCityByName(t *testing.T) {
+	repo, pool, userID := newTestProfileRepository(t)
+	ctx := context.Background()
+	city := func(name string) error {
+		return repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{City: &name})
+	}
+
+	require.NoError(t, city("москва"))
+	p, err := repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, &domain.City{ID: cityID(t, pool, "Москва"), Name: "Москва"}, p.City)
+
+	require.NoError(t, city("Тверь"))
+	require.NoError(t, city("тверь"))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "Тверь", p.City.Name)
+	var count int
+	require.NoError(t, pool.QueryRowContext(ctx, "SELECT count(*) FROM city WHERE lower(name) = 'тверь'").Scan(&count))
+	require.Equal(t, 1, count)
+
+	about := "Продаю велосипеды"
+	require.NoError(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{About: &about}))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "Тверь", p.City.Name)
+
+	require.NoError(t, city(""))
+	p, err = repo.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	require.Nil(t, p.City)
+}
+
 func profileMockRows(p domain.Profile) *sqlmock.Rows {
 	var cityID, cityName any
 	if p.City != nil {
@@ -251,6 +285,7 @@ func profileMockRows(p domain.Profile) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "rating", "reviews"}).
 		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.Rating, p.ReviewsCount)
 }
+
 func userStateRows(u domain.User) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "hash", "email_verified", "pending_email", "created"}).
 		AddRow(u.ID, u.FirstName, u.Email, u.Phone, u.PasswordHash, u.EmailVerified, u.PendingEmail, u.CreatedAt)

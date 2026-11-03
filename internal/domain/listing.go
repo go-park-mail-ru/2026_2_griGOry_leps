@@ -25,6 +25,7 @@ var (
 	ErrInvalidCloseReason = errors.New("invalid close reason")
 
 	ErrInvalidCategory    = errors.New("invalid category_id")
+	ErrDeliveryNotAllowed = errors.New("delivery is not available in this category")
 	ErrInvalidTitle       = errors.New("title must be 1-80 characters")
 	ErrPhotosRequired     = errors.New("at least one photo is required")
 	ErrInvalidPhotoID     = errors.New("invalid photo id")
@@ -79,17 +80,19 @@ type ListingState struct {
 }
 
 type Category struct {
-	ID       int32
-	ParentID *int32
-	Name     string
-	Slug     string
+	ID              int32
+	ParentID        *int32
+	Name            string
+	Slug            string
+	DeliveryAllowed bool
 }
 
 type CategoryNode struct {
-	ID       int32
-	Name     string
-	Slug     string
-	Children []CategoryNode
+	ID              int32
+	Name            string
+	Slug            string
+	DeliveryAllowed bool
+	Children        []CategoryNode
 }
 
 type ListingCategory struct {

@@ -59,7 +59,8 @@ func (s *listingStub) UploadPhoto(context.Context, int32, []byte) (domain.Listin
 }
 
 func (s *listingStub) Categories(context.Context) ([]domain.CategoryNode, error) {
-	return []domain.CategoryNode{{ID: 1, Name: "Спорт", Slug: "sport", Children: []domain.CategoryNode{{ID: 2, Name: "Велосипеды", Slug: "bikes"}}}}, s.err
+	return []domain.CategoryNode{{ID: 1, Name: "Спорт", Slug: "sport", DeliveryAllowed: true,
+		Children: []domain.CategoryNode{{ID: 2, Name: "Велосипеды", Slug: "bikes"}}}}, s.err
 }
 
 func listingRequestFor(method, body string) *http.Request {
@@ -158,6 +159,7 @@ func TestListing_ErrorStatuses(t *testing.T) {
 		{domain.ErrAddressRequired, http.StatusBadRequest, "address"},
 		{domain.ErrInvalidPhotoID, http.StatusBadRequest, "photo_ids"},
 		{domain.ErrInvalidPrice, http.StatusBadRequest, "price"},
+		{domain.ErrDeliveryNotAllowed, http.StatusBadRequest, "has_delivery"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.err.Error(), func(t *testing.T) {
@@ -236,5 +238,6 @@ func TestListingHandler_CategoriesAlwaysHasChildrenArray(t *testing.T) {
 	NewListingHandler(&listingStub{}).Categories(rec, httptest.NewRequest(http.MethodGet, "/api/categories", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.JSONEq(t, `[{"id":1,"name":"Спорт","slug":"sport","children":[{"id":2,"name":"Велосипеды","slug":"bikes","children":[]}]}]`, rec.Body.String())
+	require.JSONEq(t, `[{"id":1,"name":"Спорт","slug":"sport","delivery_allowed":true,
+		"children":[{"id":2,"name":"Велосипеды","slug":"bikes","delivery_allowed":false,"children":[]}]}]`, rec.Body.String())
 }

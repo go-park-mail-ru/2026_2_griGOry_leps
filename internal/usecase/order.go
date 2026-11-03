@@ -173,11 +173,12 @@ func deliveryDates(now time.Time) []string {
 }
 
 func addressText(a domain.Address) string {
-	text := a.Street + ", " + a.House
-	if a.Comment != "" {
-		text += ", " + a.Comment
+	parts := []string{a.City, a.Street, a.House}
+	if a.Apartment != "" {
+		parts = append(parts, "кв. "+a.Apartment)
 	}
-	return text
+	parts = append(parts, a.Comment)
+	return strings.Join(slices.DeleteFunc(parts, func(p string) bool { return p == "" }), ", ")
 }
 
 func (uc *OrderUsecase) Create(ctx context.Context, userID int32, in domain.OrderInput) (domain.Order, error) {

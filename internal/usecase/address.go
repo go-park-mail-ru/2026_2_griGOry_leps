@@ -9,8 +9,10 @@ import (
 )
 
 const (
+	maxCityLength           = 100
 	maxStreetLength         = 200
 	maxHouseLength          = 50
+	maxApartmentLength      = 20
 	maxAddressCommentLength = 200
 )
 
@@ -30,12 +32,26 @@ func (uc *AddressUsecase) List(ctx context.Context, userID int32) ([]domain.Addr
 
 func normalizeAddressInput(in *domain.AddressInput, create bool) error {
 	if create {
+		if in.City == nil {
+			return domain.ErrMissingCity
+		}
 		if in.Street == nil {
 			return domain.ErrMissingStreet
 		}
 		if in.House == nil {
 			return domain.ErrMissingHouse
 		}
+	}
+
+	if in.City != nil {
+		city := strings.TrimSpace(*in.City)
+		switch {
+		case city == "":
+			return domain.ErrMissingCity
+		case utf8.RuneCountInString(city) > maxCityLength:
+			return domain.ErrCityTooLong
+		}
+		in.City = &city
 	}
 
 	if in.Street != nil {
@@ -60,6 +76,14 @@ func normalizeAddressInput(in *domain.AddressInput, create bool) error {
 		in.House = &house
 	}
 
+	if in.Apartment != nil {
+		apartment := strings.TrimSpace(*in.Apartment)
+		if utf8.RuneCountInString(apartment) > maxApartmentLength {
+			return domain.ErrApartmentTooLong
+		}
+		in.Apartment = &apartment
+	}
+
 	if in.Comment != nil {
 		comment := strings.TrimSpace(*in.Comment)
 		if utf8.RuneCountInString(comment) > maxAddressCommentLength {
@@ -75,7 +99,10 @@ func (uc *AddressUsecase) Create(ctx context.Context, userID int32, in domain.Ad
 		return domain.Address{}, err
 	}
 
-	a := domain.Address{UserID: userID, Street: *in.Street, House: *in.House}
+	a := domain.Address{UserID: userID, City: *in.City, Street: *in.Street, House: *in.House}
+	if in.Apartment != nil {
+		a.Apartment = *in.Apartment
+	}
 	if in.Comment != nil {
 		a.Comment = *in.Comment
 	}
@@ -117,11 +144,17 @@ func (uc *AddressUsecase) Update(ctx context.Context, userID, id int32, in domai
 			return err
 		}
 
+		if in.City != nil {
+			a.City = *in.City
+		}
 		if in.Street != nil {
 			a.Street = *in.Street
 		}
 		if in.House != nil {
 			a.House = *in.House
+		}
+		if in.Apartment != nil {
+			a.Apartment = *in.Apartment
 		}
 		if in.Comment != nil {
 			a.Comment = *in.Comment

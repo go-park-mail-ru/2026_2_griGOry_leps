@@ -45,13 +45,20 @@ const getProfileQuery = `
 `
 
 const updateProfileQuery = `
+    WITH named_city AS (
+        INSERT INTO city (name)
+        SELECT $7::text WHERE $7::text <> ''
+        ON CONFLICT (lower(name)) DO UPDATE SET name = city.name
+        RETURNING city_id
+    )
     UPDATE user_account
     SET first_name     = COALESCE($2, first_name),
         phone_verified = phone_verified AND COALESCE($3, phone_number) = phone_number,
         phone_number   = COALESCE($3, phone_number),
         email_verified = email_verified AND COALESCE($4, email) = email,
         email          = COALESCE($4, email),
-        city_id        = COALESCE($5, city_id),
+        city_id        = CASE WHEN $7::text = '' THEN NULL
+                              ELSE COALESCE((SELECT city_id FROM named_city), $5, city_id) END,
         about          = COALESCE($6, about)
     WHERE user_id = $1
 `

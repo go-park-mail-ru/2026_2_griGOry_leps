@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -12,10 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
-
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
@@ -82,39 +80,11 @@ func migrationNumber(t *testing.T, file string) int {
 	return n
 }
 
-func newTestSessionRepository(t *testing.T) (*SessionRepository, int32) {
-	t.Helper()
-	pool := newTestPool(t)
-	user, err := NewUserRepository(pool).Create(context.Background(), "session@example.com", "hash", "Иван", "+79001234567")
-	require.NoError(t, err)
-	return NewSessionRepository(pool), user.ID
-}
-
-func newTestAdRepository(t *testing.T, ads []domain.Ad) *AdRepository {
-	t.Helper()
-	pool := newTestPool(t)
-	ctx := context.Background()
-	user, err := NewUserRepository(pool).Create(ctx, "seller@example.com", "hash", "Иван", "+79001234567")
-	require.NoError(t, err)
-	// Фиксированные ID принадлежат только изолированным тестовым данным.
-	_, err = pool.ExecContext(ctx, `INSERT INTO category (category_id, name, slug)
-		OVERRIDING SYSTEM VALUE VALUES (1, 'Транспорт', 'transport'), (2, 'Книги', 'books')`)
-	require.NoError(t, err)
-	for _, ad := range ads {
-		_, err = pool.ExecContext(ctx, `INSERT INTO ad
-			(id, user_id, category_id, title, description, price, city, has_delivery, status, created_at)
-			OVERRIDING SYSTEM VALUE VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			ad.ID, user.ID, ad.CategoryID, ad.Title, ad.Description, ad.Price,
-			ad.City, ad.HasDelivery, ad.Status, ad.CreatedAt)
-		require.NoError(t, err)
-	}
-	return NewAdRepository(pool)
-}
-
 func newSQLMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
 	t.Helper()
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
-	t.Cleanup(func() { defer db.Close(); require.NoError(t, mock.ExpectationsWereMet()) })
+	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 	return db, mock
 }

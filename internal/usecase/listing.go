@@ -79,7 +79,9 @@ func categoryTree(categories []domain.Category) []domain.CategoryNode {
 	build = func(list []domain.Category, depth int) []domain.CategoryNode {
 		nodes := make([]domain.CategoryNode, 0, len(list))
 		for _, c := range list {
-			node := domain.CategoryNode{ID: c.ID, Name: c.Name, Slug: c.Slug, Children: []domain.CategoryNode{}}
+			node := domain.CategoryNode{
+				ID: c.ID, Name: c.Name, Slug: c.Slug, DeliveryAllowed: c.DeliveryAllowed, Children: []domain.CategoryNode{},
+			}
 			if depth < maxCategoryDepth {
 				node.Children = build(children[c.ID], depth+1)
 			}
@@ -197,7 +199,7 @@ func (uc *ListingUsecase) Close(ctx context.Context, userID, id int32, reason st
 		if err != nil {
 			return err
 		}
-		if state.Status != domain.AdStatusActive {
+		if state.Status != domain.AdStatusActive && state.Status != domain.AdStatusModeration {
 			return domain.ErrListingNotActive
 		}
 		if _, ok, err := uc.listings.ActiveOrder(ctx, id); err != nil {
@@ -357,6 +359,15 @@ func (uc *ListingUsecase) apply(ctx context.Context, state *domain.ListingState,
 	}
 	if f.HasDelivery != nil {
 		state.HasDelivery = *f.HasDelivery
+	}
+	if state.HasDelivery && state.CategoryID != nil && (f.HasDelivery != nil || f.CategoryID.Set) {
+		allowed, err := uc.listings.CategoryAllowsDelivery(ctx, *state.CategoryID)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return domain.ErrDeliveryNotAllowed
+		}
 	}
 	return nil
 }

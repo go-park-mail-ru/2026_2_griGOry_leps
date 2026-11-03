@@ -1,6 +1,6 @@
 package repository
 
-const addressColumns = `address_id, user_id, street, house, comment, is_default, created_at`
+const addressColumns = `address_id, user_id, city, street, house, apartment, comment, is_default, created_at`
 
 const listAddressesQuery = `
  SELECT ` + addressColumns + `
@@ -19,13 +19,13 @@ const getAddressForUpdateQuery = `
 `
 
 const createAddressQuery = `
- INSERT INTO address (user_id, street, house, comment, is_default)
- VALUES ($1, $2, $3, $4, $5)
+ INSERT INTO address (user_id, city, street, house, apartment, comment, is_default)
+ VALUES ($1, $2, $3, $4, $5, $6, $7)
  RETURNING ` + addressColumns
 
 const updateAddressQuery = `
  UPDATE address
- SET street=$3, house=$4, comment=$5, is_default=$6
+ SET city=$3, street=$4, house=$5, apartment=$6, comment=$7, is_default=$8
  WHERE address_id=$1 AND user_id=$2
  RETURNING ` + addressColumns
 

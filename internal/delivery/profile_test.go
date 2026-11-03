@@ -115,7 +115,7 @@ func TestProfile_Get_AvatarURL(t *testing.T) {
 func TestProfile_Update_PassesOnlySentFields(t *testing.T) {
 	var got domain.ProfileUpdate
 	h := NewProfileHandler(profileStub{update: func(upd domain.ProfileUpdate) { got = upd }})
-	req := withAuth(httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"about":"","city_id":3,"role":"admin"}`)))
+	req := withAuth(httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"about":"","city_id":3,"city":"Тверь","role":"admin"}`)))
 	rec := httptest.NewRecorder()
 
 	h.Update(rec, req)
@@ -124,6 +124,7 @@ func TestProfile_Update_PassesOnlySentFields(t *testing.T) {
 	require.NotNil(t, got.About)
 	require.Empty(t, *got.About)
 	require.EqualValues(t, 3, *got.CityID)
+	require.Equal(t, "Тверь", *got.City)
 	require.Nil(t, got.FirstName)
 	require.Nil(t, got.Phone)
 	require.Nil(t, got.Email)
@@ -147,6 +148,7 @@ func TestProfile_Update_Errors(t *testing.T) {
 		{domain.ErrInvalidPhone, http.StatusBadRequest, "phone"},
 		{domain.ErrInvalidEmail, http.StatusBadRequest, "email"},
 		{domain.ErrInvalidCity, http.StatusBadRequest, "city_id"},
+		{domain.ErrInvalidCityName, http.StatusBadRequest, "city"},
 		{domain.ErrAboutTooLong, http.StatusBadRequest, "about"},
 		{domain.ErrEmailTaken, http.StatusConflict, "email"},
 		{domain.ErrPhoneTaken, http.StatusConflict, "phone"},

@@ -27,6 +27,8 @@ type listingRepoFake struct {
 	leaves map[int32]bool
 	closed map[int32]string
 
+	noDelivery map[int32]bool
+
 	categories []domain.Category
 	orders     map[int32]int32
 }
@@ -35,8 +37,10 @@ func newListingRepoFake() *listingRepoFake {
 	return &listingRepoFake{
 		states: make(map[int32]domain.ListingState),
 		photos: make(map[int32]*photoFake),
-		leaves: map[int32]bool{12: true},
+		leaves: map[int32]bool{12: true, 13: true},
 		closed: make(map[int32]string),
+
+		noDelivery: map[int32]bool{13: true},
 	}
 }
 
@@ -153,6 +157,10 @@ func (r *listingRepoFake) IsLeafCategory(_ context.Context, id int32) (bool, err
 func (r *listingRepoFake) ActiveOrder(_ context.Context, listingID int32) (int32, bool, error) {
 	id, ok := r.orders[listingID]
 	return id, ok, nil
+}
+
+func (r *listingRepoFake) CategoryAllowsDelivery(_ context.Context, id int32) (bool, error) {
+	return !r.noDelivery[id], nil
 }
 
 func (r *listingRepoFake) ListCategories(context.Context) ([]domain.Category, error) {
@@ -416,7 +424,7 @@ func TestListing_ReplacingPhotosDeletesFiles(t *testing.T) {
 	require.Len(t, e.storage.files, 1)
 }
 
-func TestListing_CloseOnlyActive(t *testing.T) {
+func TestListing_CloseOnlyActiveOrModeration(t *testing.T) {
 	e := newListingEnv()
 	ctx := context.Background()
 
@@ -435,6 +443,41 @@ func TestListing_CloseOnlyActive(t *testing.T) {
 
 	_, err = e.uc.Close(ctx, authorID, l.ID, "other")
 	require.ErrorIs(t, err, domain.ErrListingNotActive)
+}
+
+func TestListing_DeliveryOnlyWhereCategoryAllows(t *testing.T) {
+	e := newListingEnv()
+	ctx := context.Background()
+
+	_, err := e.uc.Create(ctx, authorID, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(true)}, false)
+	require.ErrorIs(t, err, domain.ErrDeliveryNotAllowed)
+
+	l, err := e.uc.Create(ctx, authorID, domain.ListingFields{CategoryID: set(int32(12)), HasDelivery: ptr(true)}, false)
+	require.NoError(t, err)
+
+	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{CategoryID: set(int32(13))}, nil)
+	require.ErrorIs(t, err, domain.ErrDeliveryNotAllowed)
+
+	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(false)}, nil)
+	require.NoError(t, err)
+}
+
+func TestListing_CloseOnModeration(t *testing.T) {
+	e := newListingEnv()
+	ctx := context.Background()
+
+	l, err := e.uc.Create(ctx, authorID, e.fullFields(t), true)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusModeration, l.Status)
+
+	closed, err := e.uc.Close(ctx, authorID, l.ID, "changed_mind")
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusClosed, closed.Status)
+
+	require.NoError(t, e.uc.RunMaintenance(ctx, time.Now()))
+	got, err := e.uc.Get(ctx, l.ID, authorID)
+	require.NoError(t, err)
+	require.Equal(t, domain.AdStatusClosed, got.Status)
 }
 
 func TestListing_DeleteRemovesPhotos(t *testing.T) {
@@ -472,7 +515,7 @@ func TestListing_CategoriesBuildsTree(t *testing.T) {
 	parent := int32(1)
 	missing := int32(99)
 	e.repo.categories = []domain.Category{
-		{ID: 1, Name: "Спорт", Slug: "sport"},
+		{ID: 1, Name: "Спорт", Slug: "sport", DeliveryAllowed: true},
 		{ID: 2, ParentID: &parent, Name: "Велосипеды", Slug: "bikes"},
 		{ID: 3, ParentID: &missing, Name: "Сироты", Slug: "orphans"},
 	}
@@ -481,6 +524,8 @@ func TestListing_CategoriesBuildsTree(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tree, 2)
 	require.Equal(t, "sport", tree[0].Slug)
+	require.True(t, tree[0].DeliveryAllowed)
+	require.False(t, tree[0].Children[0].DeliveryAllowed)
 	require.Len(t, tree[0].Children, 1)
 	require.Equal(t, int32(2), tree[0].Children[0].ID)
 	require.NotNil(t, tree[0].Children[0].Children)

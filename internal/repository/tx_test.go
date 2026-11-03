@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 	"errors"
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTransactor_RollbackOnError(t *testing.T) {
@@ -26,6 +27,7 @@ func TestTransactor_RollbackOnError(t *testing.T) {
 	})
 	require.ErrorIs(t, err, failure)
 }
+
 func TestTransactor_Commit(t *testing.T) {
 	db, mock := newSQLMock(t)
 	mock.ExpectBegin()

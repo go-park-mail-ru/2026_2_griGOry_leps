@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql/driver"
-	"github.com/DATA-DOG/go-sqlmock"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -223,6 +223,7 @@ func adMockRows(ads ...domain.Ad) *sqlmock.Rows {
 	}
 	return rows
 }
+
 func expectAdList(mock sqlmock.Sqlmock, f domain.AdFilter, total int, ads ...domain.Ad) {
 	sort := f.Sort
 	if sort == "" {

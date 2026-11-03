@@ -22,7 +22,8 @@ type addressStub struct {
 }
 
 func testAddress(id int32) domain.Address {
-	return domain.Address{ID: id, UserID: 7, Street: "Москва, ул. Тверская", House: "д. 12", Comment: "Домофон 34", IsDefault: true}
+	return domain.Address{ID: id, UserID: 7, City: "Москва", Street: "ул. Тверская", House: "д. 12", Apartment: "5",
+		Comment: "Домофон 34", IsDefault: true}
 }
 
 func (s *addressStub) List(_ context.Context, userID int32) ([]domain.Address, error) {
@@ -62,7 +63,8 @@ func TestAddress_List(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, int32(7), stub.userID)
 	require.JSONEq(t, `[{
-		"id": 1, "street": "Москва, ул. Тверская", "house": "д. 12", "comment": "Домофон 34", "is_default": true
+		"id": 1, "city": "Москва", "street": "ул. Тверская", "house": "д. 12", "apartment": "5",
+		"comment": "Домофон 34", "is_default": true
 	}]`, rec.Body.String())
 }
 
@@ -71,10 +73,12 @@ func TestAddress_Create(t *testing.T) {
 	rec := httptest.NewRecorder()
 
 	NewAddressHandler(stub).Create(rec, addressHTTPRequest(http.MethodPost,
-		`{"street":"Тверская","house":"д. 12","comment":"","is_default":true}`, ""))
+		`{"city":"Москва","street":"Тверская","house":"д. 12","apartment":"5","comment":"","is_default":true}`, ""))
 
 	require.Equal(t, http.StatusCreated, rec.Code)
+	require.Equal(t, "Москва", *stub.in.City)
 	require.Equal(t, "Тверская", *stub.in.Street)
+	require.Equal(t, "5", *stub.in.Apartment)
 	require.Equal(t, "д. 12", *stub.in.House)
 	require.Equal(t, "", *stub.in.Comment)
 	require.True(t, *stub.in.IsDefault)
@@ -86,10 +90,13 @@ func TestAddress_Create_FieldErrors(t *testing.T) {
 		err   error
 		field string
 	}{
+		{domain.ErrMissingCity, "city"},
+		{domain.ErrCityTooLong, "city"},
 		{domain.ErrMissingStreet, "street"},
 		{domain.ErrStreetTooLong, "street"},
 		{domain.ErrMissingHouse, "house"},
 		{domain.ErrHouseTooLong, "house"},
+		{domain.ErrApartmentTooLong, "apartment"},
 		{domain.ErrAddressCommentTooLong, "comment"},
 	}
 	for _, tt := range tests {

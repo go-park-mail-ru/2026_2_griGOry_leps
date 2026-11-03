@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/DATA-DOG/go-sqlmock"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 
@@ -22,25 +22,6 @@ func (f sellerFixture) review(t *testing.T, authorID, adID int32, rating float64
 		authorID, adID, rating, age.Seconds()).Scan(&id)
 	require.NoError(t, err)
 	return id
-}
-
-func (f sellerFixture) reviewWithPhotos(t *testing.T, authorID, adID int32, rating float64, age time.Duration,
-	photos ...string) int32 {
-	t.Helper()
-	id := f.review(t, authorID, adID, rating, age)
-	for i, url := range photos {
-		_, err := f.pool.ExecContext(context.Background(), `INSERT INTO review_image (rew_id, url, position) VALUES ($1, $2, $3)`,
-			id, url, len(photos)-i)
-		require.NoError(t, err)
-	}
-	return id
-}
-
-func (f sellerFixture) author(t *testing.T, email, phone string) int32 {
-	t.Helper()
-	user, err := NewUserRepository(f.pool).Create(context.Background(), email, "hash", "Олег", phone)
-	require.NoError(t, err)
-	return user.ID
 }
 
 func TestSellerRepo_Get(t *testing.T) {

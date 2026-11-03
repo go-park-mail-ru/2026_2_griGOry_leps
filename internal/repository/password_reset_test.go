@@ -3,16 +3,19 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func resetRows(userID int32, expires time.Time, used any) *sqlmock.Rows {
 	return sqlmock.NewRows([]string{"user_id", "expires_at", "used_at"}).AddRow(userID, expires, used)
 }
+
 func TestPasswordReset_CreateAndGet(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewPasswordResetRepository(db)
@@ -33,6 +36,7 @@ func TestPasswordReset_CreateAndGet(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrInvalidResetToken)
 	}
 }
+
 func TestPasswordReset_HasCreatedSince(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewPasswordResetRepository(db)
@@ -53,6 +57,7 @@ func TestPasswordReset_HasCreatedSince(t *testing.T) {
 		require.Equal(t, want, recent)
 	}
 }
+
 func TestPasswordReset_UseAll(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewPasswordResetRepository(db)
@@ -77,6 +82,7 @@ func TestPasswordReset_UseAll(t *testing.T) {
 		}
 	}
 }
+
 func TestUser_LockByID(t *testing.T) {
 	db, mock := newSQLMock(t)
 	users := NewUserRepository(db)
@@ -85,6 +91,7 @@ func TestUser_LockByID(t *testing.T) {
 	mock.ExpectQuery(lockUserQuery).WithArgs(int32(999)).WillReturnError(sql.ErrNoRows)
 	require.ErrorIs(t, users.LockByID(context.Background(), 999), domain.ErrUserNotFound)
 }
+
 func hashOf(token string) string {
 	h := make([]byte, 64)
 	for i := range h {
