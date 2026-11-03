@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -87,10 +88,11 @@ func (r *cartRepoFake) Count(_ context.Context, userID int32) (int, error) {
 }
 
 type orderRepoFake struct {
-	carts  *cartRepoFake
-	orders map[int32]domain.Order
-	keys   map[string]int32
-	now    *time.Time
+	carts   *cartRepoFake
+	orders  map[int32]domain.Order
+	keys    map[string]int32
+	now     *time.Time
+	failGet int32
 }
 
 func newOrderRepoFake(carts *cartRepoFake, now *time.Time) *orderRepoFake {
@@ -157,6 +159,9 @@ func (r *orderRepoFake) Get(_ context.Context, id int32) (domain.Order, error) {
 }
 
 func (r *orderRepoFake) GetForUpdate(ctx context.Context, id int32) (domain.Order, error) {
+	if id == r.failGet {
+		return domain.Order{}, errors.New("db is down")
+	}
 	return r.Get(ctx, id)
 }
 

@@ -136,3 +136,59 @@ func TestListingRepo_CategoryDelivery(t *testing.T) {
 	require.True(t, categories[0].DeliveryAllowed)
 	require.False(t, categories[2].DeliveryAllowed)
 }
+
+func TestListingRepo_ActiveOrderOnlyWhileUnpaid(t *testing.T) {
+	f := newSellerFixture(t)
+	ctx := context.Background()
+	repo := NewListingRepository(f.pool)
+	adID := f.ad(t, 2, "Велосипед", 1000000, domain.AdStatusActive, time.Hour)
+
+	order := func(status, payment string, payUntil time.Duration) int32 {
+		t.Helper()
+		var id int32
+		err := f.pool.QueryRowContext(ctx, `INSERT INTO orders (buyer_id, idempotency_key, status, payment_method,
+			payment_status, pay_until, recipient_name, recipient_phone, items_total, delivery_total)
+			VALUES ($1, gen_random_uuid(), $2, 'card', $3, now() + $4::float8 * interval '1 second', 'Анна', '+79990000002', 1000000, 0)
+			RETURNING id`, f.buyer, status, payment, payUntil.Seconds()).Scan(&id)
+		require.NoError(t, err)
+		_, err = f.pool.ExecContext(ctx, `INSERT INTO order_item (order_id, ad_id, seller_id, title, price)
+			VALUES ($1, $2, $3, 'Велосипед', 1000000)`, id, adID, f.seller)
+		require.NoError(t, err)
+		return id
+	}
+	active := func() (int32, bool) {
+		t.Helper()
+		id, ok, err := repo.ActiveOrder(ctx, adID)
+		require.NoError(t, err)
+		return id, ok
+	}
+
+	order(domain.OrderPlaced, domain.PaymentPaid, -time.Hour)
+	order(domain.OrderAwaitingPayment, domain.PaymentPending, -time.Minute)
+	_, ok := active()
+	require.False(t, ok)
+
+	processing := order(domain.OrderAwaitingPayment, domain.PaymentProcessing, -time.Minute)
+	id, ok := active()
+	require.True(t, ok)
+	require.Equal(t, processing, id)
+
+	pending := order(domain.OrderAwaitingPayment, domain.PaymentPending, time.Hour)
+	id, ok = active()
+	require.True(t, ok)
+	require.Equal(t, pending, id)
+}
+
+func TestAdRepo_NewestByPublication(t *testing.T) {
+	f := newSellerFixture(t)
+	ctx := context.Background()
+	old := f.ad(t, 2, "Черновик недели", 100000, domain.AdStatusActive, 7*24*time.Hour)
+	fresh := f.ad(t, 2, "Вчерашний", 100000, domain.AdStatusActive, 24*time.Hour)
+	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET published_at = now() - interval '1 minute' WHERE id = $1`, old)
+	require.NoError(t, err)
+
+	items, _, err := NewAdRepository(f.pool).List(ctx, domain.AdFilter{Sort: domain.AdSortNewest, Limit: 10})
+	require.NoError(t, err)
+	require.Equal(t, []int32{old, fresh}, adIDs(items))
+	require.WithinDuration(t, time.Now().Add(-time.Minute), items[0].CreatedAt, 10*time.Second)
+}

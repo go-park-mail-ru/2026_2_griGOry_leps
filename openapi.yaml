@@ -839,6 +839,7 @@ paths:
       summary: Создать объявление
       description: |
         Автор — текущий пользователь, город берётся из его профиля.
+        Опубликовать можно только с подтверждённой почтой, черновик сохраняется и без неё.
         Сначала клиент загружает каждое фото через `POST /listing-photos`,
         потом отправляет форму с их id.
 
@@ -874,7 +875,7 @@ paths:
               schema: { $ref: '#/components/schemas/Listing' }
         '400': { $ref: '#/components/responses/ListingValidation' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/InvalidCSRF' }
+        '403': { $ref: '#/components/responses/InvalidCSRFOrUnverified' }
         '500': { $ref: '#/components/responses/InternalError' }
 
   /listing-photos:
@@ -991,7 +992,8 @@ paths:
       description: |
         Только автор. Стирает объявление навсегда вместе со статистикой. В чужих
         корзинах позиция остаётся недоступной (`unavailable_reason` = `deleted`).
-        Нельзя, если по объявлению есть оформленный заказ.
+        Нельзя, пока покупатель оплачивает заказ с этим объявлением. Проданное
+        объявление удалить можно, в заказе покупателя остаются его название, цена и фото.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1002,7 +1004,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: По объявлению есть активный заказ; `order_id` нужен кнопке «Перейти к заказу»
+          description: Покупатель сейчас оплачивает заказ с этим объявлением
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1047,11 +1049,13 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Объявление не активно и не на проверке или по нему есть неоплаченный заказ
+          description: Объявление не активно и не на проверке или покупатель сейчас оплачивает заказ с ним
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-              example: { error: listing is not active }
+              examples:
+                notActive: { value: { error: listing is not active } }
+                hasOrder: { value: { error: listing has active order, order_id: 77, order_number: 10245 } }
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Продавцы
@@ -1371,7 +1375,7 @@ paths:
         Повтор запроса с тем же `Idempotency-Key` возвращает уже созданный заказ.
         Товары заказа убираются из корзины, когда заказ становится `placed`;
         пока заказ ждёт оплаты, они остаются в корзине покупателя, а для остальных
-        покупателей становятся недоступными (`unavailable_reason` = `sold`).
+        покупателей становятся недоступными (`unavailable_reason` = `reserved`).
         Новое оформление с теми же объявлениями отменяет неоплаченный заказ
         этого же покупателя.
 
@@ -1510,7 +1514,8 @@ paths:
       summary: Тестовая страница банка
       description: |
         Заглушка вместо платёжного провайдера. HTML-страница с суммой заказа
-        и кнопками «Оплатить» и «Отклонить».
+        и кнопками «Оплатить» и «Отклонить». Если оплата по заказу уже идёт,
+        прошла или была отклонена, перенаправляет на `<фронт>/orders/{order_id}`.
       security: []
       responses:
         '200':
@@ -1518,7 +1523,13 @@ paths:
           content:
             text/html:
               schema: { type: string }
-        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '303':
+          description: Оплата по этой ссылке уже не ждёт — перенаправление на страницу заказа
+        '404':
+          description: Ссылка устарела — HTML-страница со ссылкой на фронт
+          content:
+            text/html:
+              schema: { type: string }
 
   /test-payments/{token}/{result}:
     parameters:
@@ -1542,7 +1553,11 @@ paths:
       responses:
         '303':
           description: Перенаправление на страницу заказа
-        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '404':
+          description: Ссылка устарела — HTML-страница со ссылкой на фронт
+          content:
+            text/html:
+              schema: { type: string }
 
 components:
   securitySchemes:
@@ -2017,7 +2032,7 @@ components:
         city: { type: string, example: Москва }
         has_delivery: { type: boolean }
         category_id: { type: integer }
-        created_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time, description: 'Дата публикации, у черновика — дата создания.' }
 
     AdPage:
       type: object
@@ -2442,8 +2457,9 @@ components:
         availability: { type: string, enum: [available, unavailable] }
         unavailable_reason:
           type: string
-          enum: [sold, closed, deleted]
+          enum: [sold, reserved, closed, deleted]
           nullable: true
+          description: "`reserved`: товар сейчас оплачивает другой покупатель, после отмены его заказа позиция снова станет доступной"
 
     Cart:
       type: object

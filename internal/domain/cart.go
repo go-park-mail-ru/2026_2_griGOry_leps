@@ -24,9 +24,10 @@ const (
 	PaymentFailed     = "failed"
 	PaymentOnDelivery = "on_delivery"
 
-	ReasonSold    = "sold"
-	ReasonClosed  = "closed"
-	ReasonDeleted = "deleted"
+	ReasonSold     = "sold"
+	ReasonReserved = "reserved"
+	ReasonClosed   = "closed"
+	ReasonDeleted  = "deleted"
 
 	ListingDeleted = "deleted"
 
@@ -97,7 +98,9 @@ func (e CartEntry) UnavailableReason() string {
 	switch {
 	case e.Status == AdStatusActive && !e.Reserved:
 		return ""
-	case e.Status == AdStatusActive || e.Status == AdStatusSold:
+	case e.Status == AdStatusActive:
+		return ReasonReserved
+	case e.Status == AdStatusSold:
 		return ReasonSold
 	case e.Status == ListingDeleted:
 		return ReasonDeleted

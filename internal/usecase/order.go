@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -525,6 +526,7 @@ func (uc *OrderUsecase) RunMaintenance(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, id := range ids {
 		err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 			order, err := uc.orders.GetForUpdate(ctx, id)
@@ -534,8 +536,8 @@ func (uc *OrderUsecase) RunMaintenance(ctx context.Context) error {
 			return uc.settle(ctx, &order)
 		})
 		if err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("order %d: %w", id, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
