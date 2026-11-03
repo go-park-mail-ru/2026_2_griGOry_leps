@@ -1,11 +1,13 @@
 package delivery
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -60,5 +62,62 @@ func TestOrderErrors(t *testing.T) {
 		writeOrderError(rec, httptest.NewRequest(http.MethodPost, "/api/orders", nil), "test", tt.err)
 		require.Equal(t, tt.code, rec.Code, tt.err.Error())
 		require.JSONEq(t, tt.body, rec.Body.String())
+	}
+}
+
+type paymentStub struct {
+	OrderUsecase
+	order domain.Order
+	err   error
+}
+
+func (s paymentStub) PaymentPage(context.Context, string) (domain.Order, error) { return s.order, s.err }
+
+func (s paymentStub) TestPayment(context.Context, string, bool) (int32, error) { return s.order.ID, s.err }
+
+func servePayment(t *testing.T, stub paymentStub, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	h := NewOrderHandler(stub, "http://api.test", "http://front.test")
+	r := mux.NewRouter()
+	r.HandleFunc(testPaymentPath+"{token}", h.TestPaymentPage)
+	r.HandleFunc(testPaymentPath+"{token}/success", h.TestPaymentResult(true))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, testPaymentPath+path, nil))
+	return rec
+}
+
+func TestTestPayment_PendingOrderShowsBank(t *testing.T) {
+	stub := paymentStub{order: domain.Order{
+		ID: 7, Status: domain.OrderAwaitingPayment, PaymentStatus: domain.PaymentPending, PaymentMethod: domain.PaymentSBP, ItemsTotal: 99000,
+	}}
+	rec := servePayment(t, stub, "abc")
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+	require.Contains(t, rec.Body.String(), "Заказ № 10007 · СБП")
+	require.Contains(t, rec.Body.String(), testPaymentPath+"abc/success")
+}
+
+func TestTestPayment_HandledOrderRedirectsToOrderPage(t *testing.T) {
+	for _, o := range []domain.Order{
+		{ID: 7, Status: domain.OrderAwaitingPayment, PaymentStatus: domain.PaymentProcessing},
+		{ID: 7, Status: domain.OrderAwaitingPayment, PaymentStatus: domain.PaymentFailed},
+		{ID: 7, Status: domain.OrderPlaced, PaymentStatus: domain.PaymentPaid},
+	} {
+		rec := servePayment(t, paymentStub{order: o}, "abc")
+
+		require.Equal(t, http.StatusSeeOther, rec.Code, o.PaymentStatus)
+		require.Equal(t, "http://front.test/orders/7", rec.Header().Get("Location"))
+	}
+}
+
+func TestTestPayment_StaleLinkShowsPage(t *testing.T) {
+	for _, path := range []string{"abc", "abc/success"} {
+		rec := servePayment(t, paymentStub{err: domain.ErrOrderNotFound}, path)
+
+		require.Equal(t, http.StatusNotFound, rec.Code, path)
+		require.Contains(t, rec.Header().Get("Content-Type"), "text/html", path)
+		require.Contains(t, rec.Body.String(), "Ссылка на оплату устарела", path)
+		require.Contains(t, rec.Body.String(), `href="http://front.test"`, path)
 	}
 }

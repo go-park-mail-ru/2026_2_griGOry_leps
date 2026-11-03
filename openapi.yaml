@@ -1514,7 +1514,8 @@ paths:
       summary: Тестовая страница банка
       description: |
         Заглушка вместо платёжного провайдера. HTML-страница с суммой заказа
-        и кнопками «Оплатить» и «Отклонить».
+        и кнопками «Оплатить» и «Отклонить». Если оплата по заказу уже идёт,
+        прошла или была отклонена, перенаправляет на `<фронт>/orders/{order_id}`.
       security: []
       responses:
         '200':
@@ -1522,7 +1523,13 @@ paths:
           content:
             text/html:
               schema: { type: string }
-        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '303':
+          description: Оплата по этой ссылке уже не ждёт — перенаправление на страницу заказа
+        '404':
+          description: Ссылка устарела — HTML-страница со ссылкой на фронт
+          content:
+            text/html:
+              schema: { type: string }
 
   /test-payments/{token}/{result}:
     parameters:
@@ -1546,7 +1553,11 @@ paths:
       responses:
         '303':
           description: Перенаправление на страницу заказа
-        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '404':
+          description: Ссылка устарела — HTML-страница со ссылкой на фронт
+          content:
+            text/html:
+              schema: { type: string }
 
 components:
   securitySchemes:
