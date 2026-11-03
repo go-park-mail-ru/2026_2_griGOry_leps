@@ -312,29 +312,44 @@ func (h *OrderHandler) Pay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(r.Context(), w, http.StatusOK, h.newOrderResponse(order))
 }
 
-var testPaymentPage = template.Must(template.New("pay").Parse(`<!doctype html>
+var testPaymentPages = template.Must(template.New("pages").Parse(`{{define "head"}}<!doctype html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Тестовая оплата</title>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.}}</title>
 <style>
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f4f5;font-family:system-ui,sans-serif;color:#141417}
 main{width:min(380px,calc(100% - 32px));padding:28px;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08)}
 h1{margin:0 0 6px;font-size:20px}p{margin:0 0 20px;color:#525259}strong{display:block;margin-bottom:24px;font-size:28px}
 a{display:block;margin-top:10px;padding:12px;border-radius:10px;text-align:center;text-decoration:none;font-weight:600}
 .ok{background:#0866ff;color:#fff}.fail{background:#f4f4f5;color:#141417}
-</style></head>
+</style></head>{{end}}
+{{define "pay"}}{{template "head" "Тестовая оплата"}}
 <body><main>
 <h1>Тестовый банк</h1>
 <p>Заказ № {{.Number}} · {{.Method}}. Деньги не списываются, это заглушка вместо платёжного провайдера.</p>
 <strong>{{.Total}} ₽</strong>
 <a id="ok" class="ok" href="{{.OK}}">Оплатить</a>
 <a id="fail" class="fail" href="{{.Fail}}">Отклонить</a>
-</main></body></html>`))
+</main></body></html>{{end}}
+{{define "stale"}}{{template "head" "Ссылка на оплату устарела"}}
+<body><main>
+<h1>Ссылка на оплату устарела</h1>
+<p>Заказ уже оплачен или отменён, либо оплату начали заново по новой ссылке. Деньги по этой ссылке не спишутся.</p>
+<a class="ok" href="{{.}}">Вернуться в GoGET</a>
+</main></body></html>{{end}}`))
 
 func (h *OrderHandler) TestPaymentPage(w http.ResponseWriter, r *http.Request) {
 	token := mux.Vars(r)["token"]
 	order, err := h.orders.PaymentPage(r.Context(), token)
+	if errors.Is(err, domain.ErrOrderNotFound) {
+		h.renderPaymentPage(w, r, http.StatusNotFound, "stale", h.frontendOrigin)
+		return
+	}
 	if err != nil {
 		writeOrderError(w, r, "test payment page", err)
+		return
+	}
+	if order.Status != domain.OrderAwaitingPayment || order.PaymentStatus != domain.PaymentPending {
+		http.Redirect(w, r, h.orderPageURL(order.ID), http.StatusSeeOther)
 		return
 	}
 
@@ -342,28 +357,40 @@ func (h *OrderHandler) TestPaymentPage(w http.ResponseWriter, r *http.Request) {
 	if order.PaymentMethod == domain.PaymentSBP {
 		method = "СБП"
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	err = testPaymentPage.Execute(w, map[string]any{
+	h.renderPaymentPage(w, r, http.StatusOK, "pay", map[string]any{
 		"Number": order.Number(),
 		"Method": method,
 		"Total":  formatRubles(order.ItemsTotal + order.DeliveryTotal),
 		"OK":     testPaymentPath + token + "/success",
 		"Fail":   testPaymentPath + token + "/fail",
 	})
-	if err != nil {
-		slog.ErrorContext(r.Context(), "render test payment page", "err", err)
-	}
 }
 
 func (h *OrderHandler) TestPaymentResult(success bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := h.orders.TestPayment(r.Context(), mux.Vars(r)["token"], success)
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			h.renderPaymentPage(w, r, http.StatusNotFound, "stale", h.frontendOrigin)
+			return
+		}
 		if err != nil {
 			writeOrderError(w, r, "test payment", err)
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("%s/orders/%d", h.frontendOrigin, id), http.StatusSeeOther)
+		http.Redirect(w, r, h.orderPageURL(id), http.StatusSeeOther)
+	}
+}
+
+func (h *OrderHandler) orderPageURL(id int32) string {
+	return fmt.Sprintf("%s/orders/%d", h.frontendOrigin, id)
+}
+
+func (h *OrderHandler) renderPaymentPage(w http.ResponseWriter, r *http.Request, status int, page string, data any) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	if err := testPaymentPages.ExecuteTemplate(w, page, data); err != nil {
+		slog.ErrorContext(r.Context(), "render test payment page", "page", page, "err", err)
 	}
 }
 
