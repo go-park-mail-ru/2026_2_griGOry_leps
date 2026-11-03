@@ -36,7 +36,7 @@ const listSellerAdsQuery = `
  ORDER BY
  CASE WHEN $3::text='price_asc' THEN a.price END ASC,
  CASE WHEN $3::text='price_desc' THEN a.price END DESC,
- CASE WHEN $3::text='newest' THEN a.created_at END DESC,
+ CASE WHEN $3::text='newest' THEN COALESCE(a.published_at,a.created_at) END DESC,
  a.id DESC
  LIMIT $4 OFFSET $5
 `

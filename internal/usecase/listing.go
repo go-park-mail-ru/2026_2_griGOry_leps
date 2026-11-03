@@ -171,13 +171,10 @@ func (uc *ListingUsecase) Delete(ctx context.Context, userID, id int32) error {
 		if _, err := uc.ownState(ctx, userID, id); err != nil {
 			return err
 		}
-		orderID, ok, err := uc.listings.ActiveOrder(ctx, id)
-		if err != nil {
+		if err := uc.checkNoActiveOrder(ctx, id); err != nil {
 			return err
 		}
-		if ok {
-			return &domain.ListingOrderError{OrderID: orderID, OrderNumber: domain.Order{ID: orderID}.Number()}
-		}
+		var err error
 		removed, err = uc.listings.Delete(ctx, id)
 		return err
 	})
@@ -202,10 +199,8 @@ func (uc *ListingUsecase) Close(ctx context.Context, userID, id int32, reason st
 		if state.Status != domain.AdStatusActive && state.Status != domain.AdStatusModeration {
 			return domain.ErrListingNotActive
 		}
-		if _, ok, err := uc.listings.ActiveOrder(ctx, id); err != nil {
+		if err := uc.checkNoActiveOrder(ctx, id); err != nil {
 			return err
-		} else if ok {
-			return domain.ErrListingNotActive
 		}
 		return uc.listings.Close(ctx, id, reason)
 	})
@@ -213,6 +208,17 @@ func (uc *ListingUsecase) Close(ctx context.Context, userID, id int32, reason st
 		return domain.Listing{}, err
 	}
 	return uc.Get(ctx, id, userID)
+}
+
+func (uc *ListingUsecase) checkNoActiveOrder(ctx context.Context, id int32) error {
+	orderID, ok, err := uc.listings.ActiveOrder(ctx, id)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return &domain.ListingOrderError{OrderID: orderID, OrderNumber: domain.Order{ID: orderID}.Number()}
+	}
+	return nil
 }
 
 func (uc *ListingUsecase) UploadPhoto(ctx context.Context, userID int32, data []byte) (domain.ListingPhoto, error) {

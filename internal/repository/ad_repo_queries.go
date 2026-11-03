@@ -4,7 +4,7 @@ const adCardColumns = `
  a.id,a.user_id,COALESCE(a.category_id,0),a.title,
  COALESCE(a.description,''),a.price,
  COALESCE(a.city,''),a.has_delivery,a.is_free,COALESCE(image.url,''),a.status,
- COALESCE(a.close_reason,''),a.created_at,a.updated_at
+ COALESCE(a.close_reason,''),COALESCE(a.published_at,a.created_at),a.updated_at
 `
 
 const adMainImageJoin = `
@@ -32,7 +32,7 @@ const listAdsQuery = `
  ORDER BY
  CASE WHEN $7::text='price_asc' THEN a.price END ASC,
  CASE WHEN $7::text='price_desc' THEN a.price END DESC,
- CASE WHEN $7::text='newest' THEN a.created_at END DESC,
+ CASE WHEN $7::text='newest' THEN COALESCE(a.published_at,a.created_at) END DESC,
  a.id DESC
  LIMIT $8 OFFSET $9
 `
