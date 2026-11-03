@@ -1,13 +1,12 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
-	"database/sql"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -56,46 +55,49 @@ func adIDs(ads []domain.Ad) []int32 {
 	return ids
 }
 
+func expectMyAds(mock sqlmock.Sqlmock, f domain.MyAdFilter, counts map[string]int, ads ...domain.Ad) {
+	rows := sqlmock.NewRows([]string{"status", "count"})
+	for status, count := range counts {
+		rows.AddRow(status, count)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(countMyAdsQuery).WithArgs(f.UserID).WillReturnRows(rows).RowsWillBeClosed()
+	mock.ExpectQuery(listMyAdsQuery).WithArgs(f.UserID, f.Status, f.Limit, f.Offset).WillReturnRows(adMockRows(ads...)).RowsWillBeClosed()
+	mock.ExpectCommit()
+}
+
 func TestAdRepo_ListByUser(t *testing.T) {
-	f := newSellerFixture(t)
-	ctx := context.Background()
-	repo := NewAdRepository(f.pool)
-
-	old := f.ad(t, 2, "Велосипед", 100, domain.AdStatusActive, 3*time.Hour)
-	fresh := f.ad(t, 3, "Книга", 100, domain.AdStatusActive, time.Hour)
-	draft := f.ad(t, 3, "Черновик", 100, domain.AdStatusDraft, 2*time.Hour)
-	f.ad(t, 3, "Отклонено", 100, domain.AdStatusRejected, 4*time.Hour)
-
-	items, counts, err := repo.ListByUser(ctx, domain.MyAdFilter{UserID: f.seller, Limit: 3})
+	db, mock := newSQLMock(t)
+	repo := NewAdRepository(db)
+	counts := map[string]int{"active": 2, "draft": 1, "rejected": 1}
+	f := domain.MyAdFilter{UserID: 1, Limit: 3}
+	expectMyAds(mock, f, counts, domain.Ad{ID: 2}, domain.Ad{ID: 3}, domain.Ad{ID: 1})
+	items, actual, err := repo.ListByUser(context.Background(), f)
 	require.NoError(t, err)
-	require.Equal(t, map[string]int{"active": 2, "draft": 1, "rejected": 1}, counts)
-	require.Equal(t, []int32{fresh, draft, old}, adIDs(items))
-
-	items, _, err = repo.ListByUser(ctx, domain.MyAdFilter{UserID: f.seller, Status: domain.AdStatusActive, Limit: 10, Offset: 1})
+	require.Equal(t, counts, actual)
+	require.Equal(t, []int32{2, 3, 1}, adIDs(items))
+	f = domain.MyAdFilter{UserID: 1, Status: domain.AdStatusActive, Limit: 10, Offset: 1}
+	expectMyAds(mock, f, counts, domain.Ad{ID: 1, Status: domain.AdStatusActive})
+	items, _, err = repo.ListByUser(context.Background(), f)
 	require.NoError(t, err)
-	require.Equal(t, []int32{old}, adIDs(items))
-
-	items, counts, err = repo.ListByUser(ctx, domain.MyAdFilter{UserID: f.buyer, Limit: 10})
+	require.Equal(t, []int32{1}, adIDs(items))
+	f = domain.MyAdFilter{UserID: 2, Limit: 10}
+	expectMyAds(mock, f, nil)
+	items, actual, err = repo.ListByUser(context.Background(), f)
 	require.NoError(t, err)
 	require.Empty(t, items)
-	require.Empty(t, counts)
+	require.Empty(t, actual)
 }
 
 func TestAdRepo_ListByUser_DraftWithoutPriceAndClosed(t *testing.T) {
-	f := newSellerFixture(t)
-	ctx := context.Background()
-
-	var draft int32
-	require.NoError(t, f.pool.QueryRowContext(ctx,
-		`INSERT INTO ad (user_id, title, status) VALUES ($1, 'Без цены', 'draft') RETURNING id`, f.seller).Scan(&draft))
-	closed := f.ad(t, 2, "Велосипед", 100, domain.AdStatusActive, time.Hour)
-	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET status = 'closed', close_reason = 'changed_mind' WHERE id = $1`, closed)
+	db, mock := newSQLMock(t)
+	f := domain.MyAdFilter{UserID: 1, Limit: 10}
+	counts := map[string]int{"draft": 1, "closed": 1}
+	expectMyAds(mock, f, counts, domain.Ad{ID: 2, Status: "closed", CloseReason: "changed_mind", UpdatedAt: time.Now()}, domain.Ad{ID: 1, Status: "draft"})
+	items, actual, err := NewAdRepository(db).ListByUser(context.Background(), f)
 	require.NoError(t, err)
-
-	items, counts, err := NewAdRepository(f.pool).ListByUser(ctx, domain.MyAdFilter{UserID: f.seller, Limit: 10})
-	require.NoError(t, err)
-	require.Equal(t, map[string]int{"draft": 1, "closed": 1}, counts)
-	require.Equal(t, []int32{closed, draft}, adIDs(items))
+	require.Equal(t, counts, actual)
+	require.Equal(t, []int32{2, 1}, adIDs(items))
 	require.Equal(t, "changed_mind", items[0].CloseReason)
 	require.WithinDuration(t, time.Now(), items[0].UpdatedAt, time.Minute)
 	require.Nil(t, items[1].Price)
@@ -103,13 +105,10 @@ func TestAdRepo_ListByUser_DraftWithoutPriceAndClosed(t *testing.T) {
 }
 
 func TestAdRepo_IsFreeInFeed(t *testing.T) {
-	f := newSellerFixture(t)
-	ctx := context.Background()
-	id := f.ad(t, 3, "Отдам книги", 0, domain.AdStatusActive, time.Hour)
-	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET is_free = true WHERE id = $1`, id)
-	require.NoError(t, err)
-
-	items, _, err := NewAdRepository(f.pool).List(ctx, domain.AdFilter{Limit: 10})
+	db, mock := newSQLMock(t)
+	f := domain.AdFilter{Limit: 10}
+	expectAdList(mock, f, 1, domain.Ad{ID: 1, Price: price(0), IsFree: true, Status: domain.AdStatusActive})
+	items, _, err := NewAdRepository(db).List(context.Background(), f)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	require.True(t, items[0].IsFree)

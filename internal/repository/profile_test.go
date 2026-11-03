@@ -1,16 +1,17 @@
-//go:build integration
-
 package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
 
-	"database/sql"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func newTestProfileRepository(t *testing.T) (*UserRepository, *sql.DB, int32) {
@@ -30,67 +31,46 @@ func cityID(t *testing.T, pool *sql.DB, name string) int32 {
 }
 
 func TestProfile_GetDefaults(t *testing.T) {
-	repo, _, userID := newTestProfileRepository(t)
-
-	p, err := repo.GetProfile(context.Background(), userID)
+	db, mock := newSQLMock(t)
+	want := domain.Profile{User: domain.User{ID: 1, FirstName: "Anna", Phone: "+79990000001", CreatedAt: time.Now()}}
+	mock.ExpectQuery(getProfileQuery).WithArgs(int32(1)).WillReturnRows(profileMockRows(want))
+	actual, err := NewUserRepository(db).GetProfile(context.Background(), 1)
 	require.NoError(t, err)
-	require.Equal(t, "Анна", p.FirstName)
-	require.Equal(t, "+79990000001", p.Phone)
-	require.Nil(t, p.City)
-	require.Empty(t, p.About)
-	require.Empty(t, p.Avatar)
-	require.Zero(t, p.Rating)
-	require.Zero(t, p.ReviewsCount)
-	require.False(t, p.PhoneVerified)
-	require.NotZero(t, p.CreatedAt)
+	require.Equal(t, want, actual)
 }
 
 func TestProfile_GetNotFound(t *testing.T) {
-	repo := NewUserRepository(newTestPool(t))
-
-	_, err := repo.GetProfile(context.Background(), 999)
+	db, mock := newSQLMock(t)
+	mock.ExpectQuery(getProfileQuery).WithArgs(int32(999)).WillReturnError(sql.ErrNoRows)
+	_, err := NewUserRepository(db).GetProfile(context.Background(), 999)
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
 func TestProfile_RatingFromReviewsOnOwnAds(t *testing.T) {
-	repo, pool, sellerID := newTestProfileRepository(t)
-	ctx := context.Background()
-	buyer, err := repo.Create(ctx, "buyer@goget.pw", "hash", "Олег", "+79990000002")
-	require.NoError(t, err)
-	_, err = pool.ExecContext(ctx, `
-		WITH ads AS (
-			INSERT INTO ad (title, price, user_id) VALUES ('Велосипед', 100, $1), ('Самокат', 200, $1)
-			RETURNING id
-		)
-		INSERT INTO review (user_id, ad_id, rating)
-		SELECT $2, id, CASE WHEN row_number() OVER (ORDER BY id) = 1 THEN 5 ELSE 4 END FROM ads`,
-		sellerID, buyer.ID)
-	require.NoError(t, err)
-
-	p, err := repo.GetProfile(ctx, sellerID)
+	db, mock := newSQLMock(t)
+	repo := NewUserRepository(db)
+	mock.ExpectQuery(getProfileQuery).WithArgs(int32(1)).WillReturnRows(profileMockRows(domain.Profile{User: domain.User{ID: 1}, Rating: 4.5, ReviewsCount: 2}))
+	p, err := repo.GetProfile(context.Background(), 1)
 	require.NoError(t, err)
 	require.InDelta(t, 4.5, p.Rating, 0.001)
 	require.Equal(t, 2, p.ReviewsCount)
-
-	p, err = repo.GetProfile(ctx, buyer.ID)
+	mock.ExpectQuery(getProfileQuery).WithArgs(int32(2)).WillReturnRows(profileMockRows(domain.Profile{User: domain.User{ID: 2}}))
+	p, err = repo.GetProfile(context.Background(), 2)
 	require.NoError(t, err)
 	require.Zero(t, p.ReviewsCount)
 }
 
 func TestProfile_UpdatePartial(t *testing.T) {
-	repo, pool, userID := newTestProfileRepository(t)
-	ctx := context.Background()
-	moscow := cityID(t, pool, "Москва")
-	about := "Продаю вещи"
-
-	require.NoError(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{CityID: &moscow, About: &about}))
-
-	p, err := repo.GetProfile(ctx, userID)
+	db, mock := newSQLMock(t)
+	repo := NewUserRepository(db)
+	city, about := int32(7), "Selling things"
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, about, nil).WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{CityID: &city, About: &about}))
+	want := domain.Profile{User: domain.User{ID: 1, FirstName: "Anna", Email: "anna@goget.pw"}, City: &domain.City{ID: city, Name: "Moscow"}, About: about}
+	mock.ExpectQuery(getProfileQuery).WithArgs(int32(1)).WillReturnRows(profileMockRows(want))
+	p, err := repo.GetProfile(context.Background(), 1)
 	require.NoError(t, err)
-	require.Equal(t, &domain.City{ID: moscow, Name: "Москва"}, p.City)
-	require.Equal(t, about, p.About)
-	require.Equal(t, "Анна", p.FirstName)
-	require.Equal(t, "anna@goget.pw", p.Email)
+	require.Equal(t, want, p)
 }
 
 func TestProfile_UpdatePhoneResetsVerification(t *testing.T) {
@@ -114,50 +94,50 @@ func TestProfile_UpdatePhoneResetsVerification(t *testing.T) {
 }
 
 func TestProfile_UpdateErrors(t *testing.T) {
-	repo, _, userID := newTestProfileRepository(t)
-	ctx := context.Background()
-	_, err := repo.Create(ctx, "other@goget.pw", "hash", "Олег", "+79990000002")
-	require.NoError(t, err)
-
-	email := "other@goget.pw"
-	phone := "+79990000002"
-	city := int32(100500)
-
-	require.ErrorIs(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{Email: &email}), domain.ErrEmailTaken)
-	require.ErrorIs(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{Phone: &phone}), domain.ErrPhoneTaken)
-	require.ErrorIs(t, repo.UpdateProfile(ctx, userID, domain.ProfileUpdate{CityID: &city}), domain.ErrInvalidCity)
-	require.ErrorIs(t, repo.UpdateProfile(ctx, 999, domain.ProfileUpdate{}), domain.ErrUserNotFound)
+	db, mock := newSQLMock(t)
+	repo := NewUserRepository(db)
+	email, phone, city := "other@goget.pw", "+79990000002", int32(100500)
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, email, nil, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_email_key"})
+	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{Email: &email}), domain.ErrEmailTaken)
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, phone, nil, nil, nil, nil).WillReturnError(&pgconn.PgError{Code: "23505", ConstraintName: "user_account_phone_number_key"})
+	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{Phone: &phone}), domain.ErrPhoneTaken)
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(1), nil, nil, nil, city, nil, nil).WillReturnError(&pgconn.PgError{Code: "23503", ConstraintName: "user_account_city_id_fkey"})
+	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 1, domain.ProfileUpdate{CityID: &city}), domain.ErrInvalidCity)
+	mock.ExpectExec(updateProfileQuery).WithArgs(int32(999), nil, nil, nil, nil, nil, nil).WillReturnResult(sqlmock.NewResult(0, 0))
+	require.ErrorIs(t, repo.UpdateProfile(context.Background(), 999, domain.ProfileUpdate{}), domain.ErrUserNotFound)
 }
 
 func TestProfile_UpdatePassword(t *testing.T) {
-	repo, _, userID := newTestProfileRepository(t)
-	ctx := context.Background()
-
-	require.NoError(t, repo.UpdatePassword(ctx, userID, "new-hash"))
-
-	user, err := repo.GetByID(ctx, userID)
+	db, mock := newSQLMock(t)
+	repo := NewUserRepository(db)
+	mock.ExpectExec(updatePasswordQuery).WithArgs(int32(1), "new-hash").WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.UpdatePassword(context.Background(), 1, "new-hash"))
+	mock.ExpectQuery(getUserByIDQuery).WithArgs(int32(1)).WillReturnRows(userStateRows(domain.User{ID: 1, PasswordHash: "new-hash"}))
+	user, err := repo.GetByID(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, "new-hash", user.PasswordHash)
-	require.ErrorIs(t, repo.UpdatePassword(ctx, 999, "x"), domain.ErrUserNotFound)
+	mock.ExpectExec(updatePasswordQuery).WithArgs(int32(999), "x").WillReturnResult(sqlmock.NewResult(0, 0))
+	require.ErrorIs(t, repo.UpdatePassword(context.Background(), 999, "x"), domain.ErrUserNotFound)
 }
 
 func TestProfile_UpdateAvatar(t *testing.T) {
-	repo, _, userID := newTestProfileRepository(t)
-	ctx := context.Background()
-
-	old, err := repo.GetAvatarForUpdate(ctx, userID)
+	db, mock := newSQLMock(t)
+	repo := NewUserRepository(db)
+	mock.ExpectQuery(getAvatarForUpdateQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"avatar"}).AddRow(""))
+	old, err := repo.GetAvatarForUpdate(context.Background(), 1)
 	require.NoError(t, err)
 	require.Empty(t, old)
-
-	require.NoError(t, repo.UpdateAvatar(ctx, userID, "first.png"))
-
-	old, err = repo.GetAvatarForUpdate(ctx, userID)
+	mock.ExpectExec(updateAvatarQuery).WithArgs(int32(1), "first.png").WillReturnResult(sqlmock.NewResult(0, 1))
+	require.NoError(t, repo.UpdateAvatar(context.Background(), 1, "first.png"))
+	mock.ExpectQuery(getAvatarForUpdateQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"avatar"}).AddRow("first.png"))
+	old, err = repo.GetAvatarForUpdate(context.Background(), 1)
 	require.NoError(t, err)
 	require.Equal(t, "first.png", old)
-
-	_, err = repo.GetAvatarForUpdate(ctx, 999)
+	mock.ExpectQuery(getAvatarForUpdateQuery).WithArgs(int32(999)).WillReturnError(sql.ErrNoRows)
+	_, err = repo.GetAvatarForUpdate(context.Background(), 999)
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
-	require.ErrorIs(t, repo.UpdateAvatar(ctx, 999, "x.png"), domain.ErrUserNotFound)
+	mock.ExpectExec(updateAvatarQuery).WithArgs(int32(999), "x.png").WillReturnResult(sqlmock.NewResult(0, 0))
+	require.ErrorIs(t, repo.UpdateAvatar(context.Background(), 999, "x.png"), domain.ErrUserNotFound)
 }
 
 func TestProfile_ConcurrentAvatarUploadsSeeEachOther(t *testing.T) {
@@ -295,4 +275,18 @@ func TestProfile_UpdateCityByName(t *testing.T) {
 	p, err = repo.GetProfile(ctx, userID)
 	require.NoError(t, err)
 	require.Nil(t, p.City)
+}
+
+func profileMockRows(p domain.Profile) *sqlmock.Rows {
+	var cityID, cityName any
+	if p.City != nil {
+		cityID, cityName = p.City.ID, p.City.Name
+	}
+	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "rating", "reviews"}).
+		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.Rating, p.ReviewsCount)
+}
+
+func userStateRows(u domain.User) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "hash", "email_verified", "pending_email", "created"}).
+		AddRow(u.ID, u.FirstName, u.Email, u.Phone, u.PasswordHash, u.EmailVerified, u.PendingEmail, u.CreatedAt)
 }
