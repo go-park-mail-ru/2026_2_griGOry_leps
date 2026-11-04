@@ -25,6 +25,7 @@ type testRouter struct {
 }
 
 func newTestRouter(t *testing.T) *testRouter { return newTestRouterWithUploads(t, "") }
+
 func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	t.Helper()
 	ctrl := gomock.NewController(t)
