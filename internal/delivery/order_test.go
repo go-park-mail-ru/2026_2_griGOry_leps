@@ -1,7 +1,6 @@
 package delivery
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -65,19 +65,9 @@ func TestOrderErrors(t *testing.T) {
 	}
 }
 
-type paymentStub struct {
-	OrderUsecase
-	order domain.Order
-	err   error
-}
-
-func (s paymentStub) PaymentPage(context.Context, string) (domain.Order, error) { return s.order, s.err }
-
-func (s paymentStub) TestPayment(context.Context, string, bool) (int32, error) { return s.order.ID, s.err }
-
-func servePayment(t *testing.T, stub paymentStub, path string) *httptest.ResponseRecorder {
+func servePayment(t *testing.T, mock *MockOrderUsecase, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	h := NewOrderHandler(stub, "http://api.test", "http://front.test")
+	h := NewOrderHandler(mock, "http://api.test", "http://front.test")
 	r := mux.NewRouter()
 	r.HandleFunc(testPaymentPath+"{token}", h.TestPaymentPage)
 	r.HandleFunc(testPaymentPath+"{token}/success", h.TestPaymentResult(true))
@@ -87,10 +77,11 @@ func servePayment(t *testing.T, stub paymentStub, path string) *httptest.Respons
 }
 
 func TestTestPayment_PendingOrderShowsBank(t *testing.T) {
-	stub := paymentStub{order: domain.Order{
+	mock := NewMockOrderUsecase(gomock.NewController(t))
+	mock.EXPECT().PaymentPage(gomock.Any(), "abc").Return(domain.Order{
 		ID: 7, Status: domain.OrderAwaitingPayment, PaymentStatus: domain.PaymentPending, PaymentMethod: domain.PaymentSBP, ItemsTotal: 99000,
-	}}
-	rec := servePayment(t, stub, "abc")
+	}, nil)
+	rec := servePayment(t, mock, "abc")
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/html")
@@ -104,7 +95,9 @@ func TestTestPayment_HandledOrderRedirectsToOrderPage(t *testing.T) {
 		{ID: 7, Status: domain.OrderAwaitingPayment, PaymentStatus: domain.PaymentFailed},
 		{ID: 7, Status: domain.OrderPlaced, PaymentStatus: domain.PaymentPaid},
 	} {
-		rec := servePayment(t, paymentStub{order: o}, "abc")
+		mock := NewMockOrderUsecase(gomock.NewController(t))
+		mock.EXPECT().PaymentPage(gomock.Any(), "abc").Return(o, nil)
+		rec := servePayment(t, mock, "abc")
 
 		require.Equal(t, http.StatusSeeOther, rec.Code, o.PaymentStatus)
 		require.Equal(t, "http://front.test/orders/7", rec.Header().Get("Location"))
@@ -113,7 +106,13 @@ func TestTestPayment_HandledOrderRedirectsToOrderPage(t *testing.T) {
 
 func TestTestPayment_StaleLinkShowsPage(t *testing.T) {
 	for _, path := range []string{"abc", "abc/success"} {
-		rec := servePayment(t, paymentStub{err: domain.ErrOrderNotFound}, path)
+		mock := NewMockOrderUsecase(gomock.NewController(t))
+		if path == "abc" {
+			mock.EXPECT().PaymentPage(gomock.Any(), "abc").Return(domain.Order{}, domain.ErrOrderNotFound)
+		} else {
+			mock.EXPECT().TestPayment(gomock.Any(), "abc", true).Return(int32(0), domain.ErrOrderNotFound)
+		}
+		rec := servePayment(t, mock, path)
 
 		require.Equal(t, http.StatusNotFound, rec.Code, path)
 		require.Contains(t, rec.Header().Get("Content-Type"), "text/html", path)

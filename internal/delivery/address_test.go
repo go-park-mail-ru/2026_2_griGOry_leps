@@ -1,7 +1,6 @@
 package delivery
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,41 +8,14 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-type addressStub struct {
-	err     error
-	userID  int32
-	id      int32
-	in      domain.AddressInput
-	deleted bool
-}
-
 func testAddress(id int32) domain.Address {
 	return domain.Address{ID: id, UserID: 7, City: "Москва", Street: "ул. Тверская", House: "д. 12", Apartment: "5",
 		Comment: "Домофон 34", IsDefault: true}
-}
-
-func (s *addressStub) List(_ context.Context, userID int32) ([]domain.Address, error) {
-	s.userID = userID
-	return []domain.Address{testAddress(1)}, s.err
-}
-
-func (s *addressStub) Create(_ context.Context, userID int32, in domain.AddressInput) (domain.Address, error) {
-	s.userID, s.in = userID, in
-	return testAddress(2), s.err
-}
-
-func (s *addressStub) Update(_ context.Context, userID, id int32, in domain.AddressInput) (domain.Address, error) {
-	s.userID, s.id, s.in = userID, id, in
-	return testAddress(id), s.err
-}
-
-func (s *addressStub) Delete(_ context.Context, userID, id int32) error {
-	s.userID, s.id, s.deleted = userID, id, true
-	return s.err
 }
 
 func addressHTTPRequest(method, body, id string) *http.Request {
@@ -55,13 +27,13 @@ func addressHTTPRequest(method, body, id string) *http.Request {
 }
 
 func TestAddress_List(t *testing.T) {
-	stub := &addressStub{}
+	mock := NewMockAddressUsecase(gomock.NewController(t))
+	mock.EXPECT().List(gomock.Any(), int32(7)).Return([]domain.Address{testAddress(1)}, nil)
 	rec := httptest.NewRecorder()
 
-	NewAddressHandler(stub).List(rec, addressHTTPRequest(http.MethodGet, "", ""))
+	NewAddressHandler(mock).List(rec, addressHTTPRequest(http.MethodGet, "", ""))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, int32(7), stub.userID)
 	require.JSONEq(t, `[{
 		"id": 1, "city": "Москва", "street": "ул. Тверская", "house": "д. 12", "apartment": "5",
 		"comment": "Домофон 34", "is_default": true
@@ -69,19 +41,15 @@ func TestAddress_List(t *testing.T) {
 }
 
 func TestAddress_Create(t *testing.T) {
-	stub := &addressStub{}
+	mock := NewMockAddressUsecase(gomock.NewController(t))
+	city, street, house, apartment, comment, isDefault := "Москва", "Тверская", "д. 12", "5", "", true
+	mock.EXPECT().Create(gomock.Any(), int32(7), domain.AddressInput{City: &city, Street: &street, House: &house, Apartment: &apartment, Comment: &comment, IsDefault: &isDefault}).Return(testAddress(2), nil)
 	rec := httptest.NewRecorder()
 
-	NewAddressHandler(stub).Create(rec, addressHTTPRequest(http.MethodPost,
+	NewAddressHandler(mock).Create(rec, addressHTTPRequest(http.MethodPost,
 		`{"city":"Москва","street":"Тверская","house":"д. 12","apartment":"5","comment":"","is_default":true}`, ""))
 
 	require.Equal(t, http.StatusCreated, rec.Code)
-	require.Equal(t, "Москва", *stub.in.City)
-	require.Equal(t, "Тверская", *stub.in.Street)
-	require.Equal(t, "5", *stub.in.Apartment)
-	require.Equal(t, "д. 12", *stub.in.House)
-	require.Equal(t, "", *stub.in.Comment)
-	require.True(t, *stub.in.IsDefault)
 	require.Equal(t, float64(2), decodeBody(t, rec)["id"])
 }
 
@@ -101,44 +69,46 @@ func TestAddress_Create_FieldErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		rec := httptest.NewRecorder()
-		NewAddressHandler(&addressStub{err: tt.err}).Create(rec, addressHTTPRequest(http.MethodPost, `{}`, ""))
+		mock := NewMockAddressUsecase(gomock.NewController(t))
+		mock.EXPECT().Create(gomock.Any(), int32(7), domain.AddressInput{}).Return(domain.Address{}, tt.err)
+		NewAddressHandler(mock).Create(rec, addressHTTPRequest(http.MethodPost, `{}`, ""))
 
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 		require.Equal(t, map[string]any{"error": tt.err.Error(), "field": tt.field}, decodeBody(t, rec))
 	}
 
 	rec := httptest.NewRecorder()
-	NewAddressHandler(&addressStub{}).Create(rec, addressHTTPRequest(http.MethodPost, `[`, ""))
+	NewAddressHandler(NewMockAddressUsecase(gomock.NewController(t))).Create(rec, addressHTTPRequest(http.MethodPost, `[`, ""))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Equal(t, "invalid request body", decodeBody(t, rec)["error"])
 }
 
 func TestAddress_Update(t *testing.T) {
-	stub := &addressStub{}
+	mock := NewMockAddressUsecase(gomock.NewController(t))
+	isDefault := false
+	mock.EXPECT().Update(gomock.Any(), int32(7), int32(4), domain.AddressInput{IsDefault: &isDefault}).Return(testAddress(4), nil)
 	rec := httptest.NewRecorder()
 
-	NewAddressHandler(stub).Update(rec, addressHTTPRequest(http.MethodPatch, `{"is_default":false}`, "4"))
+	NewAddressHandler(mock).Update(rec, addressHTTPRequest(http.MethodPatch, `{"is_default":false}`, "4"))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, int32(4), stub.id)
-	require.Nil(t, stub.in.Street)
-	require.False(t, *stub.in.IsDefault)
 }
 
 func TestAddress_Update_NotFound(t *testing.T) {
 	rec := httptest.NewRecorder()
-	NewAddressHandler(&addressStub{err: domain.ErrAddressNotFound}).Update(rec, addressHTTPRequest(http.MethodPatch, `{}`, "4"))
+	mock := NewMockAddressUsecase(gomock.NewController(t))
+	mock.EXPECT().Update(gomock.Any(), int32(7), int32(4), domain.AddressInput{}).Return(domain.Address{}, domain.ErrAddressNotFound)
+	NewAddressHandler(mock).Update(rec, addressHTTPRequest(http.MethodPatch, `{}`, "4"))
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Equal(t, "address not found", decodeBody(t, rec)["error"])
 }
 
 func TestAddress_Delete(t *testing.T) {
-	stub := &addressStub{}
+	mock := NewMockAddressUsecase(gomock.NewController(t))
+	mock.EXPECT().Delete(gomock.Any(), int32(7), int32(4)).Return(nil)
 	rec := httptest.NewRecorder()
 
-	NewAddressHandler(stub).Delete(rec, addressHTTPRequest(http.MethodDelete, "", "4"))
+	NewAddressHandler(mock).Delete(rec, addressHTTPRequest(http.MethodDelete, "", "4"))
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
-	require.True(t, stub.deleted)
-	require.Equal(t, int32(4), stub.id)
 }

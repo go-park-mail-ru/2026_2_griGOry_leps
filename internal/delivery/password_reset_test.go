@@ -1,7 +1,6 @@
 package delivery
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,47 +8,21 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-type resetStub struct {
-	err     error
-	request func(login string)
-	reset   func(token, password string)
-}
-
-func (s resetStub) RequestReset(_ context.Context, login string) error {
-	if s.request != nil {
-		s.request(login)
-	}
-	return s.err
-}
-
-func (s resetStub) CheckToken(_ context.Context, token string) (string, error) {
-	if token != "good" {
-		return "", domain.ErrInvalidResetToken
-	}
-	return "anna@goget.pw", s.err
-}
-
-func (s resetStub) ResetPassword(_ context.Context, token, password string) error {
-	if s.reset != nil {
-		s.reset(token, password)
-	}
-	return s.err
-}
-
 func TestForgotPassword(t *testing.T) {
-	var got string
-	h := NewPasswordResetHandler(resetStub{request: func(login string) { got = login }})
+	mock := NewMockPasswordResetUsecase(gomock.NewController(t))
+	mock.EXPECT().RequestReset(gomock.Any(), "+79990000001").Return(nil)
+	h := NewPasswordResetHandler(mock)
 	rec := httptest.NewRecorder()
 
 	h.Forgot(rec, httptest.NewRequest(http.MethodPost, "/api/password/forgot", strings.NewReader(`{"login":"+79990000001"}`)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
-	require.Equal(t, "+79990000001", got)
 }
 
 func TestForgotPassword_Errors(t *testing.T) {
@@ -70,7 +43,15 @@ func TestForgotPassword_Errors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 
-			NewPasswordResetHandler(resetStub{err: tt.err}).Forgot(rec, httptest.NewRequest(http.MethodPost, "/api/password/forgot", strings.NewReader(tt.body)))
+			mock := NewMockPasswordResetUsecase(gomock.NewController(t))
+			if tt.name != "bad json" {
+				login := "x"
+				if tt.name == "internal" {
+					login = "a@b.ru"
+				}
+				mock.EXPECT().RequestReset(gomock.Any(), login).Return(tt.err)
+			}
+			NewPasswordResetHandler(mock).Forgot(rec, httptest.NewRequest(http.MethodPost, "/api/password/forgot", strings.NewReader(tt.body)))
 
 			require.Equal(t, tt.status, rec.Code)
 			require.JSONEq(t, tt.resp, rec.Body.String())
@@ -79,7 +60,10 @@ func TestForgotPassword_Errors(t *testing.T) {
 }
 
 func TestCheckResetToken(t *testing.T) {
-	h := NewPasswordResetHandler(resetStub{})
+	mock := NewMockPasswordResetUsecase(gomock.NewController(t))
+	mock.EXPECT().CheckToken(gomock.Any(), "good").Return("anna@goget.pw", nil)
+	mock.EXPECT().CheckToken(gomock.Any(), "bad").Return("", domain.ErrInvalidResetToken)
+	h := NewPasswordResetHandler(mock)
 
 	rec := httptest.NewRecorder()
 	h.Check(rec, httptest.NewRequest(http.MethodGet, "/api/password/reset?token=good", nil))
@@ -93,16 +77,15 @@ func TestCheckResetToken(t *testing.T) {
 }
 
 func TestResetPassword(t *testing.T) {
-	var gotToken, gotPassword string
-	h := NewPasswordResetHandler(resetStub{reset: func(token, password string) { gotToken, gotPassword = token, password }})
+	mock := NewMockPasswordResetUsecase(gomock.NewController(t))
+	mock.EXPECT().ResetPassword(gomock.Any(), "abc", "NewSecret1").Return(nil)
+	h := NewPasswordResetHandler(mock)
 	rec := httptest.NewRecorder()
 
 	h.Reset(rec, httptest.NewRequest(http.MethodPost, "/api/password/reset", strings.NewReader(`{"token":"abc","password":"NewSecret1"}`)))
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
-	require.Equal(t, "abc", gotToken)
-	require.Equal(t, "NewSecret1", gotPassword)
 }
 
 func TestResetPassword_Errors(t *testing.T) {
@@ -119,7 +102,9 @@ func TestResetPassword_Errors(t *testing.T) {
 		t.Run(tt.err.Error(), func(t *testing.T) {
 			rec := httptest.NewRecorder()
 
-			NewPasswordResetHandler(resetStub{err: tt.err}).Reset(rec, httptest.NewRequest(http.MethodPost, "/api/password/reset", strings.NewReader(`{}`)))
+			mock := NewMockPasswordResetUsecase(gomock.NewController(t))
+			mock.EXPECT().ResetPassword(gomock.Any(), "", "").Return(tt.err)
+			NewPasswordResetHandler(mock).Reset(rec, httptest.NewRequest(http.MethodPost, "/api/password/reset", strings.NewReader(`{}`)))
 
 			require.Equal(t, http.StatusBadRequest, rec.Code)
 			require.Equal(t, tt.field, decodeBody(t, rec)["field"])

@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
@@ -35,7 +37,8 @@ func postLogin(t *testing.T, router http.Handler, ip string) *httptest.ResponseR
 
 func TestRouter_LoginRateLimited(t *testing.T) {
 	captureLogs(t)
-	router := newTestRouter()
+	router := newTestRouter(t)
+	router.auth.EXPECT().Login(gomock.Any(), "a@b.ru", "Secret123").Return(domain.User{ID: 1}, testSession(), nil).Times(11)
 
 	for i := 0; i < 10; i++ {
 		require.Equal(t, http.StatusOK, postLogin(t, router, "10.0.0.1").Code)
