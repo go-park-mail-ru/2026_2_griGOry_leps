@@ -6,30 +6,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
-
-type adRepoStub struct {
-	items    []domain.Ad
-	filter   domain.AdFilter
-	err      error
-	myFilter domain.MyAdFilter
-	counts   map[string]int
-}
-
-func (s *adRepoStub) ListByUser(_ context.Context, f domain.MyAdFilter) ([]domain.Ad, map[string]int, error) {
-	s.myFilter = f
-	return s.items, s.counts, s.err
-}
-
-func (s *adRepoStub) List(
-	ctx context.Context,
-	filter domain.AdFilter,
-) ([]domain.Ad, int, error) {
-	s.filter = filter
-	return s.items, len(s.items), s.err
-}
 
 func TestParsePrice(t *testing.T) {
 	tests := []struct {
@@ -61,45 +41,51 @@ func TestParsePrice(t *testing.T) {
 }
 
 func TestAdUsecase_List_DefaultLimit(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: defaultAdsLimit}).Return(nil, 0, nil)
+	uc := NewAdUsecase(repo)
 	page, err := uc.List(context.Background(), domain.ListAdsParams{})
 	require.NoError(t, err)
 	require.Equal(t, defaultAdsLimit, page.Limit)
 }
 
 func TestAdUsecase_List_LimitCappedAt60(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: maxAdsLimit}).Return(nil, 0, nil)
+	uc := NewAdUsecase(repo)
 	page, err := uc.List(context.Background(), domain.ListAdsParams{Limit: 1000})
 	require.NoError(t, err)
 	require.Equal(t, maxAdsLimit, page.Limit)
 }
 
 func TestAdUsecase_List_InvalidSort(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	uc := NewAdUsecase(NewMockAdRepository(gomock.NewController(t)))
 	_, err := uc.List(context.Background(), domain.ListAdsParams{Sort: "unknown"})
 	require.ErrorIs(t, err, domain.ErrInvalidSort)
 }
 
 func TestAdUsecase_List_DefaultSort(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: defaultAdsLimit}).Return(nil, 0, nil)
+	uc := NewAdUsecase(repo)
 	_, err := uc.List(context.Background(), domain.ListAdsParams{Sort: ""})
 	require.NoError(t, err)
 }
 
 func TestAdUsecase_List_InvalidPriceMin(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	uc := NewAdUsecase(NewMockAdRepository(gomock.NewController(t)))
 	_, err := uc.List(context.Background(), domain.ListAdsParams{PriceMin: "abc"})
 	require.ErrorIs(t, err, domain.ErrInvalidPrice)
 }
 
 func TestAdUsecase_List_InvalidPriceMax(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	uc := NewAdUsecase(NewMockAdRepository(gomock.NewController(t)))
 	_, err := uc.List(context.Background(), domain.ListAdsParams{PriceMax: "abc"})
 	require.ErrorIs(t, err, domain.ErrInvalidPrice)
 }
 
 func TestAdUsecase_List_PriceRangeInvalid(t *testing.T) {
-	uc := NewAdUsecase(&adRepoStub{})
+	uc := NewAdUsecase(NewMockAdRepository(gomock.NewController(t)))
 	_, err := uc.List(context.Background(), domain.ListAdsParams{
 		PriceMin: "5000", PriceMax: "1000",
 	})
@@ -114,7 +100,9 @@ func TestAdUsecase_List_Success(t *testing.T) {
 			Status: domain.AdStatusActive, CreatedAt: time.Now(),
 		},
 	}
-	uc := NewAdUsecase(&adRepoStub{items: ads})
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: 10}).Return(ads, len(ads), nil)
+	uc := NewAdUsecase(repo)
 
 	page, err := uc.List(context.Background(), domain.ListAdsParams{Limit: 10})
 	require.NoError(t, err)
@@ -125,7 +113,8 @@ func TestAdUsecase_List_Success(t *testing.T) {
 }
 
 func TestAdUsecase_ListMine_CountsAllStatuses(t *testing.T) {
-	repo := &adRepoStub{counts: map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}}
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().ListByUser(gomock.Any(), domain.MyAdFilter{UserID: 7, Limit: maxAdsLimit}).Return(nil, map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}, nil)
 
 	page, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{UserID: 7, Limit: 100})
 	require.NoError(t, err)
@@ -134,11 +123,11 @@ func TestAdUsecase_ListMine_CountsAllStatuses(t *testing.T) {
 	}, page.Counts)
 	require.Equal(t, 4, page.Total)
 	require.Equal(t, maxAdsLimit, page.Limit)
-	require.Equal(t, int32(7), repo.myFilter.UserID)
 }
 
 func TestAdUsecase_ListMine_TotalByStatus(t *testing.T) {
-	repo := &adRepoStub{counts: map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}}
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().ListByUser(gomock.Any(), domain.MyAdFilter{Status: "draft", Limit: defaultAdsLimit}).Return(nil, map[string]int{domain.AdStatusActive: 3, domain.AdStatusDraft: 1}, nil)
 
 	page, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{Status: "draft"})
 	require.NoError(t, err)
@@ -147,8 +136,7 @@ func TestAdUsecase_ListMine_TotalByStatus(t *testing.T) {
 }
 
 func TestAdUsecase_ListMine_InvalidStatus(t *testing.T) {
-	repo := &adRepoStub{}
+	repo := NewMockAdRepository(gomock.NewController(t))
 	_, err := NewAdUsecase(repo).ListMine(context.Background(), domain.MyAdFilter{Status: "deleted"})
 	require.ErrorIs(t, err, domain.ErrInvalidStatus)
-	require.Zero(t, repo.myFilter)
 }
