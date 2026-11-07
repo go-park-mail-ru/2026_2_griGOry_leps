@@ -2,535 +2,415 @@ package usecase
 
 import (
 	"context"
-	"net/url"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-type verifierFake struct {
-	mu      sync.Mutex
-	sent    []sentMail
-	revoked int
+type verifyTestEnv struct {
+	uc     *EmailVerificationUsecase
+	users  *MockUserRepository
+	repo   *MockEmailVerificationRepository
+	resets *MockPasswordResetRepository
+	mailer *MockMailer
+	tx     *MockTransactor
 }
 
-func (v *verifierFake) IssueLink(_ context.Context, _ int32, email string) (func(), error) {
-	return func() {
-		v.mu.Lock()
-		defer v.mu.Unlock()
-		v.sent = append(v.sent, sentMail{to: email})
-	}, nil
-}
-
-func (v *verifierFake) RevokeLinks(context.Context, int32) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	v.revoked++
-	return nil
-}
-
-func (v *verifierFake) emails() []string {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	emails := make([]string, 0, len(v.sent))
-	for _, m := range v.sent {
-		emails = append(emails, m.to)
-	}
-	return emails
-}
-
-type verificationRecord struct {
-	domain.EmailVerification
-	createdAt time.Time
-}
-
-type verificationRepoFake struct {
-	mu      sync.Mutex
-	records map[string]*verificationRecord
-}
-
-func newVerificationRepoFake() *verificationRepoFake {
-	return &verificationRepoFake{records: make(map[string]*verificationRecord)}
-}
-
-func (r *verificationRepoFake) Create(_ context.Context, tokenHash string, userID int32, email string, expiresAt time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.records[tokenHash] = &verificationRecord{
-		EmailVerification: domain.EmailVerification{UserID: userID, Email: email, ExpiresAt: expiresAt},
-		createdAt:         time.Now(),
-	}
-	return nil
-}
-
-func (r *verificationRepoFake) LastCreatedAt(_ context.Context, userID int32) (time.Time, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var last time.Time
-	for _, rec := range r.records {
-		if rec.UserID == userID && rec.createdAt.After(last) {
-			last = rec.createdAt
-		}
-	}
-	return last, nil
-}
-
-func (r *verificationRepoFake) Get(ctx context.Context, tokenHash string) (domain.EmailVerification, error) {
-	return r.GetForUpdate(ctx, tokenHash)
-}
-
-func (r *verificationRepoFake) GetForUpdate(_ context.Context, tokenHash string) (domain.EmailVerification, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	rec, ok := r.records[tokenHash]
-	if !ok {
-		return domain.EmailVerification{}, domain.ErrInvalidVerifyToken
-	}
-	return rec.EmailVerification, nil
-}
-
-func (r *verificationRepoFake) UseAll(_ context.Context, userID int32) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	now := time.Now()
-	for _, rec := range r.records {
-		if rec.UserID == userID && rec.UsedAt == nil {
-			rec.UsedAt = &now
-		}
-	}
-	return nil
-}
-
-func (r *verificationRepoFake) backdate(d time.Duration) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, rec := range r.records {
-		rec.createdAt = rec.createdAt.Add(-d)
-		rec.ExpiresAt = rec.ExpiresAt.Add(-d)
-	}
-}
-
-type verifyEnv struct {
-	uc            *EmailVerificationUsecase
-	users         *userRepoFake
-	verifications *verificationRepoFake
-	resets        *resetRepoFake
-	mails         chan sentMail
-	userID        int32
-}
-
-func newVerifyEnv(t *testing.T) verifyEnv {
+func newVerifyTestEnv(t *testing.T) *verifyTestEnv {
 	t.Helper()
-	users := newUserRepoFake()
-	verifications := newVerificationRepoFake()
-	resets := newResetRepoFake()
-	mails := make(chan sentMail, 10)
-
-	user, err := users.Create(context.Background(), "anna@goget.pw", "hash", "Анна", "+79990000001")
-	require.NoError(t, err)
-
-	return verifyEnv{
-		uc:            NewEmailVerificationUsecase(users, verifications, resets, mailerFake{sent: mails}, txFake{}, "http://front.test/verify-email"),
-		users:         users,
-		verifications: verifications,
-		resets:        resets,
-		mails:         mails,
-		userID:        user.ID,
-	}
+	c := gomock.NewController(t)
+	e := &verifyTestEnv{users: NewMockUserRepository(c), repo: NewMockEmailVerificationRepository(c), resets: NewMockPasswordResetRepository(c), mailer: NewMockMailer(c), tx: NewMockTransactor(c)}
+	e.uc = NewEmailVerificationUsecase(e.users, e.repo, e.resets, e.mailer, e.tx, "http://front.test/verify-email")
+	return e
 }
 
-func (env verifyEnv) waitToken(t *testing.T, to string) string {
+func verification(email string) domain.EmailVerification {
+	return domain.EmailVerification{UserID: 7, Email: email, ExpiresAt: time.Now().Add(time.Hour)}
+}
+
+func expectVerify(e *verifyTestEnv, token string, v domain.EmailVerification, user domain.User) {
+	get := e.repo.EXPECT().Get(gomock.Any(), hashToken(token)).Return(v, nil)
+	tx := expectTransaction(e.tx).After(get)
+	gomock.InOrder(
+		tx,
+		e.users.EXPECT().LockByID(gomock.Any(), int32(7)).Return(nil),
+		e.repo.EXPECT().GetForUpdate(gomock.Any(), hashToken(token)).Return(v, nil),
+		e.users.EXPECT().GetByID(gomock.Any(), int32(7)).Return(user, nil),
+	)
+}
+
+func expectResendUser(e *verifyTestEnv, user domain.User) {
+	expectTransaction(e.tx)
+	gomock.InOrder(
+		e.users.EXPECT().LockByID(gomock.Any(), int32(7)).Return(nil),
+		e.users.EXPECT().GetByID(gomock.Any(), int32(7)).Return(user, nil),
+	)
+}
+
+func expectIssueMail(e *verifyTestEnv, email string) <-chan string {
+	sent := make(chan string, 1)
+	var stored string
+	gomock.InOrder(
+		e.repo.EXPECT().LastCreatedAt(gomock.Any(), int32(7)).Return(time.Time{}, nil),
+		e.repo.EXPECT().UseAll(gomock.Any(), int32(7)).Return(nil),
+		e.repo.EXPECT().Create(gomock.Any(), gomock.Any(), int32(7), email, gomock.Cond(func(exp time.Time) bool { return exp.After(time.Now()) })).DoAndReturn(func(_ context.Context, hash string, _ int32, _ string, _ time.Time) error { stored = hash; return nil }),
+	)
+	e.mailer.EXPECT().SendEmailVerification(gomock.Any(), email, gomock.Cond(func(link string) bool {
+		const prefix = "http://front.test/verify-email?token="
+		return len(link) == len(prefix)+64 && link[:len(prefix)] == prefix && hashToken(link[len(prefix):]) == stored
+	})).DoAndReturn(func(_ context.Context, _ string, link string) error { sent <- link; return nil })
+	return sent
+}
+
+func waitVerifyMail(t *testing.T, sent <-chan string) string {
 	t.Helper()
 	select {
-	case m := <-env.mails:
-		require.Equal(t, to, m.to)
-		require.True(t, strings.HasPrefix(m.link, "http://front.test/verify-email?token="), m.link)
-		u, err := url.Parse(m.link)
-		require.NoError(t, err)
-		return u.Query().Get("token")
+	case link := <-sent:
+		return tokenFromLink(t, link)
 	case <-time.After(time.Second):
 		t.Fatal("verification mail was not sent")
 		return ""
 	}
 }
 
-func (env verifyEnv) issue(t *testing.T, email string) string {
-	t.Helper()
-	send, err := env.uc.IssueLink(context.Background(), env.userID, email)
-	require.NoError(t, err)
-	send()
-	return env.waitToken(t, email)
-}
-
-func (env verifyEnv) user(t *testing.T) domain.User {
-	t.Helper()
-	user, err := env.users.GetByID(context.Background(), env.userID)
-	require.NoError(t, err)
-	return user
-}
-
-func (env verifyEnv) verify(t *testing.T) {
-	t.Helper()
-	require.NoError(t, env.users.SetEmailVerified(context.Background(), env.userID))
-}
-
-func (env verifyEnv) requestChange(t *testing.T, email string) string {
-	t.Helper()
-	ctx := context.Background()
-	require.NoError(t, env.users.SetPendingEmail(ctx, env.userID, &email))
-	return env.issue(t, email)
-}
-
 func TestVerify_LinkConfirmsEmailOnce(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-
-	token := env.issue(t, "anna@goget.pw")
-
-	res, err := env.uc.Verify(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	v := verification(u.Email)
+	expectVerify(e, "token", v, u)
+	e.users.EXPECT().SetEmailVerified(gomock.Any(), u.ID).Return(nil)
+	e.repo.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil)
+	res, err := e.uc.Verify(context.Background(), "token")
 	require.NoError(t, err)
-	require.Equal(t, domain.EmailVerifyResult{Email: "anna@goget.pw"}, res)
-	require.True(t, env.user(t).EmailVerified)
-
-	_, err = env.uc.Verify(ctx, token)
+	require.Equal(t, domain.EmailVerifyResult{Email: u.Email}, res)
+	now := time.Now()
+	v.UsedAt = &now
+	u.EmailVerified = true
+	expectVerify(e, "token", v, u)
+	_, err = e.uc.Verify(context.Background(), "token")
 	require.ErrorIs(t, err, domain.ErrEmailAlreadyVerified)
 }
 
 func TestVerify_UnknownOrEmptyToken(t *testing.T) {
-	env := newVerifyEnv(t)
-
-	_, err := env.uc.Verify(context.Background(), "")
-	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	_, err = env.uc.Verify(context.Background(), "nope")
-	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.False(t, env.user(t).EmailVerified)
+	e := newVerifyTestEnv(t)
+	e.repo.EXPECT().Get(gomock.Any(), hashToken("nope")).Return(domain.EmailVerification{}, domain.ErrInvalidVerifyToken)
+	for _, token := range []string{"", "nope"} {
+		_, err := e.uc.Verify(context.Background(), token)
+		require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
+	}
 }
 
 func TestVerify_ExpiredTokenTellsWhereToResend(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-
-	token := env.issue(t, "anna@goget.pw")
-	env.verifications.backdate(verifyTokenTTL + time.Minute)
-
-	res, err := env.uc.Verify(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	v := verification(u.Email)
+	v.ExpiresAt = time.Now().Add(-time.Second)
+	expectVerify(e, "token", v, u)
+	res, err := e.uc.Verify(context.Background(), "token")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.Equal(t, "anna@goget.pw", res.Email)
-	require.False(t, env.user(t).EmailVerified)
+	require.Equal(t, u.Email, res.Email)
 }
 
 func TestVerify_OldLinkDiesAfterUnverifiedEmailReplaced(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-
-	token := env.issue(t, "anna@goget.pw")
-
-	email := "new@goget.pw"
-	require.NoError(t, env.users.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: &email}))
-
-	_, err := env.uc.Verify(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	v := verification(u.Email)
+	u.Email = "new@goget.pw"
+	expectVerify(e, "old", v, u)
+	_, err := e.uc.Verify(context.Background(), "old")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.False(t, env.user(t).EmailVerified)
 }
 
 func TestVerify_PendingEmailReplacesOldOne(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	require.NoError(t, env.resets.Create(ctx, hashToken("reset"), env.userID, time.Now().Add(time.Hour)))
-
-	token := env.requestChange(t, "new@goget.pw")
-	require.Equal(t, "anna@goget.pw", env.user(t).Email)
-
-	res, err := env.uc.Verify(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "new@goget.pw"
+	expectVerify(e, "token", verification(u.PendingEmail), u)
+	gomock.InOrder(
+		e.users.EXPECT().ConfirmPendingEmail(gomock.Any(), u.ID).Return(nil),
+		e.resets.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil),
+		e.repo.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil),
+	)
+	res, err := e.uc.Verify(context.Background(), "token")
 	require.NoError(t, err)
-	require.Equal(t, domain.EmailVerifyResult{Email: "new@goget.pw", Changed: true}, res)
-
-	user := env.user(t)
-	require.Equal(t, "new@goget.pw", user.Email)
-	require.Empty(t, user.PendingEmail)
-	require.True(t, user.EmailVerified)
-
-	reset, err := env.resets.Get(ctx, hashToken("reset"))
-	require.NoError(t, err)
-	require.NotNil(t, reset.UsedAt)
+	require.Equal(t, domain.EmailVerifyResult{Email: u.PendingEmail, Changed: true}, res)
 }
 
 func TestVerify_PendingEmailTakenMeanwhile(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	token := env.requestChange(t, "new@goget.pw")
-
-	_, err := env.users.Create(ctx, "new@goget.pw", "hash", "Борис", "+79990000002")
-	require.NoError(t, err)
-
-	_, err = env.uc.Verify(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "new@goget.pw"
+	expectVerify(e, "token", verification(u.PendingEmail), u)
+	e.users.EXPECT().ConfirmPendingEmail(gomock.Any(), u.ID).Return(domain.ErrEmailTaken)
+	_, err := e.uc.Verify(context.Background(), "token")
 	require.ErrorIs(t, err, domain.ErrEmailTaken)
-	require.Equal(t, "anna@goget.pw", env.user(t).Email)
 }
 
 func TestCancelEmailChange(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	token := env.requestChange(t, "new@goget.pw")
-
-	require.NoError(t, env.uc.CancelEmailChange(ctx, env.userID))
-	require.Empty(t, env.user(t).PendingEmail)
-
-	res, err := env.uc.Verify(ctx, token)
-	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.Empty(t, res.Email)
-	require.Equal(t, "anna@goget.pw", env.user(t).Email)
-
-	require.ErrorIs(t, env.uc.CancelEmailChange(ctx, env.userID), domain.ErrNoPendingEmail)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "new@goget.pw"
+	expectResendUser(e, u)
+	gomock.InOrder(
+		e.users.EXPECT().SetPendingEmail(gomock.Any(), u.ID, nil).Return(nil),
+		e.repo.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil),
+	)
+	require.NoError(t, e.uc.CancelEmailChange(context.Background(), u.ID))
+	u.PendingEmail = ""
+	expectResendUser(e, u)
+	require.ErrorIs(t, e.uc.CancelEmailChange(context.Background(), u.ID), domain.ErrNoPendingEmail)
 }
 
 func TestResend_CooldownThenSends(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-
-	email, wait, err := env.uc.Resend(ctx, env.userID)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	expectResendUser(e, u)
+	sent := expectIssueMail(e, u.Email)
+	email, wait, err := e.uc.Resend(context.Background(), u.ID)
 	require.NoError(t, err)
 	require.Zero(t, wait)
-	require.Equal(t, "anna@goget.pw", email)
-	env.waitToken(t, "anna@goget.pw")
-
-	_, wait, err = env.uc.Resend(ctx, env.userID)
+	require.Equal(t, u.Email, email)
+	waitVerifyMail(t, sent)
+	expectResendUser(e, u)
+	e.repo.EXPECT().LastCreatedAt(gomock.Any(), u.ID).Return(time.Now(), nil)
+	_, wait, err = e.uc.Resend(context.Background(), u.ID)
 	require.NoError(t, err)
 	require.Greater(t, wait, 50*time.Second)
 	require.LessOrEqual(t, wait, verifyCooldown)
-	require.Empty(t, env.mails)
-
-	env.verifications.backdate(verifyCooldown)
-	_, wait, err = env.uc.Resend(ctx, env.userID)
+	expectResendUser(e, u)
+	sent = expectIssueMail(e, u.Email)
+	_, wait, err = e.uc.Resend(context.Background(), u.ID)
 	require.NoError(t, err)
 	require.Zero(t, wait)
-	env.waitToken(t, "anna@goget.pw")
+	waitVerifyMail(t, sent)
 }
 
 func TestResend_GoesToPendingEmail(t *testing.T) {
-	env := newVerifyEnv(t)
-	env.verify(t)
-	env.requestChange(t, "new@goget.pw")
-	env.verifications.backdate(verifyCooldown)
-
-	email, wait, err := env.uc.Resend(context.Background(), env.userID)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "new@goget.pw"
+	expectResendUser(e, u)
+	sent := expectIssueMail(e, u.PendingEmail)
+	email, wait, err := e.uc.Resend(context.Background(), u.ID)
 	require.NoError(t, err)
 	require.Zero(t, wait)
-	require.Equal(t, "new@goget.pw", email)
-	env.waitToken(t, "new@goget.pw")
+	require.Equal(t, u.PendingEmail, email)
+	waitVerifyMail(t, sent)
 }
 
 func TestResend_AlreadyVerified(t *testing.T) {
-	env := newVerifyEnv(t)
-	env.verify(t)
-
-	_, _, err := env.uc.Resend(context.Background(), env.userID)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	expectResendUser(e, u)
+	_, _, err := e.uc.Resend(context.Background(), u.ID)
 	require.ErrorIs(t, err, domain.ErrEmailAlreadyVerified)
-	require.Empty(t, env.mails)
 }
 
 func TestResendByToken(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-
-	token := env.issue(t, "anna@goget.pw")
-	env.verifications.backdate(verifyTokenTTL)
-
-	email, wait, err := env.uc.ResendByToken(ctx, token)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	v := verification(u.Email)
+	v.ExpiresAt = time.Now().Add(-time.Hour)
+	e.repo.EXPECT().Get(gomock.Any(), hashToken("old")).Return(v, nil)
+	e.users.EXPECT().GetByID(gomock.Any(), u.ID).Return(u, nil)
+	expectResendUser(e, u)
+	sent := expectIssueMail(e, u.Email)
+	email, wait, err := e.uc.ResendByToken(context.Background(), "old")
 	require.NoError(t, err)
 	require.Zero(t, wait)
-	require.Equal(t, "anna@goget.pw", email)
-	env.waitToken(t, "anna@goget.pw")
-
-	_, _, err = env.uc.ResendByToken(ctx, "nope")
+	require.Equal(t, u.Email, email)
+	waitVerifyMail(t, sent)
+	e.repo.EXPECT().Get(gomock.Any(), hashToken("nope")).Return(domain.EmailVerification{}, domain.ErrInvalidVerifyToken)
+	_, _, err = e.uc.ResendByToken(context.Background(), "nope")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-
-	email2 := "new@goget.pw"
-	require.NoError(t, env.users.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: &email2}))
-	_, _, err = env.uc.ResendByToken(ctx, token)
+	u.Email = "new@goget.pw"
+	e.repo.EXPECT().Get(gomock.Any(), hashToken("old")).Return(v, nil)
+	e.users.EXPECT().GetByID(gomock.Any(), u.ID).Return(u, nil)
+	_, _, err = e.uc.ResendByToken(context.Background(), "old")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
 }
 
 func TestRegister_SendsVerificationLink(t *testing.T) {
-	verifier := &verifierFake{}
-	uc := NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), verifier, txFake{})
-
-	user, _, err := uc.Register(context.Background(), "Anna@GoGet.pw", "Secret123", "Анна", "+79990000001")
+	e := newTestUsecase(t)
+	u := profileUser()
+	sent := false
+	expectTransaction(e.tx)
+	e.users.EXPECT().Create(gomock.Any(), u.Email, gomock.Any(), u.FirstName, u.Phone).Return(u, nil)
+	e.sessions.EXPECT().Create(gomock.Any(), gomock.Any(), u.ID, gomock.Any()).Return(nil)
+	e.verifier.EXPECT().IssueLink(gomock.Any(), u.ID, u.Email).Return(func() { sent = true }, nil)
+	user, _, err := e.Register(context.Background(), "Anna@GoGet.pw", "Secret123", u.FirstName, u.Phone)
 	require.NoError(t, err)
 	require.False(t, user.EmailVerified)
-	require.Equal(t, []string{"anna@goget.pw"}, verifier.emails())
+	require.True(t, sent)
 }
 
 func TestUpdateProfile_UnverifiedEmailIsReplaced(t *testing.T) {
-	env := newProfileEnv(t)
-
-	p, err := env.uc.UpdateProfile(context.Background(), env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	e := newProfileTestEnv(t)
+	expectProfileBefore(e, profileUser())
+	sent := false
+	e.verifier.EXPECT().IssueLink(gomock.Any(), e.userID, "new@goget.pw").Return(func() { sent = true }, nil)
+	e.resets.EXPECT().UseAll(gomock.Any(), e.userID).Return(nil)
+	u := profileUser()
+	u.Email = "new@goget.pw"
+	expectProfileResult(e, domain.ProfileUpdate{Email: ptr(u.Email)}, domain.Profile{User: u})
+	p, err := e.uc.UpdateProfile(context.Background(), e.userID, domain.ProfileUpdate{Email: ptr(u.Email)})
 	require.NoError(t, err)
-	require.Equal(t, "new@goget.pw", p.Email)
-	require.Empty(t, p.PendingEmail)
-	require.False(t, p.EmailVerified)
-	require.Equal(t, []string{"new@goget.pw"}, env.verifier.emails())
+	require.Equal(t, u, p.User)
+	require.True(t, sent)
+}
+
+func expectPendingChange(e *profileTestEnv, before domain.User, email string) {
+	expectProfileBefore(e, before)
+	e.users.EXPECT().GetByEmail(gomock.Any(), email).Return(domain.User{}, domain.ErrUserNotFound)
+	e.verifier.EXPECT().IssueLink(gomock.Any(), e.userID, email).Return(func() {}, nil)
+	e.users.EXPECT().SetPendingEmail(gomock.Any(), e.userID, ptr(email)).Return(nil)
+	result := before
+	result.PendingEmail = email
+	expectProfileResult(e, domain.ProfileUpdate{}, domain.Profile{User: result})
 }
 
 func TestUpdateProfile_VerifiedEmailWaitsForConfirmation(t *testing.T) {
-	env := newProfileEnv(t)
-	ctx := context.Background()
-	require.NoError(t, env.users.SetEmailVerified(ctx, env.userID))
-	env.addResetToken(t, "link")
-
-	p, err := env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	e := newProfileTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	expectPendingChange(e, u, "new@goget.pw")
+	p, err := e.uc.UpdateProfile(context.Background(), e.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
 	require.NoError(t, err)
-	require.Equal(t, "anna@goget.pw", p.Email)
+	require.Equal(t, u.Email, p.Email)
 	require.Equal(t, "new@goget.pw", p.PendingEmail)
-	require.True(t, p.EmailVerified)
-	require.False(t, env.resetTokenUsed(t, "link"))
-	require.Equal(t, []string{"new@goget.pw"}, env.verifier.emails())
-
-	_, err = env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	u = p.User
+	expectProfileBefore(e, u)
+	expectProfileResult(e, domain.ProfileUpdate{}, p)
+	_, err = e.uc.UpdateProfile(context.Background(), e.userID, domain.ProfileUpdate{Email: ptr(u.PendingEmail)})
 	require.NoError(t, err)
-	require.Len(t, env.verifier.emails(), 1)
-
-	p, err = env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("anna@goget.pw")})
+	expectProfileBefore(e, u)
+	e.users.EXPECT().SetPendingEmail(gomock.Any(), e.userID, nil).Return(nil)
+	e.verifier.EXPECT().RevokeLinks(gomock.Any(), e.userID).Return(nil)
+	u.PendingEmail = ""
+	expectProfileResult(e, domain.ProfileUpdate{}, domain.Profile{User: u})
+	p, err = e.uc.UpdateProfile(context.Background(), e.userID, domain.ProfileUpdate{Email: ptr(u.Email)})
 	require.NoError(t, err)
 	require.Empty(t, p.PendingEmail)
 }
 
 func TestUpdateProfile_PendingEmailMustBeFree(t *testing.T) {
-	env := newProfileEnv(t)
-	ctx := context.Background()
-	require.NoError(t, env.users.SetEmailVerified(ctx, env.userID))
-	_, err := env.users.Create(ctx, "boris@goget.pw", "hash", "Борис", "+79990000002")
-	require.NoError(t, err)
-
-	_, err = env.uc.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("boris@goget.pw")})
+	e := newProfileTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	expectProfileBefore(e, u)
+	e.users.EXPECT().GetByEmail(gomock.Any(), "boris@goget.pw").Return(domain.User{ID: 8}, nil)
+	_, err := e.uc.UpdateProfile(context.Background(), e.userID, domain.ProfileUpdate{Email: ptr("boris@goget.pw")})
 	require.ErrorIs(t, err, domain.ErrEmailTaken)
-	require.Empty(t, env.verifier.emails())
 }
 
 func TestResetPassword_ConfirmsEmail(t *testing.T) {
-	env := newResetEnv(t)
-	ctx := context.Background()
-
-	require.NoError(t, env.uc.RequestReset(ctx, "anna@goget.pw"))
-	link := env.waitMail(t).link
-	u, err := url.Parse(link)
-	require.NoError(t, err)
-
-	require.NoError(t, env.uc.ResetPassword(ctx, u.Query().Get("token"), "NewPass123"))
-
-	user, err := env.users.GetByID(ctx, env.userID)
-	require.NoError(t, err)
-	require.True(t, user.EmailVerified)
-}
-
-func (env verifyEnv) profileUsecase() *ProfileUsecase {
-	return NewProfileUsecase(env.users, newSessionRepoFake(), env.resets, env.uc, nil, txFake{})
+	e := newResetTestEnv(t)
+	expectPasswordReset(e, "token", "NewPass123")
+	require.NoError(t, e.uc.ResetPassword(context.Background(), "token", "NewPass123"))
 }
 
 func TestResend_RevokesPreviousLink(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	old := env.issue(t, "anna@goget.pw")
-	env.verifications.backdate(verifyCooldown)
-
-	_, wait, err := env.uc.Resend(ctx, env.userID)
+	e := newVerifyTestEnv(t)
+	u := profileUser()
+	expectResendUser(e, u)
+	sent := expectIssueMail(e, u.Email)
+	_, _, err := e.uc.Resend(context.Background(), u.ID)
 	require.NoError(t, err)
-	require.Zero(t, wait)
-	fresh := env.waitToken(t, "anna@goget.pw")
-
-	_, err = env.uc.Verify(ctx, old)
+	fresh := waitVerifyMail(t, sent)
+	old := verification(u.Email)
+	now := time.Now()
+	old.UsedAt = &now
+	expectVerify(e, "old", old, u)
+	_, err = e.uc.Verify(context.Background(), "old")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	_, err = env.uc.Verify(ctx, fresh)
+	expectVerify(e, fresh, verification(u.Email), u)
+	e.users.EXPECT().SetEmailVerified(gomock.Any(), u.ID).Return(nil)
+	e.repo.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil)
+	_, err = e.uc.Verify(context.Background(), fresh)
 	require.NoError(t, err)
 }
 
 func TestUpdateProfile_CancelledChangeLinkStaysDead(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	profile := env.profileUsecase()
-
-	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
+	e := newProfileTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "new@goget.pw"
+	expectProfileBefore(e, u)
+	e.users.EXPECT().SetPendingEmail(gomock.Any(), u.ID, nil).Return(nil)
+	e.verifier.EXPECT().RevokeLinks(gomock.Any(), u.ID).Return(nil)
+	cleared := u
+	cleared.PendingEmail = ""
+	expectProfileResult(e, domain.ProfileUpdate{}, domain.Profile{User: cleared})
+	_, err := e.uc.UpdateProfile(context.Background(), u.ID, domain.ProfileUpdate{Email: ptr(u.Email)})
 	require.NoError(t, err)
-	old := env.waitToken(t, "new@goget.pw")
-
-	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("anna@goget.pw")})
+	expectPendingChange(e, cleared, u.PendingEmail)
+	_, err = e.uc.UpdateProfile(context.Background(), u.ID, domain.ProfileUpdate{Email: ptr(u.PendingEmail)})
 	require.NoError(t, err)
-	env.verifications.backdate(verifyCooldown)
-	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("new@goget.pw")})
-	require.NoError(t, err)
-	fresh := env.waitToken(t, "new@goget.pw")
-
-	_, err = env.uc.Verify(ctx, old)
+	v := newVerifyTestEnv(t)
+	old := verification(u.PendingEmail)
+	now := time.Now()
+	old.UsedAt = &now
+	expectVerify(v, "old", old, u)
+	_, err = v.uc.Verify(context.Background(), "old")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	res, err := env.uc.Verify(ctx, fresh)
+	expectVerify(v, "fresh", verification(u.PendingEmail), u)
+	v.users.EXPECT().ConfirmPendingEmail(gomock.Any(), u.ID).Return(nil)
+	v.resets.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil)
+	v.repo.EXPECT().UseAll(gomock.Any(), u.ID).Return(nil)
+	res, err := v.uc.Verify(context.Background(), "fresh")
 	require.NoError(t, err)
 	require.True(t, res.Changed)
 }
 
 func TestUpdateProfile_ReplacedPendingEmailRevokesLink(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	profile := env.profileUsecase()
-
-	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("first@goget.pw")})
+	e := newProfileTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "first@goget.pw"
+	expectPendingChange(e, u, "second@goget.pw")
+	p, err := e.uc.UpdateProfile(context.Background(), u.ID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
 	require.NoError(t, err)
-	first := env.waitToken(t, "first@goget.pw")
-	env.verifications.backdate(verifyCooldown)
-
-	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
-	require.NoError(t, err)
-	env.waitToken(t, "second@goget.pw")
-
-	_, err = env.uc.Verify(ctx, first)
+	require.Equal(t, "second@goget.pw", p.PendingEmail)
+	v := newVerifyTestEnv(t)
+	expectVerify(v, "first", verification(u.PendingEmail), p.User)
+	_, err = v.uc.Verify(context.Background(), "first")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.Equal(t, "second@goget.pw", env.user(t).PendingEmail)
 }
 
 func TestUpdateProfile_EmailChangeRespectsCooldown(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	profile := env.profileUsecase()
-
-	_, err := profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("first@goget.pw")})
-	require.NoError(t, err)
-	env.waitToken(t, "first@goget.pw")
-
-	_, err = profile.UpdateProfile(ctx, env.userID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
+	e := newProfileTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	u.PendingEmail = "first@goget.pw"
+	expectProfileBefore(e, u)
+	e.users.EXPECT().GetByEmail(gomock.Any(), "second@goget.pw").Return(domain.User{}, domain.ErrUserNotFound)
+	e.verifier.EXPECT().IssueLink(gomock.Any(), u.ID, "second@goget.pw").Return(nil, &domain.CooldownError{Wait: 55 * time.Second})
+	_, err := e.uc.UpdateProfile(context.Background(), u.ID, domain.ProfileUpdate{Email: ptr("second@goget.pw")})
 	var cooldown *domain.CooldownError
 	require.ErrorAs(t, err, &cooldown)
 	require.Greater(t, cooldown.Wait, 50*time.Second)
-	require.Empty(t, env.mails)
-	require.Equal(t, "first@goget.pw", env.user(t).PendingEmail)
-
-	_, wait, err := env.uc.Resend(ctx, env.userID)
-	require.NoError(t, err)
-	require.Greater(t, wait, time.Duration(0))
 }
 
 func TestResetPassword_RevokesEmailChange(t *testing.T) {
-	env := newVerifyEnv(t)
-	ctx := context.Background()
-	env.verify(t)
-	token := env.requestChange(t, "attacker@goget.pw")
-	require.NoError(t, env.resets.Create(ctx, hashToken("reset"), env.userID, time.Now().Add(time.Hour)))
-
-	reset := NewPasswordResetUsecase(env.users, newSessionRepoFake(), env.resets, env.uc, mailerFake{sent: env.mails}, txFake{},
-		"http://front.test/reset-password")
-	require.NoError(t, reset.ResetPassword(ctx, "reset", "NewSecret1"))
-
-	require.Empty(t, env.user(t).PendingEmail)
-	_, err := env.uc.Verify(ctx, token)
+	e := newResetTestEnv(t)
+	expectPasswordReset(e, "reset", "NewSecret1")
+	require.NoError(t, e.uc.ResetPassword(context.Background(), "reset", "NewSecret1"))
+	v := newVerifyTestEnv(t)
+	u := profileUser()
+	u.EmailVerified = true
+	old := verification("attacker@goget.pw")
+	now := time.Now()
+	old.UsedAt = &now
+	expectVerify(v, "old", old, u)
+	_, err := v.uc.Verify(context.Background(), "old")
 	require.ErrorIs(t, err, domain.ErrInvalidVerifyToken)
-	require.Equal(t, "anna@goget.pw", env.user(t).Email)
 }

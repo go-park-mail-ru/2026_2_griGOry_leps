@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -19,56 +19,63 @@ const (
 
 var testPrices = domain.DeliveryPrices{Courier: 39000, PickupPoint: 19000}
 
-func newCartEnv() (*CartUsecase, *cartRepoFake) {
-	repo := newCartRepoFake()
-	repo.put(101, sellerA, 1500000, true)
-	repo.put(102, sellerA, 230000, true)
-	repo.put(201, sellerB, 1850000, false)
-	return NewCartUsecase(repo, txFake{}, testPrices), repo
+type cartTestEnv struct {
+	uc   *CartUsecase
+	repo *MockCartRepository
+	tx   *MockTransactor
+}
+
+func newCartTestEnv(t *testing.T) *cartTestEnv {
+	t.Helper()
+	c := gomock.NewController(t)
+	e := &cartTestEnv{repo: NewMockCartRepository(c), tx: NewMockTransactor(c)}
+	e.uc = NewCartUsecase(e.repo, e.tx, testPrices)
+	return e
+}
+
+func cartEntry(id, seller int32, price int64, delivery bool) domain.CartEntry {
+	return domain.CartEntry{ListingID: id, Title: "item", Price: &price, Address: ptr("Moscow"), HasDelivery: delivery, Status: domain.AdStatusActive, Seller: domain.CartSeller{ID: seller, FirstName: "seller"}}
 }
 
 func TestCart_AddRules(t *testing.T) {
-	uc, repo := newCartEnv()
-	ctx := context.Background()
-
-	count, err := uc.Add(ctx, buyerID, 101)
-	require.NoError(t, err)
-	require.Equal(t, 1, count)
-
-	count, err = uc.Add(ctx, buyerID, 101)
-	require.NoError(t, err)
-	require.Equal(t, 1, count)
-
-	_, err = uc.Add(ctx, sellerA, 101)
-	require.ErrorIs(t, err, domain.ErrOwnListing)
-
-	_, err = uc.Add(ctx, buyerID, 999)
-	require.ErrorIs(t, err, domain.ErrListingNotFound)
-
-	e := repo.catalog[102]
-	e.Status = domain.AdStatusDraft
-	repo.catalog[102] = e
-	_, err = uc.Add(ctx, buyerID, 102)
-	require.ErrorIs(t, err, domain.ErrListingNotFound)
-
-	e.Status = domain.AdStatusClosed
-	repo.catalog[102] = e
-	_, err = uc.Add(ctx, buyerID, 102)
-	require.ErrorIs(t, err, domain.ErrListingUnavailable)
+	for _, tc := range []struct {
+		name          string
+		user, id      int32
+		listing       domain.CartListing
+		repoErr, want error
+	}{
+		{"active", buyerID, 101, domain.CartListing{SellerID: sellerA, Status: domain.AdStatusActive}, nil, nil},
+		{"own", sellerA, 101, domain.CartListing{SellerID: sellerA, Status: domain.AdStatusActive}, nil, domain.ErrOwnListing},
+		{"missing", buyerID, 999, domain.CartListing{}, domain.ErrListingNotFound, domain.ErrListingNotFound},
+		{"draft", buyerID, 102, domain.CartListing{SellerID: sellerA, Status: domain.AdStatusDraft}, nil, domain.ErrListingNotFound},
+		{"closed", buyerID, 102, domain.CartListing{SellerID: sellerA, Status: domain.AdStatusClosed}, nil, domain.ErrListingUnavailable},
+		{"reserved", buyerID, 102, domain.CartListing{SellerID: sellerA, Status: domain.AdStatusActive, Reserved: true}, nil, domain.ErrListingUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newCartTestEnv(t)
+			expectTransaction(e.tx)
+			e.repo.EXPECT().ListingForCart(gomock.Any(), tc.user, tc.id).Return(tc.listing, tc.repoErr)
+			if tc.want == nil {
+				e.repo.EXPECT().Add(gomock.Any(), tc.user, tc.id, tc.listing.SellerID).Return(nil)
+				e.repo.EXPECT().Count(gomock.Any(), tc.user).Return(1, nil)
+			}
+			count, err := e.uc.Add(context.Background(), tc.user, tc.id)
+			if tc.want != nil {
+				require.ErrorIs(t, err, tc.want)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, 1, count)
+			}
+		})
+	}
 }
 
 func TestCart_GroupsBySellerNewestFirst(t *testing.T) {
-	uc, repo := newCartEnv()
-	ctx := context.Background()
-	for _, id := range []int32{101, 201, 102} {
-		_, err := uc.Add(ctx, buyerID, id)
-		require.NoError(t, err)
-	}
-	e := repo.catalog[201]
-	e.Status = domain.AdStatusSold
-	repo.catalog[201] = e
-
-	cart, err := uc.Get(ctx, buyerID)
+	e := newCartTestEnv(t)
+	sold := cartEntry(201, sellerB, 1850000, false)
+	sold.Status = domain.AdStatusSold
+	e.repo.EXPECT().Entries(gomock.Any(), buyerID).Return([]domain.CartEntry{cartEntry(102, sellerA, 230000, true), sold, cartEntry(101, sellerA, 1500000, true)}, nil)
+	cart, err := e.uc.Get(context.Background(), buyerID)
 	require.NoError(t, err)
 	require.Equal(t, 3, cart.ItemsCount)
 	require.Len(t, cart.Groups, 2)
@@ -79,71 +86,65 @@ func TestCart_GroupsBySellerNewestFirst(t *testing.T) {
 }
 
 func TestCart_ReservedByAnotherBuyer(t *testing.T) {
-	e := newOrderEnv(t)
-	ctx := context.Background()
-	_, err := e.uc.Create(ctx, buyerID, courierInput(key1))
+	e := newCartTestEnv(t)
+	item := cartEntry(101, sellerA, 1500000, true)
+	item.Reserved = true
+	e.repo.EXPECT().Entries(gomock.Any(), strangerID).Return([]domain.CartEntry{item}, nil)
+	cart, err := e.uc.Get(context.Background(), strangerID)
 	require.NoError(t, err)
-	require.NoError(t, e.carts.Add(ctx, strangerID, 101, sellerA))
-
-	cart, err := NewCartUsecase(e.carts, txFake{}, testPrices).Get(ctx, strangerID)
-	require.NoError(t, err)
-	item := cart.Groups[0].Items[0]
-	require.Equal(t, domain.ReasonReserved, item.UnavailableReason())
-	require.Nil(t, item.DeliveryFrom)
-
-	*e.now = e.now.Add(time.Hour)
-	require.NoError(t, e.uc.RunMaintenance(ctx))
-	cart, err = NewCartUsecase(e.carts, txFake{}, testPrices).Get(ctx, strangerID)
+	require.Equal(t, domain.ReasonReserved, cart.Groups[0].Items[0].UnavailableReason())
+	require.Nil(t, cart.Groups[0].Items[0].DeliveryFrom)
+	item.Reserved = false
+	e.repo.EXPECT().Entries(gomock.Any(), strangerID).Return([]domain.CartEntry{item}, nil)
+	cart, err = e.uc.Get(context.Background(), strangerID)
 	require.NoError(t, err)
 	require.Empty(t, cart.Groups[0].Items[0].UnavailableReason())
+	require.NotNil(t, cart.Groups[0].Items[0].DeliveryFrom)
 }
 
 func TestCart_EmptyCartHasNoGroups(t *testing.T) {
-	uc, _ := newCartEnv()
-	cart, err := uc.Get(context.Background(), strangerID)
+	e := newCartTestEnv(t)
+	e.repo.EXPECT().Entries(gomock.Any(), strangerID).Return(nil, nil)
+	cart, err := e.uc.Get(context.Background(), strangerID)
 	require.NoError(t, err)
-	require.Equal(t, 0, cart.ItemsCount)
+	require.Zero(t, cart.ItemsCount)
 	require.NotNil(t, cart.Groups)
 }
 
 func TestCart_BulkAddSkipsUnavailable(t *testing.T) {
-	uc, repo := newCartEnv()
-	e := repo.catalog[102]
-	e.Status = domain.AdStatusClosed
-	repo.catalog[102] = e
-
-	count, skipped, err := uc.BulkAdd(context.Background(), buyerID, []int32{101, 102, 201, 999, 101})
+	e := newCartTestEnv(t)
+	expectTransaction(e.tx)
+	gomock.InOrder(e.repo.EXPECT().ListingForCart(gomock.Any(), buyerID, int32(101)).Return(domain.CartListing{SellerID: sellerA, Status: domain.AdStatusActive}, nil), e.repo.EXPECT().Add(gomock.Any(), buyerID, int32(101), sellerA).Return(nil),
+		e.repo.EXPECT().ListingForCart(gomock.Any(), buyerID, int32(102)).Return(domain.CartListing{SellerID: sellerA, Status: domain.AdStatusClosed}, nil),
+		e.repo.EXPECT().ListingForCart(gomock.Any(), buyerID, int32(201)).Return(domain.CartListing{SellerID: sellerB, Status: domain.AdStatusActive}, nil), e.repo.EXPECT().Add(gomock.Any(), buyerID, int32(201), sellerB).Return(nil),
+		e.repo.EXPECT().ListingForCart(gomock.Any(), buyerID, int32(999)).Return(domain.CartListing{}, domain.ErrListingNotFound), e.repo.EXPECT().Count(gomock.Any(), buyerID).Return(2, nil))
+	count, skipped, err := e.uc.BulkAdd(context.Background(), buyerID, []int32{101, 102, 201, 999, 101})
 	require.NoError(t, err)
 	require.Equal(t, 2, count)
 	require.Equal(t, []int32{102, 999}, skipped)
 }
 
 func TestCart_RemoveAndValidateIDs(t *testing.T) {
-	uc, _ := newCartEnv()
-	ctx := context.Background()
-	_, _, err := uc.BulkAdd(ctx, buyerID, []int32{101, 102, 201})
-	require.NoError(t, err)
-
-	count, err := uc.Remove(ctx, buyerID, []int32{101, 201, 555})
+	e := newCartTestEnv(t)
+	gomock.InOrder(
+		e.repo.EXPECT().Remove(gomock.Any(), buyerID, []int32{101, 201, 555}).Return(nil),
+		e.repo.EXPECT().Count(gomock.Any(), buyerID).Return(1, nil),
+	)
+	count, err := e.uc.Remove(context.Background(), buyerID, []int32{101, 201, 555})
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
-
-	_, err = uc.Remove(ctx, buyerID, nil)
+	_, err = e.uc.Remove(context.Background(), buyerID, nil)
 	require.ErrorIs(t, err, domain.ErrInvalidListingIDs)
-	_, err = uc.Remove(ctx, buyerID, []int32{0})
+	_, err = e.uc.Remove(context.Background(), buyerID, []int32{0})
 	require.ErrorIs(t, err, domain.ErrInvalidListingIDs)
-	_, _, err = uc.BulkAdd(ctx, buyerID, make([]int32, domain.MaxCartBatch+1))
+	_, _, err = e.uc.BulkAdd(context.Background(), buyerID, make([]int32, domain.MaxCartBatch+1))
 	require.ErrorIs(t, err, domain.ErrInvalidListingIDs)
 }
 
 func TestCart_DeletedListingStaysInCart(t *testing.T) {
-	uc, repo := newCartEnv()
-	ctx := context.Background()
-	_, _, err := uc.BulkAdd(ctx, buyerID, []int32{101, 102})
-	require.NoError(t, err)
-	repo.catalog[101] = domain.CartEntry{ListingID: 101, Status: domain.ListingDeleted, Seller: repo.catalog[101].Seller}
-
-	cart, err := uc.Get(ctx, buyerID)
+	e := newCartTestEnv(t)
+	e.repo.EXPECT().Entries(gomock.Any(), buyerID).Return([]domain.CartEntry{cartEntry(102, sellerA, 230000, true), {ListingID: 101, Status: domain.ListingDeleted, Seller: domain.CartSeller{ID: sellerA}}}, nil)
+	cart, err := e.uc.Get(context.Background(), buyerID)
 	require.NoError(t, err)
 	require.Equal(t, 2, cart.ItemsCount)
 	items := cart.Groups[0].Items
@@ -153,9 +154,24 @@ func TestCart_DeletedListingStaysInCart(t *testing.T) {
 }
 
 func TestCart_BulkAddLocksInIDOrder(t *testing.T) {
-	uc, repo := newCartEnv()
-	_, skipped, err := uc.BulkAdd(context.Background(), buyerID, []int32{201, 999, 101, 102})
+	e := newCartTestEnv(t)
+	expectTransaction(e.tx)
+	var previous *gomock.Call
+	for _, id := range []int32{101, 102, 201, 999} {
+		call := e.repo.EXPECT().ListingForCart(gomock.Any(), buyerID, id)
+		if previous != nil {
+			call.After(previous)
+		}
+		if id == 999 {
+			call.Return(domain.CartListing{}, domain.ErrListingNotFound)
+			previous = call
+		} else {
+			call.Return(domain.CartListing{SellerID: sellerA, Status: domain.AdStatusActive}, nil)
+			previous = e.repo.EXPECT().Add(gomock.Any(), buyerID, id, sellerA).Return(nil).After(call)
+		}
+	}
+	e.repo.EXPECT().Count(gomock.Any(), buyerID).Return(3, nil).After(previous)
+	_, skipped, err := e.uc.BulkAdd(context.Background(), buyerID, []int32{201, 999, 101, 102})
 	require.NoError(t, err)
-	require.Equal(t, []int32{101, 102, 201, 999}, repo.checked)
 	require.Equal(t, []int32{999}, skipped)
 }

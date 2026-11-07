@@ -1,5 +1,7 @@
 package usecase
 
+//go:generate go run go.uber.org/mock/mockgen@v0.6.0 -source=repository.go -destination=repository_mock_test.go -package=usecase
+
 import (
 	"context"
 	"errors"
@@ -9,12 +11,45 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-func newTestUsecase() *AuthUsecase {
-	return NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), &verifierFake{}, txFake{})
+type authTestEnv struct {
+	*AuthUsecase
+	users    *MockUserRepository
+	sessions *MockSessionRepository
+	verifier *MockEmailVerifier
+	tx       *MockTransactor
+}
+
+func newTestUsecase(t *testing.T) *authTestEnv {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	e := &authTestEnv{users: NewMockUserRepository(ctrl), sessions: NewMockSessionRepository(ctrl), verifier: NewMockEmailVerifier(ctrl), tx: NewMockTransactor(ctrl)}
+	e.AuthUsecase = NewAuthUsecase(e.users, e.sessions, e.verifier, e.tx)
+	return e
+}
+
+func expectTransaction(tx *MockTransactor) *gomock.Call {
+	return tx.EXPECT().WithinTx(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) })
+}
+
+func passwordHash(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	require.NoError(t, err)
+	return string(hash)
+}
+
+func expectRegistration(t *testing.T, e *authTestEnv, user domain.User, password string) {
+	t.Helper()
+	expectTransaction(e.tx)
+	e.users.EXPECT().Create(gomock.Any(), user.Email, gomock.Cond(func(hash string) bool { return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil }), user.FirstName, user.Phone).Return(user, nil)
+	e.sessions.EXPECT().Create(gomock.Any(), gomock.Cond(func(id string) bool { return len(id) == 64 }), user.ID, gomock.Cond(func(exp time.Time) bool { return exp.After(time.Now()) })).Return(nil)
+	e.verifier.EXPECT().IssueLink(gomock.Any(), user.ID, user.Email).Return(func() {}, nil)
 }
 
 func TestNormalizeEmail(t *testing.T) {
@@ -131,7 +166,7 @@ func TestRegister_ValidationErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := newTestUsecase()
+			uc := newTestUsecase(t)
 			_, _, err := uc.Register(ctx, tt.email, tt.pass, tt.first, tt.phone)
 			require.ErrorIs(t, err, tt.wantErr)
 		})
@@ -139,7 +174,7 @@ func TestRegister_ValidationErrors(t *testing.T) {
 }
 
 func TestRegister_PasswordTooLong(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
 
 	longPassword := "Aa1" + strings.Repeat("x", 100)
 	_, _, err := uc.Register(context.Background(), "a@b.ru", longPassword, "ivan", "+79001234567")
@@ -148,7 +183,8 @@ func TestRegister_PasswordTooLong(t *testing.T) {
 }
 
 func TestRegister_Success(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
+	expectRegistration(t, uc, domain.User{ID: 1, Email: "test@mail.ru", FirstName: "ivan", Phone: "+79001234567"}, "Secret123")
 
 	user, session, err := uc.Register(context.Background(), "Test@Mail.Ru", "Secret123", "ivan", "89001234567")
 	require.NoError(t, err)
@@ -162,31 +198,26 @@ func TestRegister_Success(t *testing.T) {
 }
 
 func TestRegister_EmailTaken(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
-	require.NoError(t, err)
-
-	_, _, err = uc.Register(ctx, "a@b.ru", "Secret123", "petr", "+79007654321")
+	uc := newTestUsecase(t)
+	expectTransaction(uc.tx)
+	uc.users.EXPECT().Create(gomock.Any(), "a@b.ru", gomock.Any(), "petr", "+79007654321").Return(domain.User{}, domain.ErrEmailTaken)
+	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "petr", "+79007654321")
 	require.ErrorIs(t, err, domain.ErrEmailTaken)
 }
 
 func TestRegister_PhoneTaken(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
-	require.NoError(t, err)
-
-	_, _, err = uc.Register(ctx, "c@d.ru", "Secret123", "petr", "+79001234567")
+	uc := newTestUsecase(t)
+	expectTransaction(uc.tx)
+	uc.users.EXPECT().Create(gomock.Any(), "c@d.ru", gomock.Any(), "petr", "+79001234567").Return(domain.User{}, domain.ErrPhoneTaken)
+	_, _, err := uc.Register(context.Background(), "c@d.ru", "Secret123", "petr", "+79001234567")
 	require.ErrorIs(t, err, domain.ErrPhoneTaken)
 }
 
 func TestRegister_FirstNameAllowedChars(t *testing.T) {
 	for _, name := range []string{"Иван", "ivan", "Ёжик_2026", "ivan.bike", "Ян", "Иван Петров", "Анна-Мария"} {
 		t.Run(name, func(t *testing.T) {
-			uc := newTestUsecase()
+			uc := newTestUsecase(t)
+			expectRegistration(t, uc, domain.User{ID: 1, Email: "a@b.ru", FirstName: name, Phone: "+79001234567"}, "Secret123")
 			_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", name, "+79001234567")
 			require.NoError(t, err)
 		})
@@ -194,7 +225,8 @@ func TestRegister_FirstNameAllowedChars(t *testing.T) {
 }
 
 func TestRegister_FirstNameSpacesNormalized(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
+	expectRegistration(t, uc, domain.User{ID: 1, Email: "a@b.ru", FirstName: "Иван Петров", Phone: "+79001234567"}, "Secret123")
 
 	user, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "  Иван   Петров  ", "+79001234567")
 	require.NoError(t, err)
@@ -202,7 +234,9 @@ func TestRegister_FirstNameSpacesNormalized(t *testing.T) {
 }
 
 func TestRegister_FirstNameNotUnique(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
+	expectRegistration(t, uc, domain.User{ID: 1, Email: "a@b.ru", FirstName: "Иван", Phone: "+79001234567"}, "Secret123")
+	expectRegistration(t, uc, domain.User{ID: 2, Email: "c@d.ru", FirstName: "Иван", Phone: "+79007654321"}, "Secret123")
 	ctx := context.Background()
 
 	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "Иван", "+79001234567")
@@ -213,43 +247,49 @@ func TestRegister_FirstNameNotUnique(t *testing.T) {
 }
 
 func TestLogin_ByEmail_Success(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
+	uc := newTestUsecase(t)
+	hash := passwordHash(t, "Secret123")
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "a@b.ru").Return(domain.User{ID: 7, PasswordHash: hash}, nil)
+	expectTransaction(uc.tx)
+	uc.users.EXPECT().GetPasswordHashForUpdate(gomock.Any(), int32(7)).Return(hash, nil)
+	uc.sessions.EXPECT().Create(gomock.Any(), gomock.Any(), int32(7), gomock.Any()).Return(nil)
+	user, session, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.NoError(t, err)
-
-	user, session, err := uc.Login(ctx, "a@b.ru", "Secret123")
-	require.NoError(t, err)
-	require.NotZero(t, user.ID)
+	require.Equal(t, int32(7), user.ID)
 	require.Empty(t, user.PasswordHash)
-	require.NotEmpty(t, session.ID)
+	require.Len(t, session.ID, 64)
+	require.Equal(t, user.ID, session.UserID)
 }
 
 func TestLogin_ByPhone_Success(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, _, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
+	uc := newTestUsecase(t)
+	hash := passwordHash(t, "Secret123")
+	uc.users.EXPECT().GetByPhone(gomock.Any(), "+79001234567").Return(domain.User{ID: 7, PasswordHash: hash}, nil)
+	expectTransaction(uc.tx)
+	uc.users.EXPECT().GetPasswordHashForUpdate(gomock.Any(), int32(7)).Return(hash, nil)
+	uc.sessions.EXPECT().Create(gomock.Any(), gomock.Any(), int32(7), gomock.Any()).Return(nil)
+	user, session, err := uc.Login(context.Background(), "+79001234567", "Secret123")
 	require.NoError(t, err)
-
-	_, _, err = uc.Login(ctx, "+79001234567", "Secret123")
-	require.NoError(t, err)
+	require.Equal(t, int32(7), user.ID)
+	require.Empty(t, user.PasswordHash)
+	require.Len(t, session.ID, 64)
+	require.Equal(t, user.ID, session.UserID)
 }
 
 func TestLogin_UserNotFound(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "a@b.ru").Return(domain.User{}, domain.ErrUserNotFound)
 
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)
 }
 
 func TestLogin_UnknownUserTakesAsLongAsWrongPassword(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
 	ctx := context.Background()
 
-	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "ivan", "+79001234567")
-	require.NoError(t, err)
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "a@b.ru").Return(domain.User{PasswordHash: passwordHash(t, "CorrectPass1")}, nil).Times(3)
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "nobody@b.ru").Return(domain.User{}, domain.ErrUserNotFound).Times(3)
 
 	fastest := func(login string) time.Duration {
 		best := time.Duration(math.MaxInt64)
@@ -268,84 +308,48 @@ func TestLogin_UnknownUserTakesAsLongAsWrongPassword(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, _, err := uc.Register(ctx, "a@b.ru", "CorrectPass1", "ivan", "+79001234567")
-	require.NoError(t, err)
-
-	_, _, err = uc.Login(ctx, "a@b.ru", "WrongPass1")
+	uc := newTestUsecase(t)
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "a@b.ru").Return(domain.User{PasswordHash: passwordHash(t, "CorrectPass1")}, nil)
+	_, _, err := uc.Login(context.Background(), "a@b.ru", "WrongPass1")
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)
 }
 
 func TestLogout(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	_, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
-	require.NoError(t, err)
-
-	require.NoError(t, uc.Logout(ctx, session.ID))
-
-	_, err = uc.Me(ctx, session.ID)
-	require.ErrorIs(t, err, domain.ErrSessionExpired)
+	uc := newTestUsecase(t)
+	uc.sessions.EXPECT().Delete(gomock.Any(), "session").Return(nil)
+	require.NoError(t, uc.Logout(context.Background(), "session"))
 }
 
 func TestMe_Success(t *testing.T) {
-	uc := newTestUsecase()
-	ctx := context.Background()
-
-	created, session, err := uc.Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
+	uc := newTestUsecase(t)
+	uc.sessions.EXPECT().GetByID(gomock.Any(), "session").Return(domain.Session{UserID: 7, ExpiresAt: time.Now().Add(time.Hour)}, nil)
+	uc.users.EXPECT().GetByID(gomock.Any(), int32(7)).Return(domain.User{ID: 7}, nil)
+	user, err := uc.Me(context.Background(), "session")
 	require.NoError(t, err)
-
-	user, err := uc.Me(ctx, session.ID)
-	require.NoError(t, err)
-	require.Equal(t, created.ID, user.ID)
+	require.Equal(t, int32(7), user.ID)
 }
 
 func TestMe_SessionNotFound(t *testing.T) {
-	uc := newTestUsecase()
+	uc := newTestUsecase(t)
+	uc.sessions.EXPECT().GetByID(gomock.Any(), "nope").Return(domain.Session{}, domain.ErrSessionNotFound)
 
 	_, err := uc.Me(context.Background(), "nope")
 	require.ErrorIs(t, err, domain.ErrSessionExpired)
 }
 
-type failingTx struct{ err error }
-
-func (f failingTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if err := fn(ctx); err != nil {
-		return err
-	}
-	return f.err
-}
-
 func TestRegister_TxError(t *testing.T) {
+	uc := newTestUsecase(t)
 	commitErr := errors.New("commit failed")
-	uc := NewAuthUsecase(newUserRepoFake(), newSessionRepoFake(), &verifierFake{}, failingTx{err: commitErr})
-
-	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "Иван", "+79001234567")
+	uc.tx.EXPECT().WithinTx(gomock.Any(), gomock.Any()).Return(commitErr)
+	_, _, err := uc.Register(context.Background(), "a@b.ru", "Secret123", "ivan", "+79001234567")
 	require.ErrorIs(t, err, commitErr)
 }
 
-type passwordChangedRepo struct {
-	*userRepoFake
-}
-
-func (passwordChangedRepo) GetPasswordHashForUpdate(context.Context, int32) (string, error) {
-	return "hash-after-change", nil
-}
-
 func TestLogin_PasswordChangedBeforeSessionCreated(t *testing.T) {
-	users := newUserRepoFake()
-	sessions := newSessionRepoFake()
-	ctx := context.Background()
-	_, _, err := NewAuthUsecase(users, sessions, &verifierFake{}, txFake{}).Register(ctx, "a@b.ru", "Secret123", "ivan", "+79001234567")
-	require.NoError(t, err)
-	sessions.sessions = make(map[string]domain.Session)
-
-	uc := NewAuthUsecase(passwordChangedRepo{users}, sessions, &verifierFake{}, txFake{})
-	_, _, err = uc.Login(ctx, "a@b.ru", "Secret123")
-
+	uc := newTestUsecase(t)
+	uc.users.EXPECT().GetByEmail(gomock.Any(), "a@b.ru").Return(domain.User{ID: 7, PasswordHash: passwordHash(t, "Secret123")}, nil)
+	expectTransaction(uc.tx)
+	uc.users.EXPECT().GetPasswordHashForUpdate(gomock.Any(), int32(7)).Return("hash-after-change", nil)
+	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)
-	require.Empty(t, sessions.sessions)
 }
