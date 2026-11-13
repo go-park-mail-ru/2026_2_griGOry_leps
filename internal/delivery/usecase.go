@@ -84,3 +84,9 @@ type OrderUsecase interface {
 	TestPayment(ctx context.Context, token string, success bool) (int32, error)
 	PaymentPage(ctx context.Context, token string) (domain.Order, error)
 }
+
+type ModerationUsecase interface {
+	List(ctx context.Context, userID, afterID int32, limit int) ([]domain.ModerationItem, error)
+	Get(ctx context.Context, userID, id int32) (domain.ModerationListing, error)
+	Decide(ctx context.Context, userID, id int32, revision int64, approve bool, reason string) error
+}

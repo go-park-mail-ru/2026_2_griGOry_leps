@@ -3,7 +3,7 @@ package repository
 const getListingQuery = `
     SELECT a.id, a.user_id, a.category_id, COALESCE(c.name, ''), COALESCE(cp.path, ''),
            a.title, COALESCE(a.description, ''), a.price, a.is_free, a.is_negotiable, a.condition,
-           COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason,
+           COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason, a.rejection_reason,
            a.published_at, a.created_at, a.updated_at,
            u.first_name, COALESCE(u.avatar, ''), u.created_at,
            COALESCE(r.rating, 0), COALESCE(r.reviews_count, 0),
@@ -137,12 +137,6 @@ const createPhotoQuery = `
     INSERT INTO ad_image (user_id, url)
     VALUES ($1, $2)
     RETURNING image_id
-`
-
-const approveModerationQuery = `
-    UPDATE ad
-    SET status = 'active', published_at = COALESCE(published_at, now())
-    WHERE status = 'moderation'
 `
 
 const deleteStalePhotosQuery = `

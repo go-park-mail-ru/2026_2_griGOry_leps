@@ -33,7 +33,7 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	r.Handler = NewRouter("http://front.test", dir, NewAuthHandler(r.auth, false), NewPasswordResetHandler(NewMockPasswordResetUsecase(ctrl)),
 		NewProfileHandler(NewMockProfileUsecase(ctrl)), NewAdHandler(r.ads), NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(),
 		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city), NewSellerHandler(r.seller),
-		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)), NewCartHandler(NewMockCartUsecase(ctrl)), NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"))
+		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)), NewCartHandler(NewMockCartUsecase(ctrl)), NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"), NewModerationHandler(NewMockModerationUsecase(ctrl)))
 	return r
 }
 

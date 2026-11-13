@@ -923,3 +923,71 @@ func (mr *MockOrderUsecaseMockRecorder) TestPayment(ctx, token, success any) *go
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestPayment", reflect.TypeOf((*MockOrderUsecase)(nil).TestPayment), ctx, token, success)
 }
+
+// MockModerationUsecase is a mock of ModerationUsecase interface.
+type MockModerationUsecase struct {
+	ctrl     *gomock.Controller
+	recorder *MockModerationUsecaseMockRecorder
+	isgomock struct{}
+}
+
+// MockModerationUsecaseMockRecorder is the mock recorder for MockModerationUsecase.
+type MockModerationUsecaseMockRecorder struct {
+	mock *MockModerationUsecase
+}
+
+// NewMockModerationUsecase creates a new mock instance.
+func NewMockModerationUsecase(ctrl *gomock.Controller) *MockModerationUsecase {
+	mock := &MockModerationUsecase{ctrl: ctrl}
+	mock.recorder = &MockModerationUsecaseMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockModerationUsecase) EXPECT() *MockModerationUsecaseMockRecorder {
+	return m.recorder
+}
+
+// Decide mocks base method.
+func (m *MockModerationUsecase) Decide(ctx context.Context, userID, id int32, revision int64, approve bool, reason string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Decide", ctx, userID, id, revision, approve, reason)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Decide indicates an expected call of Decide.
+func (mr *MockModerationUsecaseMockRecorder) Decide(ctx, userID, id, revision, approve, reason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Decide", reflect.TypeOf((*MockModerationUsecase)(nil).Decide), ctx, userID, id, revision, approve, reason)
+}
+
+// Get mocks base method.
+func (m *MockModerationUsecase) Get(ctx context.Context, userID, id int32) (domain.ModerationListing, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, userID, id)
+	ret0, _ := ret[0].(domain.ModerationListing)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockModerationUsecaseMockRecorder) Get(ctx, userID, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockModerationUsecase)(nil).Get), ctx, userID, id)
+}
+
+// List mocks base method.
+func (m *MockModerationUsecase) List(ctx context.Context, userID, afterID int32, limit int) ([]domain.ModerationItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, userID, afterID, limit)
+	ret0, _ := ret[0].([]domain.ModerationItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockModerationUsecaseMockRecorder) List(ctx, userID, afterID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockModerationUsecase)(nil).List), ctx, userID, afterID, limit)
+}

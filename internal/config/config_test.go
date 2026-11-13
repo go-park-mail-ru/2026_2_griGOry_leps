@@ -7,6 +7,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLoad_ModeratorIDs(t *testing.T) {
+	for _, value := range []string{"", " ", "1,wrong", "0", "-1", "2147483648", "1,"} {
+		t.Setenv("MODERATOR_USER_IDS", value)
+		require.Empty(t, Load().ModeratorUserIDs, value)
+	}
+	t.Setenv("MODERATOR_USER_IDS", "1, 42")
+	require.Equal(t, []int32{1, 42}, Load().ModeratorUserIDs)
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("FRONTEND_ORIGIN", "")

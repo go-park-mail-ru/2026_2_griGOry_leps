@@ -176,21 +176,6 @@ func (r *listingRepoFake) CreatePhoto(_ context.Context, userID int32, url strin
 	return id, nil
 }
 
-func (r *listingRepoFake) ApproveModeration(_ context.Context) (int64, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var n int64
-	for id, s := range r.states {
-		if s.Status == domain.AdStatusModeration {
-			s.Status = domain.AdStatusActive
-			r.states[id] = s
-			n++
-		}
-	}
-	return n, nil
-}
-
 func (r *listingRepoFake) DeleteStalePhotos(_ context.Context, before time.Time) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -248,7 +233,10 @@ func (e listingEnv) active(t *testing.T) domain.Listing {
 	t.Helper()
 	l, err := e.uc.Create(context.Background(), authorID, e.fullFields(t), true)
 	require.NoError(t, err)
-	require.NoError(t, e.uc.RunMaintenance(context.Background(), time.Now()))
+	state := e.repo.states[l.ID]
+	state.Status = domain.AdStatusActive
+	e.repo.states[l.ID] = state
+	l.Status = domain.AdStatusActive
 	return l
 }
 
@@ -371,7 +359,7 @@ func TestListing_UpdateActiveCannotClearRequired(t *testing.T) {
 
 	updated, err := e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{Description: ptr("")}, nil)
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusActive, updated.Status)
+	require.Equal(t, domain.AdStatusModeration, updated.Status)
 	require.Empty(t, updated.Description)
 }
 
