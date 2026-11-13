@@ -85,7 +85,9 @@ func main() {
 	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
 	cityUsecase := usecase.NewCityUsecase(cityRepo)
 	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
-	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
+	listingRepo := repository.NewListingRepository(pool)
+	listingUsecase := usecase.NewListingUsecase(listingRepo, listingPhotoStorage, tx)
+	moderationUsecase := usecase.NewModerationUsecase(repository.NewModerationRepository(pool), listingRepo, tx, cfg.ModeratorUserIDs)
 	cartRepo := repository.NewCartRepository(pool)
 	prices := domain.DeliveryPrices{Courier: cfg.CourierPrice, PickupPoint: cfg.PickupPointPrice}
 	cartUsecase := usecase.NewCartUsecase(cartRepo, tx, prices)
@@ -105,7 +107,7 @@ func main() {
 	csrfHandler := delivery.NewCSRFHandler(csrf.New(csrfSecret(cfg.CSRFSecret), csrfTokenTTL), cfg.CookieSecure)
 
 	router := delivery.NewRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, resetHandler, profileHandler, adHandler,
-		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler, verifyHandler, cartHandler, orderHandler)
+		listingHandler, csrfHandler, addressHandler, cityHandler, sellerHandler, verifyHandler, cartHandler, orderHandler, delivery.NewModerationHandler(moderationUsecase))
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -49,6 +49,7 @@ func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.L
 		return domain.Listing{}, domain.ErrListingNotFound
 	}
 	l.CloseReason = nil
+	l.RejectionReason = nil
 	return l, nil
 }
 
@@ -131,6 +132,9 @@ func (uc *ListingUsecase) Update(ctx context.Context, userID, id int32, f domain
 		if state.Status == domain.AdStatusSold {
 			return domain.ErrListingSold
 		}
+		if err := uc.checkNoActiveOrder(ctx, id); err != nil {
+			return err
+		}
 		isDraft := state.Status == domain.AdStatusDraft
 		if publish != nil && !isDraft {
 			return domain.ErrListingNotDraft
@@ -139,7 +143,7 @@ func (uc *ListingUsecase) Update(ctx context.Context, userID, id int32, f domain
 		if err := uc.apply(ctx, &state, f); err != nil {
 			return err
 		}
-		toModeration := (publish != nil && *publish) || state.Status == domain.AdStatusRejected
+		toModeration := (publish != nil && *publish) || state.Status == domain.AdStatusRejected || state.Status == domain.AdStatusActive
 		if !isDraft || toModeration {
 			if err := checkComplete(state); err != nil {
 				return err
@@ -247,14 +251,6 @@ func (uc *ListingUsecase) UploadPhoto(ctx context.Context, userID int32, data []
 }
 
 func (uc *ListingUsecase) RunMaintenance(ctx context.Context, now time.Time) error {
-	approved, err := uc.listings.ApproveModeration(ctx)
-	if err != nil {
-		return err
-	}
-	if approved > 0 {
-		slog.InfoContext(ctx, "listings approved", "count", approved)
-	}
-
 	stale, err := uc.listings.DeleteStalePhotos(ctx, now.Add(-stalePhotoAge))
 	if err != nil {
 		return err

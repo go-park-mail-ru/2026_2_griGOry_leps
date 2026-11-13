@@ -21,8 +21,10 @@ info:
     и просмотр объявления; остальное — 401 `not authenticated`.
 
     **Статусы объявления**
-    `draft` → `moderation` → `active` → `closed` / `sold`. Статус меняет только
-    сервер и метод `POST /listings/{id}/close`.
+    `draft` → `moderation` → `active` → `closed` / `sold`. Модератор может
+    отклонить объявление со статусом `moderation`. После исправления автором
+    оно снова попадает на проверку. Правка активного объявления также отправляет
+    его на проверку.
 
     **CSRF**
     Все POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token`, иначе 403
@@ -63,6 +65,8 @@ tags:
     description: Список объявлений с фильтрами
   - name: Объявления
     description: Создание, просмотр, редактирование, закрытие и удаление объявлений
+  - name: Модерация
+    description: Очередь и решения модератора
   - name: Продавцы
     description: Публичная страница продавца
   - name: Корзина
@@ -956,8 +960,8 @@ paths:
 
         **Остальные статусы**: очистить обязательное поле нельзя — `null` и пустой
         `photo_ids` дают 400 с полем. `publish` не принимается — 409.
-        Статус при правке не меняется, кроме `rejected`: исправленное
-        объявление снова уходит на модерацию (`moderation`).
+        При правке `rejected` или `active` объявление снова уходит на
+        модерацию (`moderation`).
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1199,6 +1203,112 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Корзина
+  /admin/moderation/listings:
+    get:
+      tags: [Модерация]
+      operationId: listModeration
+      summary: Очередь объявлений на проверке
+      description: Доступ по cookie-сессии только пользователям из MODERATOR_USER_IDS.
+      security:
+        - sessionCookie: []
+      parameters:
+        - in: query
+          name: after_id
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: ID последнего объявления с предыдущей страницы.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Очередь по возрастанию ID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModerationItem' }
+                  limit: { type: integer }
+        '400': { $ref: '#/components/responses/ListingValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/moderation/listings/{listing_id}:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    get:
+      tags: [Модерация]
+      operationId: getModerationListing
+      summary: Объявление с содержимым и версией для решения
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Снимок ожидающего объявления
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModerationListing' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409': { $ref: '#/components/responses/ModerationConflict' }
+
+  /admin/moderation/listings/{listing_id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    post:
+      tags: [Модерация]
+      operationId: approveModerationListing
+      summary: Одобрить объявление
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: { type: integer, format: int64, minimum: 1 }
+      responses:
+        '204': { description: Объявление опубликовано }
+        '400': { $ref: '#/components/responses/ListingValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ModerationConflict' }
+
+  /admin/moderation/listings/{listing_id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ListingId'
+    post:
+      tags: [Модерация]
+      operationId: rejectModerationListing
+      summary: Отклонить объявление
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, reason]
+              properties:
+                revision: { type: integer, format: int64, minimum: 1 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '204': { description: Объявление отклонено }
+        '400': { $ref: '#/components/responses/ListingValidation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/ModerationConflict' }
+
   /cart:
     get:
       tags: [Корзина]
@@ -1682,6 +1792,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
           example: { error: forbidden }
+    ModerationConflict:
+      description: Объявление изменилось после просмотра или уже рассмотрено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: listing changed or is no longer awaiting moderation }
     ListingNotFound:
       description: Объявления нет, оно удалено или скрыто от текущего пользователя
       content:
@@ -2148,6 +2264,22 @@ components:
         reviews_count: { type: integer, example: 56 }
         created_at: { type: string, format: date-time, description: Дата регистрации. }
 
+    ModerationItem:
+      type: object
+      required: [id, title, revision, updated_at]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        revision: { type: integer, format: int64 }
+        updated_at: { type: string, format: date-time }
+
+    ModerationListing:
+      type: object
+      required: [listing, revision]
+      properties:
+        listing: { $ref: '#/components/schemas/Listing' }
+        revision: { type: integer, format: int64 }
+
     Listing:
       type: object
       required:
@@ -2166,6 +2298,7 @@ components:
         - attributes
         - status
         - close_reason
+        - rejection_reason
         - seller
         - is_owner
         - in_cart
@@ -2224,6 +2357,10 @@ components:
           enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
           nullable: true
           description: Видна только автору, остальным всегда null.
+        rejection_reason:
+          type: string
+          nullable: true
+          description: Причина отклонения, доступна автору и модератору.
         seller: { $ref: '#/components/schemas/SellerShort' }
         is_owner: { type: boolean, description: 'true, если запрос от автора.' }
         in_cart: { type: boolean, description: 'true, если объявление в корзине текущего пользователя; без сессии false.' }

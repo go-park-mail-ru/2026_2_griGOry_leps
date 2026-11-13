@@ -90,27 +90,28 @@ type sellerShortResponse struct {
 }
 
 type listingResponse struct {
-	ID           int32                      `json:"id"`
-	Title        string                     `json:"title"`
-	Category     *listingCategoryResponse   `json:"category"`
-	Description  string                     `json:"description"`
-	Photos       []listingPhotoResponse     `json:"photos"`
-	Price        *string                    `json:"price"`
-	IsFree       bool                       `json:"is_free"`
-	IsNegotiable bool                       `json:"is_negotiable"`
-	Condition    *string                    `json:"condition"`
-	City         string                     `json:"city"`
-	Address      *string                    `json:"address"`
-	HasDelivery  bool                       `json:"has_delivery"`
-	Attributes   []listingAttributeResponse `json:"attributes"`
-	Status       string                     `json:"status"`
-	CloseReason  *string                    `json:"close_reason"`
-	Seller       sellerShortResponse        `json:"seller"`
-	IsOwner      bool                       `json:"is_owner"`
-	InCart       bool                       `json:"in_cart"`
-	PublishedAt  *time.Time                 `json:"published_at"`
-	CreatedAt    time.Time                  `json:"created_at"`
-	UpdatedAt    time.Time                  `json:"updated_at"`
+	ID              int32                      `json:"id"`
+	Title           string                     `json:"title"`
+	Category        *listingCategoryResponse   `json:"category"`
+	Description     string                     `json:"description"`
+	Photos          []listingPhotoResponse     `json:"photos"`
+	Price           *string                    `json:"price"`
+	IsFree          bool                       `json:"is_free"`
+	IsNegotiable    bool                       `json:"is_negotiable"`
+	Condition       *string                    `json:"condition"`
+	City            string                     `json:"city"`
+	Address         *string                    `json:"address"`
+	HasDelivery     bool                       `json:"has_delivery"`
+	Attributes      []listingAttributeResponse `json:"attributes"`
+	Status          string                     `json:"status"`
+	CloseReason     *string                    `json:"close_reason"`
+	RejectionReason *string                    `json:"rejection_reason"`
+	Seller          sellerShortResponse        `json:"seller"`
+	IsOwner         bool                       `json:"is_owner"`
+	InCart          bool                       `json:"in_cart"`
+	PublishedAt     *time.Time                 `json:"published_at"`
+	CreatedAt       time.Time                  `json:"created_at"`
+	UpdatedAt       time.Time                  `json:"updated_at"`
 }
 
 func formatPrice(kopecks int64) string {
@@ -119,25 +120,26 @@ func formatPrice(kopecks int64) string {
 
 func newListingResponse(l domain.Listing) listingResponse {
 	resp := listingResponse{
-		ID:           l.ID,
-		Title:        l.Title,
-		Description:  l.Description,
-		Photos:       make([]listingPhotoResponse, 0, len(l.Photos)),
-		IsFree:       l.IsFree,
-		IsNegotiable: l.IsNegotiable,
-		Condition:    l.Condition,
-		City:         l.City,
-		Address:      l.Address,
-		HasDelivery:  l.HasDelivery,
-		Attributes:   []listingAttributeResponse{},
-		Status:       l.Status,
-		CloseReason:  l.CloseReason,
-		Seller:       newSellerShortResponse(l.Seller),
-		IsOwner:      l.IsOwner,
-		InCart:       l.InCart,
-		PublishedAt:  l.PublishedAt,
-		CreatedAt:    l.CreatedAt,
-		UpdatedAt:    l.UpdatedAt,
+		ID:              l.ID,
+		Title:           l.Title,
+		Description:     l.Description,
+		Photos:          make([]listingPhotoResponse, 0, len(l.Photos)),
+		IsFree:          l.IsFree,
+		IsNegotiable:    l.IsNegotiable,
+		Condition:       l.Condition,
+		City:            l.City,
+		Address:         l.Address,
+		HasDelivery:     l.HasDelivery,
+		Attributes:      []listingAttributeResponse{},
+		Status:          l.Status,
+		CloseReason:     l.CloseReason,
+		RejectionReason: l.RejectionReason,
+		Seller:          newSellerShortResponse(l.Seller),
+		IsOwner:         l.IsOwner,
+		InCart:          l.InCart,
+		PublishedAt:     l.PublishedAt,
+		CreatedAt:       l.CreatedAt,
+		UpdatedAt:       l.UpdatedAt,
 	}
 
 	if l.Category != nil {

@@ -111,7 +111,6 @@ type ListingRepository interface {
 	CategoryAllowsDelivery(ctx context.Context, id int32) (bool, error)
 	ListCategories(ctx context.Context) ([]domain.Category, error)
 	CreatePhoto(ctx context.Context, userID int32, url string) (int32, error)
-	ApproveModeration(ctx context.Context) (int64, error)
 	DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error)
 	ActiveOrder(ctx context.Context, listingID int32) (int32, bool, error)
 }

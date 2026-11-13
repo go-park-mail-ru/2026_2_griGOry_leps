@@ -116,24 +116,25 @@ type Seller struct {
 }
 
 type Listing struct {
-	ID           int32
-	Category     *ListingCategory
-	Title        string
-	Description  string
-	Photos       []ListingPhoto
-	Price        *int64
-	IsFree       bool
-	IsNegotiable bool
-	Condition    *string
-	City         string
-	Address      *string
-	HasDelivery  bool
-	Status       string
-	CloseReason  *string
-	Seller       Seller
-	IsOwner      bool
-	InCart       bool
-	PublishedAt  *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID              int32
+	Category        *ListingCategory
+	Title           string
+	Description     string
+	Photos          []ListingPhoto
+	Price           *int64
+	IsFree          bool
+	IsNegotiable    bool
+	Condition       *string
+	City            string
+	Address         *string
+	HasDelivery     bool
+	Status          string
+	RejectionReason *string
+	CloseReason     *string
+	Seller          Seller
+	IsOwner         bool
+	InCart          bool
+	PublishedAt     *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }

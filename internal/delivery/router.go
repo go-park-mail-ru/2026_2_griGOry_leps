@@ -20,7 +20,7 @@ const (
 func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, resetHandler *PasswordResetHandler,
 	profileHandler *ProfileHandler, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler,
 	addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler,
-	verifyHandler *EmailVerificationHandler, cartHandler *CartHandler, orderHandler *OrderHandler) http.Handler {
+	verifyHandler *EmailVerificationHandler, cartHandler *CartHandler, orderHandler *OrderHandler, moderationHandler *ModerationHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -86,6 +86,12 @@ func NewRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, reset
 	r.Handle(listingPath, auth(listingHandler.Update)).Methods(http.MethodPatch)
 	r.Handle(listingPath, auth(listingHandler.Delete)).Methods(http.MethodDelete)
 	r.Handle(listingPath+"/close", auth(listingHandler.Close)).Methods(http.MethodPost)
+
+	const moderationPath = "/api/admin/moderation/listings"
+	r.Handle(moderationPath, auth(moderationHandler.List)).Methods(http.MethodGet)
+	r.Handle(moderationPath+"/{listing_id:[0-9]+}", auth(moderationHandler.Get)).Methods(http.MethodGet)
+	r.Handle(moderationPath+"/{listing_id:[0-9]+}/approve", auth(moderationHandler.Decide(true))).Methods(http.MethodPost)
+	r.Handle(moderationPath+"/{listing_id:[0-9]+}/reject", auth(moderationHandler.Decide(false))).Methods(http.MethodPost)
 
 	r.Handle("/api/cart", auth(cartHandler.Get)).Methods(http.MethodGet)
 	r.Handle("/api/cart/items", auth(cartHandler.Add)).Methods(http.MethodPost)

@@ -5,24 +5,26 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 )
 
 type Config struct {
-	Port           string
-	FrontendOrigin string
-	PublicURL      string
-	CookieSecure   bool
-	LogLevel       slog.Level
-	CSRFSecret     string
-	DatabaseURL    string
-	UploadDir      string
-	SMTPHost       string
-	SMTPPort       string
-	SMTPUser       string
-	SMTPPassword   string
-	MailFrom       string
+	ModeratorUserIDs []int32
+	Port             string
+	FrontendOrigin   string
+	PublicURL        string
+	CookieSecure     bool
+	LogLevel         slog.Level
+	CSRFSecret       string
+	DatabaseURL      string
+	UploadDir        string
+	SMTPHost         string
+	SMTPPort         string
+	SMTPUser         string
+	SMTPPassword     string
+	MailFrom         string
 
 	CourierPrice     int64
 	PickupPointPrice int64
@@ -30,19 +32,20 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:           getEnv("PORT", "8080"),
-		FrontendOrigin: getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
-		PublicURL:      getEnv("PUBLIC_URL", "http://localhost:8080"),
-		CookieSecure:   getEnv("COOKIE_SECURE", "false") == "true",
-		LogLevel:       logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
-		CSRFSecret:     os.Getenv("CSRF_SECRET"),
-		DatabaseURL:    getEnv("DATABASE_URL", "postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable"),
-		UploadDir:      getEnv("UPLOAD_DIR", "uploads"),
-		SMTPHost:       os.Getenv("SMTP_HOST"),
-		SMTPPort:       getEnv("SMTP_PORT", "587"),
-		SMTPUser:       os.Getenv("SMTP_USER"),
-		SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
-		MailFrom:       getEnv("MAIL_FROM", "Go&Get <noreply@goget.pw>"),
+		ModeratorUserIDs: moderatorIDs(os.Getenv("MODERATOR_USER_IDS")),
+		Port:             getEnv("PORT", "8080"),
+		FrontendOrigin:   getEnv("FRONTEND_ORIGIN", "http://localhost:5173"),
+		PublicURL:        getEnv("PUBLIC_URL", "http://localhost:8080"),
+		CookieSecure:     getEnv("COOKIE_SECURE", "false") == "true",
+		LogLevel:         logger.ParseLevel(getEnv("LOG_LEVEL", "info")),
+		CSRFSecret:       os.Getenv("CSRF_SECRET"),
+		DatabaseURL:      getEnv("DATABASE_URL", "postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable"),
+		UploadDir:        getEnv("UPLOAD_DIR", "uploads"),
+		SMTPHost:         os.Getenv("SMTP_HOST"),
+		SMTPPort:         getEnv("SMTP_PORT", "587"),
+		SMTPUser:         os.Getenv("SMTP_USER"),
+		SMTPPassword:     os.Getenv("SMTP_PASSWORD"),
+		MailFrom:         getEnv("MAIL_FROM", "Go&Get <noreply@goget.pw>"),
 
 		CourierPrice:     getPrice("DELIVERY_COURIER_PRICE", 39000),
 		PickupPointPrice: getPrice("DELIVERY_PICKUP_POINT_PRICE", 19000),
@@ -71,4 +74,20 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func moderatorIDs(value string) []int32 {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	var ids []int32
+	for _, part := range strings.Split(value, ",") {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 32)
+		if err != nil || id <= 0 {
+			slog.Error("invalid MODERATOR_USER_IDS, moderator access disabled")
+			return nil
+		}
+		ids = append(ids, int32(id))
+	}
+	return ids
 }
