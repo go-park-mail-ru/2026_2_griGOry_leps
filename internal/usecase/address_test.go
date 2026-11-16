@@ -2,131 +2,34 @@ package usecase
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-var errTwoDefaults = errors.New("two default addresses")
-
-type addressRepoFake struct {
-	lastID int32
-	items  []domain.Address
-	locked []int32
+type addressTestEnv struct {
+	*AddressUsecase
+	repo  *MockAddressRepository
+	users *MockUserLocker
+	tx    *MockTransactor
 }
 
-func (r *addressRepoFake) LockByID(_ context.Context, id int32) error {
-	r.locked = append(r.locked, id)
-	return nil
+func newAddressTestEnv(t *testing.T) *addressTestEnv {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	e := &addressTestEnv{repo: NewMockAddressRepository(ctrl), users: NewMockUserLocker(ctrl), tx: NewMockTransactor(ctrl)}
+	e.AddressUsecase = NewAddressUsecase(e.repo, e.users, e.tx)
+	return e
 }
 
-func (r *addressRepoFake) List(_ context.Context, userID int32) ([]domain.Address, error) {
-	var out []domain.Address
-	for _, a := range r.items {
-		if a.UserID == userID {
-			out = append(out, a)
-		}
-	}
-	return out, nil
-}
-
-func (r *addressRepoFake) Count(ctx context.Context, userID int32) (int, error) {
-	list, _ := r.List(ctx, userID)
-	return len(list), nil
-}
-
-func (r *addressRepoFake) index(userID, id int32) int {
-	for i, a := range r.items {
-		if a.ID == id && a.UserID == userID {
-			return i
-		}
-	}
-	return -1
-}
-
-func (r *addressRepoFake) GetForUpdate(_ context.Context, userID, id int32) (domain.Address, error) {
-	i := r.index(userID, id)
-	if i < 0 {
-		return domain.Address{}, domain.ErrAddressNotFound
-	}
-	return r.items[i], nil
-}
-
-func (r *addressRepoFake) Create(_ context.Context, a domain.Address) (domain.Address, error) {
-	r.lastID++
-	a.ID = r.lastID
-	a.CreatedAt = time.Unix(int64(a.ID), 0)
-	r.items = append(r.items, a)
-	return a, r.checkDefaults(a.UserID)
-}
-
-func (r *addressRepoFake) Update(_ context.Context, a domain.Address) (domain.Address, error) {
-	i := r.index(a.UserID, a.ID)
-	if i < 0 {
-		return domain.Address{}, domain.ErrAddressNotFound
-	}
-	r.items[i] = a
-	return a, r.checkDefaults(a.UserID)
-}
-
-func (r *addressRepoFake) Delete(_ context.Context, userID, id int32) error {
-	i := r.index(userID, id)
-	if i < 0 {
-		return domain.ErrAddressNotFound
-	}
-	r.items = append(r.items[:i], r.items[i+1:]...)
-	return nil
-}
-
-func (r *addressRepoFake) ClearDefault(_ context.Context, userID int32) error {
-	for i := range r.items {
-		if r.items[i].UserID == userID {
-			r.items[i].IsDefault = false
-		}
-	}
-	return nil
-}
-
-func (r *addressRepoFake) PromoteOldest(_ context.Context, userID, exceptID int32) error {
-	for i := range r.items {
-		if r.items[i].UserID == userID && r.items[i].ID != exceptID {
-			r.items[i].IsDefault = true
-			return r.checkDefaults(userID)
-		}
-	}
-	return nil
-}
-
-func (r *addressRepoFake) checkDefaults(userID int32) error {
-	count := 0
-	for _, a := range r.items {
-		if a.UserID == userID && a.IsDefault {
-			count++
-		}
-	}
-	if count > 1 {
-		return errTwoDefaults
-	}
-	return nil
-}
-
-func (r *addressRepoFake) defaultID(userID int32) int32 {
-	for _, a := range r.items {
-		if a.UserID == userID && a.IsDefault {
-			return a.ID
-		}
-	}
-	return 0
-}
-
-func newAddressUsecase() (*AddressUsecase, *addressRepoFake) {
-	repo := &addressRepoFake{}
-	return NewAddressUsecase(repo, repo, txFake{}), repo
+func expectAddressLock(e *addressTestEnv, userID int32) *gomock.Call {
+	expectTransaction(e.tx)
+	return e.users.EXPECT().LockByID(gomock.Any(), userID).Return(nil)
 }
 
 func str(s string) *string { return &s }
@@ -138,103 +41,128 @@ func address(street string, isDefault bool) domain.AddressInput {
 }
 
 func TestAddressUsecase_FirstAddressIsDefault(t *testing.T) {
-	uc, repo := newAddressUsecase()
-
-	a, err := uc.Create(context.Background(), 7, address("  Тверская  ", false))
+	e := newAddressTestEnv(t)
+	lock := expectAddressLock(e, 7)
+	gomock.InOrder(
+		lock,
+		e.repo.EXPECT().Count(gomock.Any(), int32(7)).Return(0, nil),
+		e.repo.EXPECT().ClearDefault(gomock.Any(), int32(7)).Return(nil),
+		e.repo.EXPECT().Create(gomock.Any(), domain.Address{UserID: 7, City: "Москва", Street: "Тверская", House: "д. 1", IsDefault: true}).Return(domain.Address{ID: 1, IsDefault: true}, nil),
+	)
+	a, err := e.Create(context.Background(), 7, address("  Тверская  ", false))
 	require.NoError(t, err)
 	require.True(t, a.IsDefault)
-	require.Equal(t, "Тверская", a.Street)
-	require.Equal(t, []int32{7}, repo.locked)
 }
 
 func TestAddressUsecase_CityAndApartment(t *testing.T) {
-	uc, _ := newAddressUsecase()
-	ctx := context.Background()
-
+	e := newAddressTestEnv(t)
+	a := domain.Address{UserID: 7, City: "Химки", Street: "Тверская", House: "д. 1", Apartment: "12", IsDefault: true}
+	expectAddressLock(e, 7)
+	e.repo.EXPECT().Count(gomock.Any(), int32(7)).Return(0, nil)
+	e.repo.EXPECT().ClearDefault(gomock.Any(), int32(7)).Return(nil)
+	created := a
+	created.ID = 1
+	e.repo.EXPECT().Create(gomock.Any(), a).Return(created, nil)
 	in := address("Тверская", false)
-	in.City, in.Apartment = str("  Химки "), str(" 12 ")
-	a, err := uc.Create(ctx, 7, in)
+	in.City = str("  Химки ")
+	in.Apartment = str(" 12 ")
+	got, err := e.Create(context.Background(), 7, in)
 	require.NoError(t, err)
-	require.Equal(t, "Химки", a.City)
-	require.Equal(t, "12", a.Apartment)
-
-	updated, err := uc.Update(ctx, 7, a.ID, domain.AddressInput{Apartment: str("")})
+	require.Equal(t, created, got)
+	expectAddressLock(e, 7)
+	e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), int32(1)).Return(created, nil)
+	updated := created
+	updated.Apartment = ""
+	e.repo.EXPECT().Update(gomock.Any(), updated).Return(updated, nil)
+	got, err = e.Update(context.Background(), 7, 1, domain.AddressInput{Apartment: str("")})
 	require.NoError(t, err)
-	require.Empty(t, updated.Apartment)
-	require.Equal(t, "Химки", updated.City)
-
-	_, err = uc.Update(ctx, 7, a.ID, domain.AddressInput{City: str(" ")})
+	require.Equal(t, updated, got)
+	_, err = e.Update(context.Background(), 7, 1, domain.AddressInput{City: str(" ")})
 	require.ErrorIs(t, err, domain.ErrMissingCity)
 }
 
 func TestAddressUsecase_CreateDefaultMovesFlag(t *testing.T) {
-	uc, repo := newAddressUsecase()
-	ctx := context.Background()
-
-	first, err := uc.Create(ctx, 7, address("Тверская", true))
-	require.NoError(t, err)
-	second, err := uc.Create(ctx, 7, address("Ленинский", false))
-	require.NoError(t, err)
-	require.False(t, second.IsDefault)
-	require.Equal(t, first.ID, repo.defaultID(7))
-
-	third, err := uc.Create(ctx, 7, address("Арбат", true))
-	require.NoError(t, err)
-	require.Equal(t, third.ID, repo.defaultID(7))
+	for _, makeDefault := range []bool{false, true} {
+		t.Run(fmt.Sprint(makeDefault), func(t *testing.T) {
+			e := newAddressTestEnv(t)
+			lock := expectAddressLock(e, 7)
+			count := e.repo.EXPECT().Count(gomock.Any(), int32(7)).Return(2, nil).After(lock)
+			if makeDefault {
+				count = e.repo.EXPECT().ClearDefault(gomock.Any(), int32(7)).Return(nil).After(count)
+			}
+			a := domain.Address{UserID: 7, City: "Москва", Street: "street", House: "д. 1", IsDefault: makeDefault}
+			e.repo.EXPECT().Create(gomock.Any(), a).Return(a, nil).After(count)
+			got, err := e.Create(context.Background(), 7, address("street", makeDefault))
+			require.NoError(t, err)
+			require.Equal(t, makeDefault, got.IsDefault)
+		})
+	}
 }
 
 func TestAddressUsecase_DeleteDefaultPromotesOldest(t *testing.T) {
-	uc, repo := newAddressUsecase()
-	ctx := context.Background()
-
-	_, _ = uc.Create(ctx, 7, address("Тверская", false))
-	second, _ := uc.Create(ctx, 7, address("Ленинский", false))
-	third, _ := uc.Create(ctx, 7, address("Арбат", true))
-
-	require.NoError(t, uc.Delete(ctx, 7, third.ID))
-	require.Equal(t, int32(1), repo.defaultID(7))
-
-	require.NoError(t, uc.Delete(ctx, 7, 1))
-	require.Equal(t, second.ID, repo.defaultID(7))
-
-	require.NoError(t, uc.Delete(ctx, 7, second.ID))
-	require.Zero(t, repo.defaultID(7))
+	for _, id := range []int32{3, 1, 2} {
+		t.Run(fmt.Sprint(id), func(t *testing.T) {
+			e := newAddressTestEnv(t)
+			lock := expectAddressLock(e, 7)
+			gomock.InOrder(
+				lock,
+				e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), id).Return(domain.Address{ID: id, IsDefault: true}, nil),
+				e.repo.EXPECT().Delete(gomock.Any(), int32(7), id).Return(nil),
+				e.repo.EXPECT().PromoteOldest(gomock.Any(), int32(7), id).Return(nil),
+			)
+			require.NoError(t, e.Delete(context.Background(), 7, id))
+		})
+	}
 }
 
 func TestAddressUsecase_DeleteForeignAddress(t *testing.T) {
-	uc, _ := newAddressUsecase()
-	a, _ := uc.Create(context.Background(), 7, address("Тверская", false))
-
-	require.ErrorIs(t, uc.Delete(context.Background(), 8, a.ID), domain.ErrAddressNotFound)
+	e := newAddressTestEnv(t)
+	expectAddressLock(e, 8)
+	e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(8), int32(1)).Return(domain.Address{}, domain.ErrAddressNotFound)
+	require.ErrorIs(t, e.Delete(context.Background(), 8, 1), domain.ErrAddressNotFound)
 }
 
 func TestAddressUsecase_UpdateDefault(t *testing.T) {
-	uc, repo := newAddressUsecase()
-	ctx := context.Background()
-
-	first, _ := uc.Create(ctx, 7, address("Тверская", false))
-	second, _ := uc.Create(ctx, 7, address("Ленинский", false))
-
-	updated, err := uc.Update(ctx, 7, second.ID, domain.AddressInput{IsDefault: flag(true)})
+	e := newAddressTestEnv(t)
+	a := domain.Address{ID: 2, UserID: 7, Street: "street"}
+	lock := expectAddressLock(e, 7)
+	updated := a
+	updated.IsDefault = true
+	gomock.InOrder(
+		lock,
+		e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), int32(2)).Return(a, nil),
+		e.repo.EXPECT().ClearDefault(gomock.Any(), int32(7)).Return(nil),
+		e.repo.EXPECT().Update(gomock.Any(), updated).Return(updated, nil),
+	)
+	got, err := e.Update(context.Background(), 7, 2, domain.AddressInput{IsDefault: flag(true)})
 	require.NoError(t, err)
-	require.True(t, updated.IsDefault)
-	require.Equal(t, "Ленинский", updated.Street)
-	require.Equal(t, second.ID, repo.defaultID(7))
-
-	updated, err = uc.Update(ctx, 7, second.ID, domain.AddressInput{IsDefault: flag(false), Comment: str(" Домофон 34 ")})
+	require.Equal(t, updated, got)
+	lock = expectAddressLock(e, 7)
+	a = updated
+	updated.IsDefault = false
+	updated.Comment = "intercom 34"
+	gomock.InOrder(
+		lock,
+		e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), int32(2)).Return(a, nil),
+		e.repo.EXPECT().Count(gomock.Any(), int32(7)).Return(2, nil),
+		e.repo.EXPECT().Update(gomock.Any(), updated).Return(updated, nil),
+		e.repo.EXPECT().PromoteOldest(gomock.Any(), int32(7), int32(2)).Return(nil),
+	)
+	got, err = e.Update(context.Background(), 7, 2, domain.AddressInput{IsDefault: flag(false), Comment: str(" intercom 34 ")})
 	require.NoError(t, err)
-	require.False(t, updated.IsDefault)
-	require.Equal(t, "Домофон 34", updated.Comment)
-	require.Equal(t, first.ID, repo.defaultID(7))
+	require.Equal(t, updated, got)
 }
 
 func TestAddressUsecase_OnlyAddressStaysDefault(t *testing.T) {
-	uc, _ := newAddressUsecase()
-	a, _ := uc.Create(context.Background(), 7, address("Тверская", false))
-
-	updated, err := uc.Update(context.Background(), 7, a.ID, domain.AddressInput{IsDefault: flag(false)})
+	e := newAddressTestEnv(t)
+	expectAddressLock(e, 7)
+	a := domain.Address{ID: 1, UserID: 7, IsDefault: true}
+	e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), int32(1)).Return(a, nil)
+	e.repo.EXPECT().Count(gomock.Any(), int32(7)).Return(1, nil)
+	e.repo.EXPECT().Update(gomock.Any(), a).Return(a, nil)
+	got, err := e.Update(context.Background(), 7, 1, domain.AddressInput{IsDefault: flag(false)})
 	require.NoError(t, err)
-	require.True(t, updated.IsDefault)
+	require.True(t, got.IsDefault)
 }
 
 func TestAddressUsecase_Validation(t *testing.T) {
@@ -261,21 +189,19 @@ func TestAddressUsecase_Validation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc, repo := newAddressUsecase()
+			uc := newAddressTestEnv(t)
 			_, err := uc.Create(context.Background(), 7, tt.in)
 			require.ErrorIs(t, err, tt.want)
-			require.Empty(t, repo.items)
 		})
 	}
 }
 
 func TestAddressUsecase_UpdateValidatesOnlyPassedFields(t *testing.T) {
-	uc, _ := newAddressUsecase()
-	a, _ := uc.Create(context.Background(), 7, address("Тверская", false))
-
-	_, err := uc.Update(context.Background(), 7, a.ID, domain.AddressInput{House: str(" ")})
+	e := newAddressTestEnv(t)
+	_, err := e.Update(context.Background(), 7, 1, domain.AddressInput{House: str(" ")})
 	require.ErrorIs(t, err, domain.ErrMissingHouse)
-
-	_, err = uc.Update(context.Background(), 7, a.ID+1, domain.AddressInput{})
+	expectAddressLock(e, 7)
+	e.repo.EXPECT().GetForUpdate(gomock.Any(), int32(7), int32(2)).Return(domain.Address{}, domain.ErrAddressNotFound)
+	_, err = e.Update(context.Background(), 7, 2, domain.AddressInput{})
 	require.ErrorIs(t, err, domain.ErrAddressNotFound)
 }

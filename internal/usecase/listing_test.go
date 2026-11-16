@@ -3,265 +3,73 @@ package usecase
 import (
 	"context"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
-
-type photoFake struct {
-	userID    int32
-	listingID int32
-	url       string
-	createdAt time.Time
-}
-
-type listingRepoFake struct {
-	mu     sync.Mutex
-	lastID int32
-	states map[int32]domain.ListingState
-	photos map[int32]*photoFake
-	leaves map[int32]bool
-	closed map[int32]string
-
-	noDelivery map[int32]bool
-
-	categories []domain.Category
-	orders     map[int32]int32
-}
-
-func newListingRepoFake() *listingRepoFake {
-	return &listingRepoFake{
-		states: make(map[int32]domain.ListingState),
-		photos: make(map[int32]*photoFake),
-		leaves: map[int32]bool{12: true, 13: true},
-		closed: make(map[int32]string),
-
-		noDelivery: map[int32]bool{13: true},
-	}
-}
-
-func (r *listingRepoFake) Get(_ context.Context, id, _ int32) (domain.Listing, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	s, ok := r.states[id]
-	if !ok {
-		return domain.Listing{}, domain.ErrListingNotFound
-	}
-	l := domain.Listing{
-		ID: id, Title: s.Title, Description: s.Description, Price: s.Price, IsFree: s.IsFree,
-		Condition: s.Condition, Address: s.Address, Status: s.Status, Seller: domain.Seller{ID: s.UserID},
-	}
-	if reason, ok := r.closed[id]; ok {
-		l.CloseReason = &reason
-	}
-	for _, photoID := range s.PhotoIDs {
-		l.Photos = append(l.Photos, domain.ListingPhoto{ID: photoID, URL: r.photos[photoID].url})
-	}
-	return l, nil
-}
-
-func (r *listingRepoFake) GetStateForUpdate(_ context.Context, id int32) (domain.ListingState, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	s, ok := r.states[id]
-	if !ok {
-		return domain.ListingState{}, domain.ErrListingNotFound
-	}
-	return s, nil
-}
-
-func (r *listingRepoFake) Create(_ context.Context, s domain.ListingState) (int32, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.lastID++
-	s.PhotoIDs = nil
-	r.states[r.lastID] = s
-	return r.lastID, nil
-}
-
-func (r *listingRepoFake) Update(_ context.Context, id int32, s domain.ListingState) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	s.PhotoIDs = r.states[id].PhotoIDs
-	r.states[id] = s
-	return nil
-}
-
-func (r *listingRepoFake) SetPhotos(_ context.Context, userID, listingID int32, ids []int32) ([]string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	keep := make(map[int32]bool, len(ids))
-	for _, id := range ids {
-		p, ok := r.photos[id]
-		if !ok || p.userID != userID || (p.listingID != 0 && p.listingID != listingID) {
-			return nil, domain.ErrInvalidPhotoID
-		}
-		keep[id] = true
-	}
-
-	var removed []string
-	for id, p := range r.photos {
-		if p.listingID == listingID && !keep[id] {
-			removed = append(removed, p.url)
-			delete(r.photos, id)
-		}
-	}
-	for _, id := range ids {
-		r.photos[id].listingID = listingID
-	}
-	s := r.states[listingID]
-	s.PhotoIDs = append([]int32(nil), ids...)
-	r.states[listingID] = s
-	return removed, nil
-}
-
-func (r *listingRepoFake) Delete(_ context.Context, id int32) ([]string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var urls []string
-	for photoID, p := range r.photos {
-		if p.listingID == id {
-			urls = append(urls, p.url)
-			delete(r.photos, photoID)
-		}
-	}
-	delete(r.states, id)
-	return urls, nil
-}
-
-func (r *listingRepoFake) Close(_ context.Context, id int32, reason string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	s := r.states[id]
-	s.Status = domain.AdStatusClosed
-	r.states[id] = s
-	r.closed[id] = reason
-	return nil
-}
-
-func (r *listingRepoFake) IsLeafCategory(_ context.Context, id int32) (bool, error) {
-	return r.leaves[id], nil
-}
-
-func (r *listingRepoFake) ActiveOrder(_ context.Context, listingID int32) (int32, bool, error) {
-	id, ok := r.orders[listingID]
-	return id, ok, nil
-}
-
-func (r *listingRepoFake) CategoryAllowsDelivery(_ context.Context, id int32) (bool, error) {
-	return !r.noDelivery[id], nil
-}
-
-func (r *listingRepoFake) ListCategories(context.Context) ([]domain.Category, error) {
-	return r.categories, nil
-}
-
-func (r *listingRepoFake) CreatePhoto(_ context.Context, userID int32, url string) (int32, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	id := int32(500 + len(r.photos) + 1)
-	r.photos[id] = &photoFake{userID: userID, url: url, createdAt: time.Now()}
-	return id, nil
-}
-
-func (r *listingRepoFake) ApproveModeration(_ context.Context) (int64, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var n int64
-	for id, s := range r.states {
-		if s.Status == domain.AdStatusModeration {
-			s.Status = domain.AdStatusActive
-			r.states[id] = s
-			n++
-		}
-	}
-	return n, nil
-}
-
-func (r *listingRepoFake) DeleteStalePhotos(_ context.Context, before time.Time) ([]string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var urls []string
-	for id, p := range r.photos {
-		if p.listingID == 0 && p.createdAt.Before(before) {
-			urls = append(urls, p.url)
-			delete(r.photos, id)
-		}
-	}
-	return urls, nil
-}
 
 const (
 	authorID int32 = 1
 	otherID  int32 = 2
 )
 
-type listingEnv struct {
+type listingTestEnv struct {
 	uc      *ListingUsecase
-	repo    *listingRepoFake
-	storage *storageFake
+	repo    *MockListingRepository
+	storage *MockFileStorage
+	tx      *MockTransactor
 }
 
-func newListingEnv() listingEnv {
-	repo := newListingRepoFake()
-	storage := newStorageFake()
-	return listingEnv{uc: NewListingUsecase(repo, storage, txFake{}), repo: repo, storage: storage}
-}
-
-func (e listingEnv) photo(t *testing.T, userID int32) int32 {
+func newListingTestEnv(t *testing.T) *listingTestEnv {
 	t.Helper()
-	p, err := e.uc.UploadPhoto(context.Background(), userID, pngBytes(t))
-	require.NoError(t, err)
-	return p.ID
+	c := gomock.NewController(t)
+	e := &listingTestEnv{repo: NewMockListingRepository(c), storage: NewMockFileStorage(c), tx: NewMockTransactor(c)}
+	e.uc = NewListingUsecase(e.repo, e.storage, e.tx)
+	return e
 }
 
 func set[T any](v T) domain.Optional[T] { return domain.Optional[T]{Set: true, Value: v} }
-
-func null[T any]() domain.Optional[T] { return domain.Optional[T]{Set: true, Null: true} }
-
-func (e listingEnv) fullFields(t *testing.T) domain.ListingFields {
-	return domain.ListingFields{
-		CategoryID: set(int32(12)),
-		Title:      ptr("  Велосипед  "),
-		PhotoIDs:   &[]int32{e.photo(t, authorID), e.photo(t, authorID)},
-		Price:      set("15000.5"),
-		Condition:  set("used_good"),
-		Address:    set("Москва, м. Сокол"),
-	}
+func null[T any]() domain.Optional[T]   { return domain.Optional[T]{Set: true, Null: true} }
+func listingFields() domain.ListingFields {
+	return domain.ListingFields{CategoryID: set(int32(12)), Title: ptr("  Bike  "), PhotoIDs: &[]int32{1, 2}, Price: set("15000.5"), Condition: set("used_good"), Address: set("Moscow")}
 }
 
-func (e listingEnv) active(t *testing.T) domain.Listing {
-	t.Helper()
-	l, err := e.uc.Create(context.Background(), authorID, e.fullFields(t), true)
-	require.NoError(t, err)
-	require.NoError(t, e.uc.RunMaintenance(context.Background(), time.Now()))
-	return l
+func listingState(status string) domain.ListingState {
+	return domain.ListingState{UserID: authorID, Status: status, CategoryID: ptr(int32(12)), Title: "Bike", PhotoIDs: []int32{1, 2}, Price: ptr(int64(1500050)), Condition: ptr("used_good"), Address: ptr("Moscow")}
+}
+
+func expectListingState(e *listingTestEnv, state domain.ListingState) {
+	expectTransaction(e.tx)
+	e.repo.EXPECT().GetStateForUpdate(gomock.Any(), int32(7)).Return(state, nil)
+}
+
+func expectListingGet(e *listingTestEnv, l domain.Listing) {
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), authorID).Return(l, nil)
+}
+
+func expectListingCreate(e *listingTestEnv, state domain.ListingState, photos bool, result domain.Listing) {
+	expectTransaction(e.tx)
+	create := e.repo.EXPECT().Create(gomock.Any(), state).Return(int32(7), nil)
+	if photos {
+		e.repo.EXPECT().SetPhotos(gomock.Any(), authorID, int32(7), state.PhotoIDs).Return(nil, nil).After(create)
+	}
+	expectListingGet(e, result)
 }
 
 func TestListing_CreatePublishGoesToModeration(t *testing.T) {
-	e := newListingEnv()
-
-	l, err := e.uc.Create(context.Background(), authorID, e.fullFields(t), true)
+	e := newListingTestEnv(t)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(12)).Return(true, nil)
+	s := listingState(domain.AdStatusModeration)
+	want := domain.Listing{ID: 7, Title: s.Title, Price: s.Price, Status: s.Status, Seller: domain.Seller{ID: authorID}, Photos: []domain.ListingPhoto{{ID: 1}, {ID: 2}}}
+	expectListingCreate(e, s, true, want)
+	l, err := e.uc.Create(context.Background(), authorID, listingFields(), true)
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusModeration, l.Status)
-	require.Equal(t, "Велосипед", l.Title)
-	require.Equal(t, int64(1500050), *l.Price)
-	require.Len(t, l.Photos, 2)
-	require.True(t, l.IsOwner)
+	want.IsOwner = true
+	require.Equal(t, want, l)
 }
 
 func TestListing_CreatePublishChecksAllRules(t *testing.T) {
@@ -285,9 +93,19 @@ func TestListing_CreatePublishChecksAllRules(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			e := newListingEnv()
-			f := e.fullFields(t)
+			e := newListingTestEnv(t)
+			f := listingFields()
 			tc.change(&f)
+			if f.CategoryID.Set {
+				e.repo.EXPECT().IsLeafCategory(gomock.Any(), f.CategoryID.Value).Return(f.CategoryID.Value == 12, nil)
+			}
+			if tc.name == "чужое фото" {
+				expectTransaction(e.tx)
+				state := listingState(domain.AdStatusModeration)
+				state.PhotoIDs = *f.PhotoIDs
+				e.repo.EXPECT().Create(gomock.Any(), state).Return(int32(7), nil)
+				e.repo.EXPECT().SetPhotos(gomock.Any(), authorID, int32(7), *f.PhotoIDs).Return(nil, domain.ErrInvalidPhotoID)
+			}
 
 			_, err := e.uc.Create(context.Background(), authorID, f, true)
 			require.ErrorIs(t, err, tc.err)
@@ -296,20 +114,25 @@ func TestListing_CreatePublishChecksAllRules(t *testing.T) {
 }
 
 func TestListing_FreeListingNeedsNoPrice(t *testing.T) {
-	e := newListingEnv()
-	f := e.fullFields(t)
+	e := newListingTestEnv(t)
+	f := listingFields()
 	f.Price = domain.Optional[string]{}
 	f.IsFree = ptr(true)
-
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(12)).Return(true, nil)
+	state := listingState(domain.AdStatusModeration)
+	state.IsFree = true
+	state.Price = ptr(int64(0))
+	expectListingCreate(e, state, true, domain.Listing{Price: state.Price, Seller: domain.Seller{ID: authorID}})
 	l, err := e.uc.Create(context.Background(), authorID, f, true)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), *l.Price)
 }
 
 func TestListing_DraftKeepsOnlyPassedFields(t *testing.T) {
-	e := newListingEnv()
-
-	l, err := e.uc.Create(context.Background(), authorID, domain.ListingFields{Title: ptr("Диван")}, false)
+	e := newListingTestEnv(t)
+	state := domain.ListingState{UserID: authorID, Status: domain.AdStatusDraft, Title: "Sofa"}
+	expectListingCreate(e, state, false, domain.Listing{Status: state.Status, Title: state.Title, Seller: domain.Seller{ID: authorID}})
+	l, err := e.uc.Create(context.Background(), authorID, domain.ListingFields{Title: ptr("Sofa")}, false)
 	require.NoError(t, err)
 	require.Equal(t, domain.AdStatusDraft, l.Status)
 	require.Nil(t, l.Price)
@@ -317,225 +140,240 @@ func TestListing_DraftKeepsOnlyPassedFields(t *testing.T) {
 }
 
 func TestListing_GetHidesDraftsAndCloseReasonFromOthers(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-
-	draft, err := e.uc.Create(ctx, authorID, domain.ListingFields{Title: ptr("Диван")}, false)
-	require.NoError(t, err)
-	_, err = e.uc.Get(ctx, draft.ID, otherID)
-	require.ErrorIs(t, err, domain.ErrListingNotFound)
-	_, err = e.uc.Get(ctx, draft.ID, 0)
-	require.ErrorIs(t, err, domain.ErrListingNotFound)
-
-	l := e.active(t)
-	_, err = e.uc.Close(ctx, authorID, l.ID, "sold_elsewhere")
-	require.NoError(t, err)
-
-	forOther, err := e.uc.Get(ctx, l.ID, otherID)
-	require.NoError(t, err)
-	require.False(t, forOther.IsOwner)
-	require.Nil(t, forOther.CloseReason)
-
-	forAuthor, err := e.uc.Get(ctx, l.ID, authorID)
-	require.NoError(t, err)
-	require.True(t, forAuthor.IsOwner)
-	require.Equal(t, "sold_elsewhere", *forAuthor.CloseReason)
+	e := newListingTestEnv(t)
+	for _, viewer := range []int32{otherID, 0} {
+		e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{Status: domain.AdStatusDraft, Seller: domain.Seller{ID: authorID}}, nil)
+		_, err := e.uc.Get(context.Background(), 7, viewer)
+		require.ErrorIs(t, err, domain.ErrListingNotFound)
+	}
+	for _, viewer := range []int32{otherID, authorID} {
+		e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{Status: domain.AdStatusClosed, Seller: domain.Seller{ID: authorID}, CloseReason: ptr("sold_elsewhere")}, nil)
+		l, err := e.uc.Get(context.Background(), 7, viewer)
+		require.NoError(t, err)
+		require.Equal(t, viewer == authorID, l.IsOwner)
+		if viewer == authorID {
+			require.Equal(t, "sold_elsewhere", *l.CloseReason)
+		} else {
+			require.Nil(t, l.CloseReason)
+		}
+	}
 }
 
 func TestListing_OnlyAuthorCanChange(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-	l := e.active(t)
-
-	_, err := e.uc.Update(ctx, otherID, l.ID, domain.ListingFields{Title: ptr("Моё")}, nil)
+	e := newListingTestEnv(t)
+	state := listingState(domain.AdStatusActive)
+	expectListingState(e, state)
+	_, err := e.uc.Update(context.Background(), otherID, 7, domain.ListingFields{Title: ptr("Mine")}, nil)
 	require.ErrorIs(t, err, domain.ErrForbidden)
-	_, err = e.uc.Close(ctx, otherID, l.ID, "other")
+	expectListingState(e, state)
+	_, err = e.uc.Close(context.Background(), otherID, 7, "other")
 	require.ErrorIs(t, err, domain.ErrForbidden)
-	require.ErrorIs(t, e.uc.Delete(ctx, otherID, l.ID), domain.ErrForbidden)
-
-	_, err = e.uc.Update(ctx, authorID, 404, domain.ListingFields{}, nil)
+	expectListingState(e, state)
+	require.ErrorIs(t, e.uc.Delete(context.Background(), otherID, 7), domain.ErrForbidden)
+	expectTransaction(e.tx)
+	e.repo.EXPECT().GetStateForUpdate(gomock.Any(), int32(404)).Return(domain.ListingState{}, domain.ErrListingNotFound)
+	_, err = e.uc.Update(context.Background(), authorID, 404, domain.ListingFields{}, nil)
 	require.ErrorIs(t, err, domain.ErrListingNotFound)
 }
 
 func TestListing_UpdateActiveCannotClearRequired(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-	l := e.active(t)
-
-	_, err := e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{Address: null[string]()}, nil)
+	e := newListingTestEnv(t)
+	s := listingState(domain.AdStatusActive)
+	expectListingState(e, s)
+	_, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Address: null[string]()}, nil)
 	require.ErrorIs(t, err, domain.ErrAddressRequired)
-	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
+	expectListingState(e, s)
+	_, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
 	require.ErrorIs(t, err, domain.ErrPhotosRequired)
-	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{}, ptr(true))
+	expectListingState(e, s)
+	_, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{}, ptr(true))
 	require.ErrorIs(t, err, domain.ErrListingNotDraft)
-
-	updated, err := e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{Description: ptr("")}, nil)
+	expectListingState(e, s)
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), s).Return(nil)
+	expectListingGet(e, domain.Listing{Status: s.Status, Seller: domain.Seller{ID: authorID}})
+	l, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Description: ptr("")}, nil)
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusActive, updated.Status)
-	require.Empty(t, updated.Description)
+	require.Equal(t, s.Status, l.Status)
+	require.Empty(t, l.Description)
 }
 
 func TestListing_UpdateDraftClearsAndPublishes(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-
-	draft, err := e.uc.Create(ctx, authorID, e.fullFields(t), false)
+	e := newListingTestEnv(t)
+	s := listingState(domain.AdStatusDraft)
+	expectListingState(e, s)
+	cleared := s
+	cleared.Address = nil
+	cleared.PhotoIDs = []int32{}
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), cleared).Return(nil)
+	e.repo.EXPECT().SetPhotos(gomock.Any(), authorID, int32(7), []int32{}).Return([]string{ListingPhotoURLPrefix + "a.png"}, nil)
+	e.storage.EXPECT().Delete(gomock.Any(), "a.png").Return(nil)
+	expectListingGet(e, domain.Listing{Status: s.Status, Title: s.Title, Seller: domain.Seller{ID: authorID}})
+	l, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Address: null[string](), PhotoIDs: &[]int32{}}, nil)
 	require.NoError(t, err)
-
-	cleared, err := e.uc.Update(ctx, authorID, draft.ID, domain.ListingFields{Address: null[string](), PhotoIDs: &[]int32{}}, nil)
-	require.NoError(t, err)
-	require.Nil(t, cleared.Address)
-	require.Empty(t, cleared.Photos)
-	require.Len(t, e.storage.files, 0)
-
-	_, err = e.uc.Update(ctx, authorID, draft.ID, domain.ListingFields{Title: ptr("Новое")}, ptr(true))
+	require.Nil(t, l.Address)
+	require.Empty(t, l.Photos)
+	expectListingState(e, cleared)
+	_, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Title: ptr("New")}, ptr(true))
 	require.ErrorIs(t, err, domain.ErrPhotosRequired)
-	unchanged, err := e.uc.Get(ctx, draft.ID, authorID)
+	expectListingState(e, cleared)
+	published := cleared
+	published.Address = ptr("Khimki")
+	published.PhotoIDs = []int32{3}
+	published.Status = domain.AdStatusModeration
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), published).Return(nil)
+	e.repo.EXPECT().SetPhotos(gomock.Any(), authorID, int32(7), []int32{3}).Return(nil, nil)
+	expectListingGet(e, domain.Listing{Status: published.Status, Seller: domain.Seller{ID: authorID}})
+	l, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Address: set("Khimki"), PhotoIDs: &[]int32{3}}, ptr(true))
 	require.NoError(t, err)
-	require.Equal(t, "Велосипед", unchanged.Title)
-
-	published, err := e.uc.Update(ctx, authorID, draft.ID, domain.ListingFields{
-		PhotoIDs: &[]int32{e.photo(t, authorID)},
-		Address:  set("Химки"),
-	}, ptr(true))
-	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusModeration, published.Status)
+	require.Equal(t, domain.AdStatusModeration, l.Status)
 }
 
 func TestListing_UpdateSoldIsConflict(t *testing.T) {
-	e := newListingEnv()
-	l := e.active(t)
-	s := e.repo.states[l.ID]
-	s.Status = domain.AdStatusSold
-	e.repo.states[l.ID] = s
-
-	_, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{Title: ptr("Ещё")}, nil)
+	e := newListingTestEnv(t)
+	expectListingState(e, listingState(domain.AdStatusSold))
+	_, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Title: ptr("More")}, nil)
 	require.ErrorIs(t, err, domain.ErrListingSold)
 }
 
 func TestListing_ReplacingPhotosDeletesFiles(t *testing.T) {
-	e := newListingEnv()
-	l := e.active(t)
-	keep := l.Photos[1].ID
-
-	updated, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{PhotoIDs: &[]int32{keep}}, nil)
+	e := newListingTestEnv(t)
+	s := listingState(domain.AdStatusActive)
+	expectListingState(e, s)
+	s.PhotoIDs = []int32{2}
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), s).Return(nil)
+	e.repo.EXPECT().SetPhotos(gomock.Any(), authorID, int32(7), []int32{2}).Return([]string{ListingPhotoURLPrefix + "old.png"}, nil)
+	e.storage.EXPECT().Delete(gomock.Any(), "old.png").Return(nil)
+	expectListingGet(e, domain.Listing{Photos: []domain.ListingPhoto{{ID: 2}}, Seller: domain.Seller{ID: authorID}})
+	l, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{PhotoIDs: &[]int32{2}}, nil)
 	require.NoError(t, err)
-	require.Len(t, updated.Photos, 1)
-	require.Len(t, e.storage.files, 1)
+	require.Len(t, l.Photos, 1)
+}
+
+func expectListingClose(e *listingTestEnv, status string) {
+	expectListingState(e, listingState(status))
+	e.repo.EXPECT().ActiveOrder(gomock.Any(), int32(7)).Return(int32(0), false, nil)
+	e.repo.EXPECT().Close(gomock.Any(), int32(7), "changed_mind").Return(nil)
+	expectListingGet(e, domain.Listing{Status: domain.AdStatusClosed, Seller: domain.Seller{ID: authorID}})
 }
 
 func TestListing_CloseOnlyActiveOrModeration(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-
-	_, err := e.uc.Close(ctx, authorID, 1, "lost")
+	e := newListingTestEnv(t)
+	_, err := e.uc.Close(context.Background(), authorID, 7, "lost")
 	require.ErrorIs(t, err, domain.ErrInvalidCloseReason)
-
-	draft, err := e.uc.Create(ctx, authorID, domain.ListingFields{Title: ptr("Диван")}, false)
-	require.NoError(t, err)
-	_, err = e.uc.Close(ctx, authorID, draft.ID, "other")
+	expectListingState(e, listingState(domain.AdStatusDraft))
+	_, err = e.uc.Close(context.Background(), authorID, 7, "other")
 	require.ErrorIs(t, err, domain.ErrListingNotActive)
-
-	l := e.active(t)
-	closed, err := e.uc.Close(ctx, authorID, l.ID, "changed_mind")
+	expectListingClose(e, domain.AdStatusActive)
+	l, err := e.uc.Close(context.Background(), authorID, 7, "changed_mind")
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusClosed, closed.Status)
-
-	_, err = e.uc.Close(ctx, authorID, l.ID, "other")
+	require.Equal(t, domain.AdStatusClosed, l.Status)
+	expectListingState(e, listingState(domain.AdStatusClosed))
+	_, err = e.uc.Close(context.Background(), authorID, 7, "other")
 	require.ErrorIs(t, err, domain.ErrListingNotActive)
 }
 
 func TestListing_UnpaidOrderBlocksCloseAndDelete(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-	l := e.active(t)
-	e.repo.orders = map[int32]int32{l.ID: 7}
-
+	e := newListingTestEnv(t)
+	expectListingState(e, listingState(domain.AdStatusActive))
+	e.repo.EXPECT().ActiveOrder(gomock.Any(), int32(7)).Return(int32(7), true, nil)
+	_, err := e.uc.Close(context.Background(), authorID, 7, "other")
 	var orderErr *domain.ListingOrderError
-	_, err := e.uc.Close(ctx, authorID, l.ID, "other")
 	require.ErrorAs(t, err, &orderErr)
 	require.Equal(t, int32(10007), orderErr.OrderNumber)
-	require.ErrorAs(t, e.uc.Delete(ctx, authorID, l.ID), &orderErr)
-
-	delete(e.repo.orders, l.ID)
-	require.NoError(t, e.uc.Delete(ctx, authorID, l.ID))
+	expectListingState(e, listingState(domain.AdStatusActive))
+	e.repo.EXPECT().ActiveOrder(gomock.Any(), int32(7)).Return(int32(7), true, nil)
+	require.ErrorAs(t, e.uc.Delete(context.Background(), authorID, 7), &orderErr)
+	expectListingState(e, listingState(domain.AdStatusActive))
+	e.repo.EXPECT().ActiveOrder(gomock.Any(), int32(7)).Return(int32(0), false, nil)
+	e.repo.EXPECT().Delete(gomock.Any(), int32(7)).Return(nil, nil)
+	require.NoError(t, e.uc.Delete(context.Background(), authorID, 7))
 }
 
 func TestListing_DeliveryOnlyWhereCategoryAllows(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-
-	_, err := e.uc.Create(ctx, authorID, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(true)}, false)
+	e := newListingTestEnv(t)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(13)).Return(true, nil)
+	e.repo.EXPECT().CategoryAllowsDelivery(gomock.Any(), int32(13)).Return(false, nil)
+	_, err := e.uc.Create(context.Background(), authorID, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(true)}, false)
 	require.ErrorIs(t, err, domain.ErrDeliveryNotAllowed)
-
-	l, err := e.uc.Create(ctx, authorID, domain.ListingFields{CategoryID: set(int32(12)), HasDelivery: ptr(true)}, false)
+	s := domain.ListingState{UserID: authorID, Status: domain.AdStatusDraft, CategoryID: ptr(int32(12)), HasDelivery: true}
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(12)).Return(true, nil)
+	e.repo.EXPECT().CategoryAllowsDelivery(gomock.Any(), int32(12)).Return(true, nil)
+	expectListingCreate(e, s, false, domain.Listing{ID: 7, Seller: domain.Seller{ID: authorID}})
+	_, err = e.uc.Create(context.Background(), authorID, domain.ListingFields{CategoryID: set(int32(12)), HasDelivery: ptr(true)}, false)
 	require.NoError(t, err)
-
-	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{CategoryID: set(int32(13))}, nil)
+	expectListingState(e, s)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(13)).Return(true, nil)
+	e.repo.EXPECT().CategoryAllowsDelivery(gomock.Any(), int32(13)).Return(false, nil)
+	_, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{CategoryID: set(int32(13))}, nil)
 	require.ErrorIs(t, err, domain.ErrDeliveryNotAllowed)
-
-	_, err = e.uc.Update(ctx, authorID, l.ID, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(false)}, nil)
+	expectListingState(e, s)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(13)).Return(true, nil)
+	s.CategoryID = ptr(int32(13))
+	s.HasDelivery = false
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), s).Return(nil)
+	expectListingGet(e, domain.Listing{Seller: domain.Seller{ID: authorID}})
+	_, err = e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{CategoryID: set(int32(13)), HasDelivery: ptr(false)}, nil)
 	require.NoError(t, err)
 }
 
 func TestListing_CloseOnModeration(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-
-	l, err := e.uc.Create(ctx, authorID, e.fullFields(t), true)
+	e := newListingTestEnv(t)
+	expectListingClose(e, domain.AdStatusModeration)
+	l, err := e.uc.Close(context.Background(), authorID, 7, "changed_mind")
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusModeration, l.Status)
-
-	closed, err := e.uc.Close(ctx, authorID, l.ID, "changed_mind")
-	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusClosed, closed.Status)
-
-	require.NoError(t, e.uc.RunMaintenance(ctx, time.Now()))
-	got, err := e.uc.Get(ctx, l.ID, authorID)
-	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusClosed, got.Status)
+	require.Equal(t, domain.AdStatusClosed, l.Status)
 }
 
 func TestListing_DeleteRemovesPhotos(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-	l := e.active(t)
-
-	require.NoError(t, e.uc.Delete(ctx, authorID, l.ID))
-	require.Empty(t, e.storage.files)
-	_, err := e.uc.Get(ctx, l.ID, authorID)
+	e := newListingTestEnv(t)
+	expectListingState(e, listingState(domain.AdStatusActive))
+	e.repo.EXPECT().ActiveOrder(gomock.Any(), int32(7)).Return(int32(0), false, nil)
+	e.repo.EXPECT().Delete(gomock.Any(), int32(7)).Return([]string{ListingPhotoURLPrefix + "a.png", ListingPhotoURLPrefix + "b.png"}, nil)
+	e.storage.EXPECT().Delete(gomock.Any(), "a.png").Return(nil)
+	e.storage.EXPECT().Delete(gomock.Any(), "b.png").Return(nil)
+	require.NoError(t, e.uc.Delete(context.Background(), authorID, 7))
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), authorID).Return(domain.Listing{}, domain.ErrListingNotFound)
+	_, err := e.uc.Get(context.Background(), 7, authorID)
 	require.ErrorIs(t, err, domain.ErrListingNotFound)
 }
 
 func TestListing_UploadPhotoRejectsNonImage(t *testing.T) {
-	e := newListingEnv()
-
+	e := newListingTestEnv(t)
 	_, err := e.uc.UploadPhoto(context.Background(), authorID, []byte("not an image"))
 	require.ErrorIs(t, err, domain.ErrUnsupportedImage)
-	require.Empty(t, e.storage.files)
 }
 
 func TestListing_MaintenanceDeletesStalePhotos(t *testing.T) {
-	e := newListingEnv()
-	e.photo(t, authorID)
-
-	require.NoError(t, e.uc.RunMaintenance(context.Background(), time.Now()))
-	require.Len(t, e.storage.files, 1)
-
-	require.NoError(t, e.uc.RunMaintenance(context.Background(), time.Now().Add(25*time.Hour)))
-	require.Empty(t, e.storage.files)
+	e := newListingTestEnv(t)
+	data := pngBytes(t)
+	var saved string
+	e.storage.EXPECT().Save(gomock.Any(), gomock.Any(), data).DoAndReturn(func(_ context.Context, name string, _ []byte) error { saved = name; return nil })
+	e.repo.EXPECT().CreatePhoto(gomock.Any(), authorID, gomock.Cond(func(url string) bool { return url == ListingPhotoURLPrefix+saved })).Return(int32(3), nil)
+	photo, err := e.uc.UploadPhoto(context.Background(), authorID, data)
+	require.NoError(t, err)
+	require.Equal(t, int32(3), photo.ID)
+	now := time.Now()
+	e.repo.EXPECT().ApproveModeration(gomock.Any()).Return(int64(1), nil)
+	e.repo.EXPECT().DeleteStalePhotos(gomock.Any(), now.Add(-stalePhotoAge)).Return(nil, nil)
+	require.NoError(t, e.uc.RunMaintenance(context.Background(), now))
+	later := now.Add(25 * time.Hour)
+	e.repo.EXPECT().ApproveModeration(gomock.Any()).Return(int64(0), nil)
+	e.repo.EXPECT().DeleteStalePhotos(gomock.Any(), later.Add(-stalePhotoAge)).Return([]string{photo.URL}, nil)
+	e.storage.EXPECT().Delete(gomock.Any(), saved).Return(nil)
+	require.NoError(t, e.uc.RunMaintenance(context.Background(), later))
 }
 
 func TestListing_CategoriesBuildsTree(t *testing.T) {
-	e := newListingEnv()
+	e := newListingTestEnv(t)
 	parent := int32(1)
 	missing := int32(99)
-	e.repo.categories = []domain.Category{
+	categories := []domain.Category{
 		{ID: 1, Name: "Спорт", Slug: "sport", DeliveryAllowed: true},
 		{ID: 2, ParentID: &parent, Name: "Велосипеды", Slug: "bikes"},
 		{ID: 3, ParentID: &missing, Name: "Сироты", Slug: "orphans"},
 	}
 
+	e.repo.EXPECT().ListCategories(gomock.Any()).Return(categories, nil)
 	tree, err := e.uc.Categories(context.Background())
 	require.NoError(t, err)
 	require.Len(t, tree, 2)
@@ -549,33 +387,31 @@ func TestListing_CategoriesBuildsTree(t *testing.T) {
 }
 
 func TestListing_GetHidesRejectedFromOthers(t *testing.T) {
-	e := newListingEnv()
-	ctx := context.Background()
-	l := e.active(t)
-	s := e.repo.states[l.ID]
-	s.Status = domain.AdStatusRejected
-	e.repo.states[l.ID] = s
-
-	_, err := e.uc.Get(ctx, l.ID, otherID)
+	e := newListingTestEnv(t)
+	l := domain.Listing{Status: domain.AdStatusRejected, Seller: domain.Seller{ID: authorID}}
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), otherID).Return(l, nil)
+	_, err := e.uc.Get(context.Background(), 7, otherID)
 	require.ErrorIs(t, err, domain.ErrListingNotFound)
-
-	own, err := e.uc.Get(ctx, l.ID, authorID)
+	expectListingGet(e, l)
+	own, err := e.uc.Get(context.Background(), 7, authorID)
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusRejected, own.Status)
+	require.Equal(t, l.Status, own.Status)
+	require.True(t, own.IsOwner)
 }
 
 func TestListing_UpdateRejectedGoesBackToModeration(t *testing.T) {
-	e := newListingEnv()
-	l := e.active(t)
-	s := e.repo.states[l.ID]
-	s.Status = domain.AdStatusRejected
-	e.repo.states[l.ID] = s
-
-	_, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
+	e := newListingTestEnv(t)
+	s := listingState(domain.AdStatusRejected)
+	expectListingState(e, s)
+	_, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{PhotoIDs: &[]int32{}}, nil)
 	require.ErrorIs(t, err, domain.ErrPhotosRequired)
-
-	updated, err := e.uc.Update(context.Background(), authorID, l.ID, domain.ListingFields{Title: ptr("Исправил")}, nil)
+	expectListingState(e, s)
+	s.Title = "Fixed"
+	s.Status = domain.AdStatusModeration
+	e.repo.EXPECT().Update(gomock.Any(), int32(7), s).Return(nil)
+	expectListingGet(e, domain.Listing{Status: s.Status, Title: s.Title, Seller: domain.Seller{ID: authorID}})
+	l, err := e.uc.Update(context.Background(), authorID, 7, domain.ListingFields{Title: ptr("Fixed")}, nil)
 	require.NoError(t, err)
-	require.Equal(t, domain.AdStatusModeration, updated.Status)
-	require.Equal(t, "Исправил", updated.Title)
+	require.Equal(t, s.Status, l.Status)
+	require.Equal(t, s.Title, l.Title)
 }
