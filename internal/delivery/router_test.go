@@ -14,6 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gateway"
 )
 
 type testRouter struct {
@@ -30,10 +31,24 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	r := &testRouter{auth: NewMockAuthUsecase(ctrl), ads: NewMockAdUsecase(ctrl), seller: NewMockSellerUsecase(ctrl), city: NewMockCityUsecase(ctrl)}
-	r.Handler = NewRouter("http://front.test", dir, NewAuthHandler(r.auth, false), NewPasswordResetHandler(NewMockPasswordResetUsecase(ctrl)),
-		NewProfileHandler(NewMockProfileUsecase(ctrl)), NewAdHandler(r.ads), NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(),
+	authRouter := NewAuthRouter("http://front.test", dir, NewAuthHandler(r.auth, false), newCSRFHandler(),
+		NewProfileHandler(NewMockProfileUsecase(ctrl)), NewPasswordResetHandler(NewMockPasswordResetUsecase(ctrl)),
+		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)))
+	adsRouter := NewAdsRouter("http://front.test", dir, NewSessionMiddleware(r.auth), NewAdHandler(r.ads),
+		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(), NewCartHandler(NewMockCartUsecase(ctrl)),
 		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city), NewSellerHandler(r.seller),
-		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)), NewCartHandler(NewMockCartUsecase(ctrl)), NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"))
+		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"))
+	searchRouter := NewSearchRouter("http://front.test")
+	r.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case gateway.IsAuthPath(req.URL.Path):
+			authRouter.ServeHTTP(w, req)
+		case req.URL.Path == "/api/search":
+			searchRouter.ServeHTTP(w, req)
+		default:
+			adsRouter.ServeHTTP(w, req)
+		}
+	})
 	return r
 }
 

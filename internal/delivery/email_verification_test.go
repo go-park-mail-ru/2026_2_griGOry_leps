@@ -150,7 +150,7 @@ func TestRequireAuth_PutsEmailVerifiedIntoContext(t *testing.T) {
 
 	mock := NewMockAuthUsecase(gomock.NewController(t))
 	mock.EXPECT().Me(gomock.Any(), "s").Return(domain.User{ID: 1, EmailVerified: true}, nil)
-	NewAuthHandler(mock, false).RequireAuth(next).ServeHTTP(httptest.NewRecorder(), req)
+	NewSessionMiddleware(mock).RequireAuth(next).ServeHTTP(httptest.NewRecorder(), req)
 
 	require.True(t, seen)
 	require.True(t, verified)

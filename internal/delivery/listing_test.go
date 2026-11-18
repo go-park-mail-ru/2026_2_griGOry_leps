@@ -182,7 +182,7 @@ func TestListing_GetWorksForGuestsAndUsers(t *testing.T) {
 	auth := NewMockAuthUsecase(gomock.NewController(t))
 	auth.EXPECT().Me(gomock.Any(), "s").Return(domain.User{ID: 1}, nil)
 	router := mux.NewRouter()
-	router.Handle("/api/listings/{listing_id}", NewAuthHandler(auth, false).OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
+	router.Handle("/api/listings/{listing_id}", NewSessionMiddleware(auth).OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/listings/7", nil))
@@ -197,7 +197,7 @@ func TestListing_GetWorksForGuestsAndUsers(t *testing.T) {
 	expiredAuth := NewMockAuthUsecase(gomock.NewController(t))
 	expiredAuth.EXPECT().Me(gomock.Any(), "s").Return(domain.User{}, domain.ErrSessionExpired)
 	guest := mux.NewRouter()
-	guest.Handle("/api/listings/{listing_id}", NewAuthHandler(expiredAuth, false).
+	guest.Handle("/api/listings/{listing_id}", NewSessionMiddleware(expiredAuth).
 		OptionalAuth(http.HandlerFunc(NewListingHandler(stub).Get)))
 	rec = httptest.NewRecorder()
 	guest.ServeHTTP(rec, req)

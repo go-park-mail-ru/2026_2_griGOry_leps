@@ -156,52 +156,6 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (h *AuthHandler) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(sessionCookieName)
-		if err != nil {
-			writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-			return
-		}
-
-		user, err := h.auth.Me(r.Context(), cookie.Value)
-		if err != nil {
-			if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
-				writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-				return
-			}
-			slog.ErrorContext(r.Context(), "check session", "err", err)
-			writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
-		ctx = context.WithValue(ctx, emailVerifiedKey{}, user.EmailVerified)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (h *AuthHandler) OptionalAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(sessionCookieName)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		user, err := h.auth.Me(r.Context(), cookie.Value)
-		if err != nil {
-			if !errors.Is(err, domain.ErrSessionExpired) && !errors.Is(err, domain.ErrUserNotFound) {
-				slog.ErrorContext(r.Context(), "check session", "err", err)
-			}
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, user.ID)))
-	})
-}
-
 func emailVerified(ctx context.Context) bool {
 	verified, _ := ctx.Value(emailVerifiedKey{}).(bool)
 	return verified
@@ -224,4 +178,24 @@ type emailVerifiedKey struct{}
 func userIDFromContext(ctx context.Context) int32 {
 	id, _ := ctx.Value(userIDKey{}).(int32)
 	return id
+}
+
+func (h *AuthHandler) CheckSession(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || cookie.Value == "" {
+		writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	user, err := h.auth.Me(r.Context(), cookie.Value)
+	if err != nil {
+		if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
+			writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
+			return
+		}
+		slog.ErrorContext(r.Context(), "check session", "err", err)
+		writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"user_id": user.ID, "email_verified": user.EmailVerified})
 }
