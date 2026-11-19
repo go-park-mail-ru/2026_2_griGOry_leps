@@ -2,15 +2,19 @@ package main
 
 import (
 	"log"
+	"log/slog"
+	"os"
 
 	"github.com/joho/godotenv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gateway"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
 )
 
 func main() {
 	_ = godotenv.Load()
+	slog.SetDefault(logger.New(os.Stdout, logger.ParseLevel(os.Getenv("LOG_LEVEL"))))
 	handler, err := gateway.New(
 		httpserver.Env("AUTH_URL", "http://localhost:8081"),
 		httpserver.Env("ADS_URL", "http://localhost:8082"),

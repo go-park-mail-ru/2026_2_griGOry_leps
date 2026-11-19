@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 )
 
 var (
@@ -51,6 +52,9 @@ func (c *Client) Me(ctx context.Context, sessionID string) (domain.User, error) 
 	}
 	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
 	req.Header.Set("Accept", "application/json")
+	if id := logger.RequestID(ctx); id != "" {
+		req.Header.Set(logger.RequestIDHeader, id)
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return domain.User{}, requestError(ctx, err)

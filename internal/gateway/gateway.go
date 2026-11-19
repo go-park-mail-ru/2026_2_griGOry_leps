@@ -9,6 +9,9 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/clientip"
 )
 
 func IsAuthPath(p string) bool {
@@ -33,6 +36,10 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		return nil, err
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := logger.NormalizeRequestID(r.Header.Get(logger.RequestIDHeader))
+		r = r.Clone(logger.WithRequestID(r.Context(), id))
+		r.Header.Set(logger.RequestIDHeader, id)
+		w.Header().Set(logger.RequestIDHeader, id)
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -68,7 +75,19 @@ func newProxy(rawURL string) (*httputil.ReverseProxy, error) {
 	}
 	u.Path = ""
 	proxy := httputil.NewSingleHostReverseProxy(u)
+	proxy.Director = nil
+	proxy.Rewrite = func(req *httputil.ProxyRequest) {
+		req.SetURL(u)
+		req.Out.Host = req.In.Host
+		req.SetXForwarded()
+		req.Out.Header.Set(logger.RequestIDHeader, logger.RequestID(req.In.Context()))
+		req.Out.Header.Set("X-Forwarded-For", clientip.FromRequest(req.In))
+		req.Out.Header.Del("X-Real-IP")
+		req.Out.Header.Del("Forwarded")
+	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Keep the ID set at the gateway, without a duplicate upstream header.
+		resp.Header.Del(logger.RequestIDHeader)
 		for name := range resp.Header {
 			if strings.HasPrefix(strings.ToLower(name), "access-control-") {
 				resp.Header.Del(name)

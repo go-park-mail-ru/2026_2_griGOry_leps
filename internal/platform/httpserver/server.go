@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/clientip"
 )
 
 func Env(name, fallback string) string {
@@ -18,6 +20,14 @@ func Env(name, fallback string) string {
 	return fallback
 }
 func Run(name, port string, handler http.Handler) error {
+	trusted, configured := os.LookupEnv("TRUSTED_PROXY_CIDRS")
+	if !configured {
+		trusted = "127.0.0.1/32,::1/128"
+	}
+	handler, err := clientip.Middleware(trusted, handler)
+	if err != nil {
+		return err
+	}
 	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

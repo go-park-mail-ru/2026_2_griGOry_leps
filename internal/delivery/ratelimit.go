@@ -3,11 +3,11 @@ package delivery
 import (
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/clientip"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
@@ -30,9 +30,5 @@ func setRetryAfter(w http.ResponseWriter, d time.Duration) {
 }
 
 func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return clientip.FromRequest(r)
 }
