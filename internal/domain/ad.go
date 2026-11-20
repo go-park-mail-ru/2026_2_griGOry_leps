@@ -38,13 +38,16 @@ type AdFilter struct {
 	Sort        string
 	Limit       int
 	Offset      int
+	CursorTime  *time.Time
+	CursorID    int32
 }
 
 type AdPage struct {
-	Items  []Ad
-	Total  int
-	Limit  int
-	Offset int
+	Items      []Ad
+	Total      int
+	Limit      int
+	Offset     int
+	NextCursor string
 }
 
 var AdStatuses = []string{
@@ -73,4 +76,5 @@ type ListAdsParams struct {
 	Sort        string
 	Limit       int
 	Offset      int
+	Cursor      string
 }

@@ -6,6 +6,7 @@ var (
 	ErrInvalidPrice      = errors.New("invalid price")
 	ErrInvalidPriceRange = errors.New("price_max must not be less than price_min")
 	ErrInvalidSort       = errors.New("invalid sort value")
+	ErrInvalidCursor     = errors.New("invalid cursor")
 	ErrInvalidEmail      = errors.New("invalid email")
 	ErrMissingFirstName  = errors.New("first name is required")
 	ErrInvalidFirstName  = errors.New("first name must be 2-50 characters: latin or cyrillic letters, digits, spaces, -, _ and .") //nolint:staticcheck

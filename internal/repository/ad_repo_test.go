@@ -205,6 +205,20 @@ func TestAdRepo_List_Pagination(t *testing.T) {
 	require.Len(t, items, 1)
 }
 
+func TestAdRepo_List_Cursor(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := NewAdRepository(db)
+	ads := sampleAds()
+	cursorTime := ads[2].CreatedAt
+	filter := domain.AdFilter{Sort: domain.AdSortNewest, Limit: 2, CursorTime: &cursorTime, CursorID: ads[2].ID}
+	expectAdList(mock, filter, 3, ads[1], ads[0])
+
+	items, total, err := repo.List(context.Background(), filter)
+	require.NoError(t, err)
+	require.Equal(t, 3, total)
+	require.Equal(t, []int32{2, 1}, []int32{items[0].ID, items[1].ID})
+}
+
 func TestAdRepo_List_OffsetBeyondTotal(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewAdRepository(db)
@@ -232,6 +246,6 @@ func expectAdList(mock sqlmock.Sqlmock, f domain.AdFilter, total int, ads ...dom
 	args := []driver.Value{f.Query, f.CategoryID, f.City, f.PriceMin, f.PriceMax, f.HasDelivery}
 	mock.ExpectBegin()
 	mock.ExpectQuery(countAdsQuery).WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(total))
-	mock.ExpectQuery(listAdsQuery).WithArgs(append(args, sort, f.Limit, f.Offset)...).WillReturnRows(adMockRows(ads...)).RowsWillBeClosed()
+	mock.ExpectQuery(listAdsQuery).WithArgs(append(args, f.CursorTime, f.CursorID, sort, f.Limit, f.Offset)...).WillReturnRows(adMockRows(ads...)).RowsWillBeClosed()
 	mock.ExpectCommit()
 }

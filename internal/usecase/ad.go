@@ -2,10 +2,13 @@ package usecase
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
@@ -43,6 +46,16 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 	default:
 		return domain.AdPage{}, domain.ErrInvalidSort
 	}
+	if p.Cursor != "" {
+		if f.Sort != domain.AdSortNewest || f.Offset != 0 {
+			return domain.AdPage{}, domain.ErrInvalidCursor
+		}
+		cursorTime, cursorID, err := parseAdCursor(p.Cursor)
+		if err != nil {
+			return domain.AdPage{}, err
+		}
+		f.CursorTime, f.CursorID = &cursorTime, cursorID
+	}
 
 	if p.PriceMin != "" {
 		v, err := parsePrice(p.PriceMin)
@@ -69,7 +82,32 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 		return domain.AdPage{}, err
 	}
 
-	return domain.AdPage{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+	page := domain.AdPage{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}
+	if f.Sort == domain.AdSortNewest && len(items) == f.Limit {
+		last := items[len(items)-1]
+		page.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%d", last.CreatedAt.UnixMicro(), last.ID)))
+	}
+	return page, nil
+}
+
+func parseAdCursor(cursor string) (time.Time, int32, error) {
+	if len(cursor) > 64 {
+		return time.Time{}, 0, domain.ErrInvalidCursor
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return time.Time{}, 0, domain.ErrInvalidCursor
+	}
+	parts := strings.Split(string(decoded), ":")
+	if len(parts) != 2 {
+		return time.Time{}, 0, domain.ErrInvalidCursor
+	}
+	micros, timeErr := strconv.ParseInt(parts[0], 10, 64)
+	id, idErr := strconv.ParseInt(parts[1], 10, 32)
+	if timeErr != nil || idErr != nil || micros <= 0 || id <= 0 {
+		return time.Time{}, 0, domain.ErrInvalidCursor
+	}
+	return time.UnixMicro(micros).UTC(), int32(id), nil
 }
 
 func pageLimit(limit int) int {

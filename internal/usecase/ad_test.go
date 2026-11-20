@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/base64"
 	"testing"
 	"time"
 
@@ -110,6 +111,34 @@ func TestAdUsecase_List_Success(t *testing.T) {
 	require.Len(t, page.Items, 1)
 	require.Equal(t, 10, page.Limit)
 	require.Equal(t, 0, page.Offset)
+}
+
+func TestAdUsecase_List_CursorContinuesAfterLastItem(t *testing.T) {
+	last := domain.Ad{ID: 7, CreatedAt: time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)}
+	repo := NewMockAdRepository(gomock.NewController(t))
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: 1}).Return([]domain.Ad{last}, 2, nil)
+	page, err := NewAdUsecase(repo).List(context.Background(), domain.ListAdsParams{Limit: 1})
+	require.NoError(t, err)
+	require.NotEmpty(t, page.NextCursor)
+
+	parsedTime, parsedID, err := parseAdCursor(page.NextCursor)
+	require.NoError(t, err)
+	require.Equal(t, last.CreatedAt, parsedTime)
+	require.Equal(t, last.ID, parsedID)
+	repo.EXPECT().List(gomock.Any(), domain.AdFilter{Sort: domain.AdSortNewest, Limit: 1, CursorTime: &parsedTime, CursorID: parsedID}).Return(nil, 2, nil)
+	next, err := NewAdUsecase(repo).List(context.Background(), domain.ListAdsParams{Limit: 1, Cursor: page.NextCursor})
+	require.NoError(t, err)
+	require.Empty(t, next.NextCursor)
+}
+
+func TestAdUsecase_List_RejectsInvalidCursor(t *testing.T) {
+	uc := NewAdUsecase(NewMockAdRepository(gomock.NewController(t)))
+	for _, cursor := range []string{"invalid", base64.RawURLEncoding.EncodeToString([]byte("0:1"))} {
+		_, err := uc.List(context.Background(), domain.ListAdsParams{Cursor: cursor})
+		require.ErrorIs(t, err, domain.ErrInvalidCursor)
+	}
+	_, err := uc.List(context.Background(), domain.ListAdsParams{Cursor: "x", Sort: domain.AdSortPriceAsc})
+	require.ErrorIs(t, err, domain.ErrInvalidCursor)
 }
 
 func TestAdUsecase_ListMine_CountsAllStatuses(t *testing.T) {

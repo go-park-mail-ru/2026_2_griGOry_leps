@@ -77,7 +77,7 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 			return fmt.Errorf("count ads: %w", err)
 		}
 
-		rows, err := tx.QueryContext(ctx, listAdsQuery, append(args, f.Sort, f.Limit, f.Offset)...)
+		rows, err := tx.QueryContext(ctx, listAdsQuery, append(args, f.CursorTime, f.CursorID, f.Sort, f.Limit, f.Offset)...)
 		if err != nil {
 			return fmt.Errorf("list ads: %w", err)
 		}
