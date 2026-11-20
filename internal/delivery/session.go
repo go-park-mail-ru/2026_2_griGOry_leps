@@ -44,10 +44,11 @@ func (h *SessionMiddleware) OptionalAuth(next http.Handler) http.Handler {
 
 		user, err := h.checker.Me(r.Context(), cookie.Value)
 		if err != nil {
-			if !errors.Is(err, domain.ErrSessionExpired) && !errors.Is(err, domain.ErrUserNotFound) {
-				slog.ErrorContext(r.Context(), "check session", "err", err)
+			if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
+				next.ServeHTTP(w, r)
+				return
 			}
-			next.ServeHTTP(w, r)
+			writeSessionError(w, r, err)
 			return
 		}
 
