@@ -2,15 +2,17 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	authv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/auth/v1"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 var (
@@ -20,85 +22,72 @@ var (
 )
 
 type Client struct {
-	sessionURL string
-	httpClient *http.Client
+	conn    *grpc.ClientConn
+	auth    authv1.AuthServiceClient
+	timeout time.Duration
 }
 
-func New(baseURL string, timeout time.Duration) (*Client, error) {
-	u, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("invalid auth URL")
+func New(addr string, timeout time.Duration) (*Client, error) {
+
+	if addr == "" {
+		return nil, errors.New("auth gRPC address must be set")
 	}
 	if timeout <= 0 {
 		return nil, errors.New("auth timeout must be positive")
 	}
-	u.Path = "/internal/auth/session"
-	return &Client{sessionURL: u.String(), httpClient: &http.Client{
-		Timeout:       timeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}, nil
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		conn:    conn,
+		auth:    authv1.NewAuthServiceClient(conn),
+		timeout: timeout,
+	}, nil
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
 }
 
 func (c *Client) Me(ctx context.Context, sessionID string) (domain.User, error) {
 	if sessionID == "" {
 		return domain.User{}, domain.ErrSessionExpired
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.sessionURL, nil)
-	if err != nil {
-		return domain.User{}, err
-	}
-	req.AddCookie(&http.Cookie{Name: "session_id", Value: sessionID})
-	req.Header.Set("Accept", "application/json")
+
+	callCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	if id := logger.RequestID(ctx); id != "" {
-		req.Header.Set(logger.RequestIDHeader, id)
+		callCtx = metadata.AppendToOutgoingContext(callCtx, "x-request-id", id)
 	}
-	resp, err := c.httpClient.Do(req)
+
+	resp, err := c.auth.CheckSession(callCtx, &authv1.CheckSessionRequest{
+		SessionId: sessionID,
+	})
 	if err != nil {
-		return domain.User{}, requestError(ctx, err)
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized:
-		return domain.User{}, domain.ErrSessionExpired
-	case resp.StatusCode >= 500:
-		return domain.User{}, ErrUnavailable
-	case resp.StatusCode != http.StatusOK:
-		return domain.User{}, ErrBadResponse
-	}
-	const maxBytes = 64 << 10
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
-	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
+		if ctx.Err() != nil {
+			return domain.User{}, ctx.Err()
+		}
+
+		switch status.Code(err) {
+		case codes.Unauthenticated:
+			return domain.User{}, domain.ErrSessionExpired
+		case codes.Unavailable:
+			return domain.User{}, ErrUnavailable
+		case codes.DeadlineExceeded:
+			return domain.User{}, ErrTimeout
+		default:
 			return domain.User{}, ErrBadResponse
 		}
-		return domain.User{}, requestError(ctx, err)
 	}
-	if len(body) > maxBytes {
-		return domain.User{}, ErrBadResponse
-	}
-	var result struct {
-		UserID        int32 `json:"user_id"`
-		EmailVerified *bool `json:"email_verified"`
-	}
-	if json.Unmarshal(body, &result) != nil || result.UserID <= 0 || result.EmailVerified == nil {
-		return domain.User{}, ErrBadResponse
-	}
-	return domain.User{ID: result.UserID, EmailVerified: *result.EmailVerified}, nil
-}
 
-func requestError(ctx context.Context, err error) error {
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return context.Canceled
+	if resp.GetUserId() <= 0 {
+		return domain.User{}, ErrBadResponse
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ErrTimeout
-	}
-	var timeoutError interface{ Timeout() bool }
-	if errors.As(err, &timeoutError) && timeoutError.Timeout() {
-		return ErrTimeout
-	}
-	return ErrUnavailable
+
+	return domain.User{
+		ID:            resp.GetUserId(),
+		EmailVerified: resp.GetEmailVerified(),
+	}, nil
 }

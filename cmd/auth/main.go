@@ -4,15 +4,20 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	authv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/auth/v1"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/mail"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
@@ -64,7 +69,36 @@ func run(cfg *config.Config) error {
 	verifyHandler := delivery.NewEmailVerificationHandler(verifyUsecase)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New([]byte(cfg.CSRFSecret), 24*time.Hour), cfg.CookieSecure)
 	router := delivery.NewAuthRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, csrfHandler, profileHandler, resetHandler, verifyHandler)
-	return httpserver.Run("auth", httpserver.Env("AUTH_PORT", "8081"), router)
+	listener, err := net.Listen("tcp", httpserver.Env("AUTH_GRPC_ADDR", "127.0.0.1:9091"))
+	if err != nil {
+		return err
+	}
+	grpcServer := grpc.NewServer()
+	authv1.RegisterAuthServiceServer(grpcServer, delivery.NewAuthGRPCServer(authUsecase))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	httpDone := make(chan error, 1)
+	grpcDone := make(chan error, 1)
+	go func() {
+		httpDone <- httpserver.RunContext(ctx, "auth", httpserver.Env("AUTH_PORT", "8081"), router)
+		stop()
+	}()
+	go func() {
+		slog.Info("auth gRPC starting", "addr", listener.Addr().String())
+		grpcDone <- grpcServer.Serve(listener)
+		stop()
+	}()
+
+	<-ctx.Done()
+	timer := time.AfterFunc(10*time.Second, grpcServer.Stop)
+	grpcServer.GracefulStop()
+	timer.Stop()
+	grpcErr := <-grpcDone
+	if errors.Is(grpcErr, grpc.ErrServerStopped) {
+		grpcErr = nil
+	}
+	return errors.Join(<-httpDone, grpcErr)
 }
 
 func newMailer(cfg *config.Config) (usecase.Mailer, error) {

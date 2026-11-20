@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/auth/v1;authv1";
+
+service AuthService {
+  rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse);
+}
+
+message CheckSessionRequest {
+  string session_id = 1;
+}
+
+message CheckSessionResponse {
+  int32 user_id = 1;
+  bool email_verified = 2;
+}

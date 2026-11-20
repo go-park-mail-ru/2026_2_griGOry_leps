@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: run run-auth run-ads run-search run-gateway build test test-integration tidy migrate-up migrate-status migrate-down seed
+.PHONY: run run-auth run-ads run-search run-gateway build test test-integration tidy migrate-up migrate-status migrate-down seed proto
 
 run: run-gateway
 
@@ -40,3 +40,6 @@ migrate-down:
 
 seed:
 	psql "$(DATABASE_URL)" -f db/seed.sql
+
+proto:
+	protoc -I proto --go_out=. --go_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps --go-grpc_out=. --go-grpc_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps proto/auth/v1/auth.proto
