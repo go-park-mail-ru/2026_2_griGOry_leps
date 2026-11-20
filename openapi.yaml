@@ -784,6 +784,9 @@ paths:
       summary: Список объявлений
       description: |
         Возвращает только активные объявления. Авторизация не нужна.
+        Для непрерывной ленты передавайте next_cursor предыдущей страницы как cursor.
+        Курсор поддерживается только с сортировкой newest и без offset; limit/offset
+        остаются доступны для обычной пагинации.
       security: []
       parameters:
         - name: q
@@ -811,6 +814,10 @@ paths:
         - $ref: '#/components/parameters/Sort'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
+        - name: cursor
+          in: query
+          description: Курсор следующей страницы из ответа GET /listings.
+          schema: { type: string }
       responses:
         '200':
           description: Страница объявлений
@@ -2044,6 +2051,7 @@ components:
         total: { type: integer, description: 'Всего объявлений по фильтру, без учёта limit/offset.' }
         limit: { type: integer }
         offset: { type: integer }
+        next_cursor: { type: string, description: 'Курсор следующей страницы для сортировки newest. Отсутствует, если страница не заполнена.' }
 
     SellerAdPage:
       allOf:

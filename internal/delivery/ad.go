@@ -55,6 +55,7 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		PriceMin: q.Get("price_min"),
 		PriceMax: q.Get("price_max"),
 		Sort:     q.Get("sort"),
+		Cursor:   q.Get("cursor"),
 	}
 
 	categoryID, err := intParam(q, "category_id", 1)
@@ -87,6 +88,7 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domain.ErrInvalidPrice),
 			errors.Is(err, domain.ErrInvalidPriceRange),
+			errors.Is(err, domain.ErrInvalidCursor),
 			errors.Is(err, domain.ErrInvalidSort):
 			writeError(r.Context(), w, http.StatusBadRequest, err.Error())
 		default:
@@ -96,7 +98,11 @@ func (h *AdHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(r.Context(), w, http.StatusOK, adPageResponse(page, adResponse))
+	response := adPageResponse(page, adResponse)
+	if page.NextCursor != "" {
+		response["next_cursor"] = page.NextCursor
+	}
+	writeJSON(r.Context(), w, http.StatusOK, response)
 }
 
 func adPageResponse(page domain.AdPage, card func(domain.Ad) map[string]any) map[string]any {
@@ -105,10 +111,10 @@ func adPageResponse(page domain.AdPage, card func(domain.Ad) map[string]any) map
 		items = append(items, card(ad))
 	}
 	return map[string]any{
-		"items":  items,
-		"total":  page.Total,
-		"limit":  page.Limit,
-		"offset": page.Offset,
+		"items":       items,
+		"total":       page.Total,
+		"limit":       page.Limit,
+		"offset":      page.Offset,
 	}
 }
 

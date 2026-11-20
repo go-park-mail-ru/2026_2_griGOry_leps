@@ -29,12 +29,13 @@ const listAdsQuery = `
  SELECT ` + adCardColumns + `
  FROM ad a
 ` + adMainImageJoin + adFilter + `
+ AND ($7::timestamptz IS NULL OR (COALESCE(a.published_at,a.created_at),a.id) < ($7::timestamptz,$8::integer))
  ORDER BY
- CASE WHEN $7::text='price_asc' THEN a.price END ASC,
- CASE WHEN $7::text='price_desc' THEN a.price END DESC,
- CASE WHEN $7::text='newest' THEN COALESCE(a.published_at,a.created_at) END DESC,
+ CASE WHEN $9::text='price_asc' THEN a.price END ASC,
+ CASE WHEN $9::text='price_desc' THEN a.price END DESC,
+ CASE WHEN $9::text='newest' THEN COALESCE(a.published_at,a.created_at) END DESC,
  a.id DESC
- LIMIT $8 OFFSET $9
+ LIMIT $10 OFFSET $11
 `
 
 const countMyAdsQuery = `
