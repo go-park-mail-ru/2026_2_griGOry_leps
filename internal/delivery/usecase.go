@@ -84,3 +84,7 @@ type OrderUsecase interface {
 	TestPayment(ctx context.Context, token string, success bool) (int32, error)
 	PaymentPage(ctx context.Context, token string) (domain.Order, error)
 }
+
+type SessionChecker interface {
+	Me(ctx context.Context, sessionID string) (domain.User, error)
+}

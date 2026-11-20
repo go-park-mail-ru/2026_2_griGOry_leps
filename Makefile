@@ -1,13 +1,24 @@
 -include .env
 export
 
-.PHONY: run build test test-integration tidy migrate-up migrate-status migrate-down seed
+.PHONY: run run-auth run-ads run-search run-gateway build test test-integration tidy migrate-up migrate-status migrate-down seed
 
-run:
-	go run ./cmd/server
+run: run-gateway
+
+run-auth:
+	go run ./cmd/auth
+
+run-ads:
+	go run ./cmd/ads
+
+run-search:
+	go run ./cmd/search
+
+run-gateway:
+	go run ./cmd/gateway
 
 build:
-	go build -o bin/server ./cmd/server
+	go build -o bin/ ./cmd/auth ./cmd/ads ./cmd/search ./cmd/gateway
 
 test:
 	go test ./...

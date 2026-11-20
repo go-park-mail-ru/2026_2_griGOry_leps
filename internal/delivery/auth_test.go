@@ -177,7 +177,7 @@ func requireAuthRequest(h *AuthHandler, cookie *http.Cookie) (*httptest.Response
 		req.AddCookie(cookie)
 	}
 	rec := httptest.NewRecorder()
-	h.RequireAuth(next).ServeHTTP(rec, req)
+	NewSessionMiddleware(h.auth).RequireAuth(next).ServeHTTP(rec, req)
 	return rec, gotID
 }
 

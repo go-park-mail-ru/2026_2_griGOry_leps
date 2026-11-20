@@ -5,31 +5,22 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 )
 
-const requestIDHeader = "X-Request-Id"
+const requestIDHeader = logger.RequestIDHeader
 
 // Чужой id попадает в логи как есть, поэтому пропускаем только безопасные символы.
-var validRequestID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get(requestIDHeader)
-		if !validRequestID.MatchString(id) {
-			id = newRequestID()
-		}
+		id := logger.NormalizeRequestID(r.Header.Get(requestIDHeader))
 
 		w.Header().Set(requestIDHeader, id)
 		next.ServeHTTP(w, r.WithContext(logger.WithRequestID(r.Context(), id)))
 	})
-}
-
-func newRequestID() string {
-	return randomHex(16)
 }
 
 func randomHex(n int) string {
