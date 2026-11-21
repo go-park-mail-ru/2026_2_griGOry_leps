@@ -38,7 +38,7 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(), NewCartHandler(NewMockCartUsecase(ctrl)),
 		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city), NewSellerHandler(r.seller),
 		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"))
-	searchRouter := NewSearchRouter("http://front.test")
+	searchRouter := NewSearchRouter("http://front.test", nil)
 	r.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case gateway.IsAuthPath(req.URL.Path):
