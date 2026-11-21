@@ -777,6 +777,37 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Лента
+  /search:
+    get:
+      tags: [Лента]
+      operationId: searchPublishedListings
+      summary: Поиск опубликованных объявлений
+      description: |
+        Ищет подстроку в названии или описании без учёта регистра.
+        Пустой запрос или строка из пробелов возвращает все активные объявления.
+        Сначала идут свежие публикации. При одинаковой дате выше объявление с большим ID.
+        Если совпадений нет, сервер возвращает пустой массив items и total, равный 0.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          description: Текст для поиска
+          schema: { type: string }
+          example: телефон
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Страница результатов поиска
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdPage' }
+        '400': { description: Некорректный limit или offset }
+        '502': { description: Ошибка при выполнении запроса в ads }
+        '503': { description: Сервис ads недоступен }
+        '504': { description: Истекло время ожидания ответа от ads }
+
+
   /listings:
     get:
       tags: [Лента]
