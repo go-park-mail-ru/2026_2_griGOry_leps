@@ -19,6 +19,7 @@ var (
 	ErrUnavailable = errors.New("auth service unavailable")
 	ErrTimeout     = errors.New("auth service timeout")
 	ErrBadResponse = errors.New("invalid auth service response")
+	ErrInternal    = errors.New("auth service internal error")
 )
 
 type Client struct {
@@ -77,6 +78,8 @@ func (c *Client) Me(ctx context.Context, sessionID string) (domain.User, error) 
 			return domain.User{}, ErrUnavailable
 		case codes.DeadlineExceeded:
 			return domain.User{}, ErrTimeout
+		case codes.Internal:
+			return domain.User{}, ErrInternal
 		default:
 			return domain.User{}, ErrBadResponse
 		}
