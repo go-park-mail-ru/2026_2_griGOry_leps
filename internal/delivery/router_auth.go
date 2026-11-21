@@ -48,7 +48,6 @@ func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, c
 	r.Handle("/api/me", auth(rateLimit(profileLimit, profileHandler.Update))).Methods(http.MethodPatch)
 	r.Handle("/api/me/password", auth(rateLimit(passwordLimit, profileHandler.ChangePassword))).Methods(http.MethodPut)
 	r.Handle(avatarPath, auth(profileHandler.UploadAvatar)).Methods(http.MethodPost)
-	r.HandleFunc("/internal/auth/session", authHandler.CheckSession).Methods(http.MethodGet)
 	r.PathPrefix("/uploads/avatars/").Handler(uploads(uploadDir)).Methods(http.MethodGet, http.MethodHead)
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 

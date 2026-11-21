@@ -179,23 +179,3 @@ func userIDFromContext(ctx context.Context) int32 {
 	id, _ := ctx.Value(userIDKey{}).(int32)
 	return id
 }
-
-func (h *AuthHandler) CheckSession(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil || cookie.Value == "" {
-		writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
-	user, err := h.auth.Me(r.Context(), cookie.Value)
-	if err != nil {
-		if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
-			writeError(r.Context(), w, http.StatusUnauthorized, "not authenticated")
-			return
-		}
-		slog.ErrorContext(r.Context(), "check session", "err", err)
-		writeError(r.Context(), w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	writeJSON(r.Context(), w, http.StatusOK, map[string]any{"user_id": user.ID, "email_verified": user.EmailVerified})
-}

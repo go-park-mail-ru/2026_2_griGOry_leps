@@ -6,8 +6,8 @@ Backend-репозиторий проекта «Go&Get» команды «griGOr
 
 Gateway принимает валидный `X-Request-Id` (1–64 символа: буквы, цифры, `_`, `-`)
 или генерирует новый. Этот ID возвращается во всех ответах, включая ошибки
-gateway, и передаётся дальше в сервисы. HTTP-клиент ads → auth берёт ID из
-контекста запроса. В JSON-логах сервисов он доступен как `request_id`.
+gateway, и передаётся дальше в сервисы. Клиент ads передаёт ID в auth через
+gRPC metadata `x-request-id`. В JSON-логах сервисов он доступен как `request_id`.
 
 Лимиты запросов учитывают IP клиента через `X-Forwarded-For`. Сервисы доверяют
 этому заголовку только от адресов из `TRUSTED_PROXY_CIDRS` (список CIDR через
@@ -35,6 +35,7 @@ go run ./cmd/gateway
 ```dotenv
 GATEWAY_PORT=8080
 AUTH_PORT=8081
+AUTH_GRPC_ADDR=127.0.0.1:9091
 ADS_PORT=8082
 SEARCH_PORT=8083
 AUTH_URL=http://localhost:8081
@@ -60,8 +61,13 @@ Gateway направляет /api/search в search, операции аккау�
 через gateway недоступны. При развёртывании ограничьте прямой внешний доступ
 к портам внутренних сервисов; само имя /internal не ограничивает доступ.
 
-Ads проверяет сессию через HTTP GET /internal/auth/session в auth, передавая
-cookie session_id. Таймаут — 1 секунда; недействительная сессия даёт 401,
+Для запроса корзины ads берёт `session_id` из cookie и вызывает
+`auth.v1.AuthService/CheckSession` по адресу `AUTH_GRPC_ADDR`.
+Auth возвращает ID пользователя и признак подтверждения почты.
+Контракт находится в `proto/auth/v1/auth.proto`. После его изменения запустите
+`make proto` из корня backend с установленными `protoc`, `protoc-gen-go` и
+`protoc-gen-go-grpc`, чтобы обновить Go-код в `internal/gen/auth/v1`.
+Таймаут — 1 секунда. Недействительная сессия даёт 401,
 недоступность auth — 503, таймаут — 504, некорректный ответ — 502.
 CSRF-токен, полученный у auth через gateway, проверяется ads тем же секретом.
 

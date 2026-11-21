@@ -46,10 +46,15 @@ func run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	checker, err := authclient.New(httpserver.Env("AUTH_URL", "http://localhost:8081"), time.Second)
+	checker, err := authclient.New(
+		httpserver.Env("AUTH_GRPC_ADDR", "127.0.0.1:9091"),
+		time.Second,
+	)
 	if err != nil {
 		return err
 	}
+	defer checker.Close()
+
 	session := delivery.NewSessionMiddleware(checker)
 	userRepo := repository.NewUserRepository(pool)
 	adRepo := repository.NewAdRepository(pool)

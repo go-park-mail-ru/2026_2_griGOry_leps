@@ -111,10 +111,10 @@ func adPageResponse(page domain.AdPage, card func(domain.Ad) map[string]any) map
 		items = append(items, card(ad))
 	}
 	return map[string]any{
-		"items":       items,
-		"total":       page.Total,
-		"limit":       page.Limit,
-		"offset":      page.Offset,
+		"items":  items,
+		"total":  page.Total,
+		"limit":  page.Limit,
+		"offset": page.Offset,
 	}
 }
 

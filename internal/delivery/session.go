@@ -3,10 +3,11 @@ package delivery
 import (
 	"context"
 	"errors"
-	authclient "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/client/auth"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"log/slog"
 	"net/http"
+
+	authclient "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/client/auth"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 type SessionMiddleware struct{ checker SessionChecker }
@@ -70,6 +71,8 @@ func writeSessionError(w http.ResponseWriter, r *http.Request, err error) {
 		status, message = http.StatusGatewayTimeout, "authentication service timeout"
 	case errors.Is(err, authclient.ErrBadResponse):
 		status, message = http.StatusBadGateway, "invalid authentication service response"
+	case errors.Is(err, authclient.ErrInternal):
+		status, message = http.StatusInternalServerError, "authentication service internal error"
 	}
 	if status >= 500 {
 		slog.ErrorContext(r.Context(), "check session", "err", err)
