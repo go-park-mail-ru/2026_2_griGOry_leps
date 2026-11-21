@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package ads.v1;
+
+option go_package = "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1;adsv1";
+
+service AdsService {
+  rpc SearchPublished(SearchRequest) returns (SearchPage);
+}
+
+message SearchRequest {
+  string query = 1;
+  int64 limit = 2;
+  int64 offset = 3;
+}
+
+message SearchPage {
+  repeated SearchCard items = 1;
+  int64 total = 2;
+  int64 limit = 3;
+  int64 offset = 4;
+}
+
+message SearchCard {
+  int32 id = 1;
+  string title = 2;
+  optional int64 price_kopecks = 3;
+  bool is_free = 4;
+  string image_url = 5;
+  string city = 6;
+  bool has_delivery = 7;
+  int32 category_id = 8;
+  int64 published_unix_micros = 9;
+}

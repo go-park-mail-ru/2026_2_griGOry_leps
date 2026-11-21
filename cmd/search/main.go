@@ -10,6 +10,10 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	adsv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1"
 )
 
 func main() {
@@ -23,6 +27,16 @@ func main() {
 }
 
 func run(cfg *config.Config) error {
-	router := delivery.NewSearchRouter(cfg.FrontendOrigin)
+	addr := httpserver.Env("ADS_GRPC_ADDR", "127.0.0.1:9092")
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ads := adsv1.NewAdsServiceClient(conn)
+	router := delivery.NewSearchRouter(cfg.FrontendOrigin, ads)
+
 	return httpserver.Run("search", httpserver.Env("SEARCH_PORT", "8083"), router)
 }
