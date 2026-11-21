@@ -231,9 +231,9 @@ func TestAdRepo_List_OffsetBeyondTotal(t *testing.T) {
 }
 
 func adMockRows(ads ...domain.Ad) *sqlmock.Rows {
-	rows := sqlmock.NewRows([]string{"id", "user", "category", "title", "description", "price", "city", "delivery", "free", "image", "status", "reason", "created", "updated"})
+	rows := sqlmock.NewRows([]string{"id", "user", "category", "title", "description", "price", "city", "delivery", "free", "image", "status", "reason", "created", "updated", "rejection_reason"})
 	for _, ad := range ads {
-		rows.AddRow(ad.ID, ad.UserID, ad.CategoryID, ad.Title, ad.Description, ad.Price, ad.City, ad.HasDelivery, ad.IsFree, ad.ImageURL, ad.Status, ad.CloseReason, ad.CreatedAt, ad.UpdatedAt)
+		rows.AddRow(ad.ID, ad.UserID, ad.CategoryID, ad.Title, ad.Description, ad.Price, ad.City, ad.HasDelivery, ad.IsFree, ad.ImageURL, ad.Status, ad.CloseReason, ad.CreatedAt, ad.UpdatedAt, ad.RejectionReason)
 	}
 	return rows
 }

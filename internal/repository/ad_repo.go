@@ -19,7 +19,7 @@ func NewAdRepository(pool *sql.DB) *AdRepository {
 func adCardFields(ad *domain.Ad) []any {
 	return []any{
 		&ad.ID, &ad.UserID, &ad.CategoryID, &ad.Title, &ad.Description, &ad.Price, &ad.City,
-		&ad.HasDelivery, &ad.IsFree, &ad.ImageURL, &ad.Status, &ad.CloseReason, &ad.CreatedAt, &ad.UpdatedAt,
+		&ad.HasDelivery, &ad.IsFree, &ad.ImageURL, &ad.Status, &ad.CloseReason, &ad.CreatedAt, &ad.UpdatedAt, &ad.RejectionReason,
 	}
 }
 

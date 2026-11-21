@@ -4,7 +4,7 @@ const adCardColumns = `
  a.id,a.user_id,COALESCE(a.category_id,0),a.title,
  COALESCE(a.description,''),a.price,
  COALESCE(a.city,''),a.has_delivery,a.is_free,COALESCE(image.url,''),a.status,
- COALESCE(a.close_reason,''),COALESCE(a.published_at,a.created_at),a.updated_at
+ COALESCE(a.close_reason,''),COALESCE(a.published_at,a.created_at),a.updated_at,COALESCE(a.rejection_reason,'')
 `
 
 const adMainImageJoin = `

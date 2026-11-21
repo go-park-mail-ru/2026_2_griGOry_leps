@@ -84,7 +84,7 @@ func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profi
 	err := conn(ctx, r.db).QueryRowContext(ctx, getProfileQuery, id).Scan(
 		&p.ID, &p.FirstName, &p.Email, &p.Phone, &p.CreatedAt,
 		&p.EmailVerified, &p.PendingEmail, &p.PhoneVerified, &cityID, &cityName, &p.About, &p.Avatar,
-		&p.Rating, &p.ReviewsCount,
+		&p.Rating, &p.ReviewsCount, &p.IsModerator,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Profile{}, domain.ErrUserNotFound

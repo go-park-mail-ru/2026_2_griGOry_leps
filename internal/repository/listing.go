@@ -30,7 +30,7 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 	err := db.QueryRowContext(ctx, getListingQuery, id, viewerID).Scan(
 		&l.ID, &l.Seller.ID, &categoryID, &catName, &catPath,
 		&l.Title, &l.Description, &l.Price, &l.IsFree, &l.IsNegotiable, &l.Condition,
-		&l.City, &l.Address, &l.HasDelivery, &l.Status, &l.CloseReason,
+		&l.City, &l.Address, &l.HasDelivery, &l.Status, &l.CloseReason, &l.RejectionReason,
 		&l.PublishedAt, &l.CreatedAt, &l.UpdatedAt,
 		&l.Seller.FirstName, &l.Seller.Avatar, &l.Seller.CreatedAt,
 		&l.Seller.Rating, &l.Seller.ReviewsCount,
@@ -220,14 +220,6 @@ func (r *ListingRepository) CreatePhoto(ctx context.Context, userID int32, url s
 		return 0, fmt.Errorf("create photo: %w", err)
 	}
 	return id, nil
-}
-
-func (r *ListingRepository) ApproveModeration(ctx context.Context) (int64, error) {
-	tag, err := conn(ctx, r.db).ExecContext(ctx, approveModerationQuery)
-	if err != nil {
-		return 0, fmt.Errorf("approve listings: %w", err)
-	}
-	return tag.RowsAffected()
 }
 
 func (r *ListingRepository) DeleteStalePhotos(ctx context.Context, before time.Time) ([]string, error) {
