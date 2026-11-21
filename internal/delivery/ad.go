@@ -122,6 +122,7 @@ func myAdResponse(ad domain.Ad) map[string]any {
 	resp := adResponse(ad)
 	resp["status"] = ad.Status
 	resp["close_reason"] = nullable(ad.CloseReason)
+	resp["rejection_reason"] = nullable(ad.RejectionReason)
 	resp["updated_at"] = ad.UpdatedAt
 	return resp
 }
@@ -153,6 +154,7 @@ func (h *AdHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 
 	resp := adPageResponse(page.AdPage, myAdResponse)
 	resp["counts"] = page.Counts
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(r.Context(), w, http.StatusOK, resp)
 }
 

@@ -12,20 +12,21 @@ const (
 )
 
 type Ad struct {
-	ID          int32
-	UserID      int32
-	CategoryID  int32
-	Title       string
-	Description string
-	Price       *int64 // в копейках
-	City        string
-	HasDelivery bool
-	IsFree      bool
-	ImageURL    string
-	Status      string
-	CloseReason string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              int32
+	UserID          int32
+	CategoryID      int32
+	Title           string
+	Description     string
+	Price           *int64 // в копейках
+	City            string
+	HasDelivery     bool
+	IsFree          bool
+	ImageURL        string
+	Status          string
+	RejectionReason string
+	CloseReason     string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type AdFilter struct {
