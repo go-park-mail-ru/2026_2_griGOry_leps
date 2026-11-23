@@ -140,3 +140,71 @@ func TestModerationLifecycle(t *testing.T) {
 	require.NoError(t, f.pool.QueryRowContext(ctx, `SELECT count(*) FROM moderation_decision WHERE ad_id = $1`, pending.ID).Scan(&decisions))
 	require.Equal(t, 2, decisions)
 }
+
+func TestClosedListingPublicVisibility(t *testing.T) {
+	f := newSellerFixture(t)
+	ctx := context.Background()
+	_, err := f.pool.ExecContext(ctx, `UPDATE user_account SET is_moderator = true WHERE user_id = $1`, f.buyer)
+	require.NoError(t, err)
+	repo := NewListingRepository(f.pool)
+	tx := NewTransactor(f.pool)
+	listings := usecase.NewListingUsecase(repo, nil, tx)
+	moderation := usecase.NewModerationUsecase(NewModerationRepository(f.pool), repo, tx)
+
+	for _, tc := range []struct {
+		name            string
+		approve         bool
+		editBeforeClose bool
+		editAfterClose  bool
+		wantPublic      bool
+	}{
+		{name: "unpublished"},
+		{name: "approved unchanged", approve: true, wantPublic: true},
+		{name: "approved awaiting review", approve: true, editBeforeClose: true},
+		{name: "approved changed after closing", approve: true, editAfterClose: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := f.ad(t, 2, "Велосипед", 100, domain.AdStatusModeration, 0)
+			photoID, err := repo.CreatePhoto(ctx, f.seller, usecase.ListingPhotoURLPrefix+"photo.png")
+			require.NoError(t, err)
+			_, err = f.pool.ExecContext(ctx, `UPDATE ad SET condition = 'used_good', address = 'Москва' WHERE id = $1`, id)
+			require.NoError(t, err)
+			_, err = repo.SetPhotos(ctx, f.seller, id, []int32{photoID})
+			require.NoError(t, err)
+
+			if tc.approve {
+				snapshot, err := moderation.Get(ctx, f.buyer, id)
+				require.NoError(t, err)
+				require.NoError(t, moderation.Decide(ctx, f.buyer, id, snapshot.Revision, true, ""))
+			}
+			title := "Велосипед с корзиной"
+			fields := domain.ListingFields{Title: &title}
+			if tc.editBeforeClose {
+				listing, err := listings.Update(ctx, f.seller, id, fields, nil)
+				require.NoError(t, err)
+				require.Equal(t, domain.AdStatusModeration, listing.Status)
+			}
+			_, err = listings.Close(ctx, f.seller, id, "changed_mind")
+			require.NoError(t, err)
+			if tc.editAfterClose {
+				_, err = listings.Update(ctx, f.seller, id, fields, nil)
+				require.NoError(t, err)
+			}
+
+			own, err := listings.Get(ctx, id, f.seller)
+			require.NoError(t, err)
+			require.Equal(t, domain.AdStatusClosed, own.Status)
+			require.Equal(t, tc.wantPublic, own.PublishedAt != nil)
+			for _, viewer := range []int32{0, f.buyer} {
+				view, err := listings.Get(ctx, id, viewer)
+				if tc.wantPublic {
+					require.NoError(t, err)
+					require.Equal(t, "Велосипед", view.Title)
+					require.Nil(t, view.CloseReason)
+				} else {
+					require.ErrorIs(t, err, domain.ErrListingNotFound)
+				}
+			}
+		})
+	}
+}

@@ -12,7 +12,12 @@ const getListingQuery = `
                FROM cart_item ci
                JOIN cart ct ON ct.id = ci.cart_id
                WHERE ct.user_id = $2 AND ci.ad_id = a.id
-           )
+           ),
+           COALESCE((
+               SELECT jsonb_agg(jsonb_build_object('ID', image_id, 'URL', url) ORDER BY position, image_id)
+               FROM ad_image
+               WHERE ad_id = a.id
+           ), '[]'::jsonb)
     FROM ad a
     JOIN user_account u ON u.user_id = a.user_id
     LEFT JOIN category c ON c.category_id = a.category_id
@@ -67,7 +72,8 @@ const createListingQuery = `
 const updateListingQuery = `
     UPDATE ad
     SET status = $2, category_id = $3, title = $4, description = NULLIF($5, ''), price = $6,
-        is_free = $7, is_negotiable = $8, condition = $9, address = $10, has_delivery = $11
+        is_free = $7, is_negotiable = $8, condition = $9, address = $10, has_delivery = $11,
+        published_at = CASE WHEN status = 'closed' THEN NULL ELSE published_at END
     WHERE id = $1
 `
 
@@ -110,7 +116,8 @@ const deleteListingQuery = `
 
 const closeListingQuery = `
     UPDATE ad
-    SET status = 'closed', close_reason = $2
+    SET status = 'closed', close_reason = $2,
+        published_at = CASE WHEN status = 'moderation' THEN NULL ELSE published_at END
     WHERE id = $1
 `
 

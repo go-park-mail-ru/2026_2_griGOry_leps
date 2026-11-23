@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -26,6 +27,7 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		categoryID *int32
 		catName    string
 		catPath    string
+		photosJSON []byte
 	)
 	err := db.QueryRowContext(ctx, getListingQuery, id, viewerID).Scan(
 		&l.ID, &l.Seller.ID, &categoryID, &catName, &catPath,
@@ -34,7 +36,7 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		&l.PublishedAt, &l.CreatedAt, &l.UpdatedAt,
 		&l.Seller.FirstName, &l.Seller.Avatar, &l.Seller.CreatedAt,
 		&l.Seller.Rating, &l.Seller.ReviewsCount,
-		&l.InCart,
+		&l.InCart, &photosJSON,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Listing{}, domain.ErrListingNotFound
@@ -47,17 +49,8 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		l.Category = &domain.ListingCategory{ID: *categoryID, Name: catName, Path: catPath}
 	}
 
-	rows, err := db.QueryContext(ctx, listingPhotosQuery, id)
-	if err != nil {
-		return domain.Listing{}, fmt.Errorf("get listing photos: %w", err)
-	}
-	l.Photos, err = collectRows(rows, func(row scanner) (domain.ListingPhoto, error) {
-		var p domain.ListingPhoto
-		err := row.Scan(&p.ID, &p.URL)
-		return p, err
-	})
-	if err != nil {
-		return domain.Listing{}, fmt.Errorf("scan listing photos: %w", err)
+	if err := json.Unmarshal(photosJSON, &l.Photos); err != nil {
+		return domain.Listing{}, fmt.Errorf("decode listing photos: %w", err)
 	}
 
 	return l, nil

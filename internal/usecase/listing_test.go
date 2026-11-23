@@ -139,15 +139,20 @@ func TestListing_DraftKeepsOnlyPassedFields(t *testing.T) {
 	require.Empty(t, l.Photos)
 }
 
-func TestListing_GetHidesDraftsAndCloseReasonFromOthers(t *testing.T) {
+func TestListing_GetHidesUnpublishedListingsAndCloseReasonFromOthers(t *testing.T) {
 	e := newListingTestEnv(t)
-	for _, viewer := range []int32{otherID, 0} {
-		e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{Status: domain.AdStatusDraft, Seller: domain.Seller{ID: authorID}}, nil)
-		_, err := e.uc.Get(context.Background(), 7, viewer)
-		require.ErrorIs(t, err, domain.ErrListingNotFound)
+	for _, status := range []string{domain.AdStatusDraft, domain.AdStatusModeration, domain.AdStatusClosed} {
+		for _, viewer := range []int32{otherID, 0} {
+			e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{Status: status, Seller: domain.Seller{ID: authorID}}, nil)
+			_, err := e.uc.Get(context.Background(), 7, viewer)
+			require.ErrorIs(t, err, domain.ErrListingNotFound)
+		}
 	}
-	for _, viewer := range []int32{otherID, authorID} {
-		e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{Status: domain.AdStatusClosed, Seller: domain.Seller{ID: authorID}, CloseReason: ptr("sold_elsewhere")}, nil)
+	for _, viewer := range []int32{0, otherID, authorID} {
+		e.repo.EXPECT().Get(gomock.Any(), int32(7), viewer).Return(domain.Listing{
+			Status: domain.AdStatusClosed, Seller: domain.Seller{ID: authorID},
+			CloseReason: ptr("sold_elsewhere"), PublishedAt: ptr(time.Now()),
+		}, nil)
 		l, err := e.uc.Get(context.Background(), 7, viewer)
 		require.NoError(t, err)
 		require.Equal(t, viewer == authorID, l.IsOwner)
