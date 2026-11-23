@@ -85,7 +85,7 @@ func run(cfg *config.Config) error {
 	go func() { defer close(orderDone); runOrderMaintenance(maintenanceCtx, orderUsecase) }()
 	defer func() { stopMaintenance(); <-listingDone; <-orderDone }()
 	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler)
-	return httpserver.Run("ads", httpserver.Env("ADS_PORT", "8082"), router)
+	return httpserver.Run("ads", "127.0.0.1", httpserver.Env("ADS_PORT", "8082"), router)
 }
 
 const (

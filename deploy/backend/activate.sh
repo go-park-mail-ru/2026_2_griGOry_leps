@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=/opt/goget/backend
+legacy=gogetbackend.service
+gateway=goget-gateway.service
+services=(goget-backend@auth.service goget-backend@ads.service goget-backend@search.service "$gateway")
+release=${1:-}
+
+if (( EUID != 0 )) || [[ ! $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+    echo "Usage: sudo $0 RELEASE" >&2
+    exit 2
+fi
+
+exec 9>/run/lock/goget-backend.lock
+flock -n 9 || { echo "Another GoGet activation is running" >&2; exit 1; }
+
+target="$root/releases/$release"
+for service in auth ads search gateway; do
+    if [[ ! -x "$target/$service" ]]; then
+        echo "Missing executable: $target/$service" >&2
+        exit 1
+    fi
+done
+
+previous=''
+if [[ -L "$root/current" ]]; then
+    previous=$(readlink -e "$root/current") || exit 1
+    [[ $previous == "$root/releases/"* ]] || { echo "Invalid current release: $previous" >&2; exit 1; }
+elif [[ -e "$root/current" ]]; then
+    echo "Expected current to be a symlink" >&2
+    exit 1
+fi
+
+legacy_running=false
+legacy_enabled=false
+gateway_enabled=false
+if systemctl is-active --quiet "$legacy"; then legacy_running=true; fi
+if systemctl is-enabled --quiet "$legacy"; then legacy_enabled=true; fi
+if systemctl is-enabled --quiet "$gateway"; then gateway_enabled=true; fi
+
+select_release() {
+    local link="$root/.current.$$"
+    ln -s -- "$1" "$link" && mv -Tf -- "$link" "$root/current"
+}
+
+if $legacy_running; then
+    systemctl stop "$legacy"
+fi
+
+if select_release "$target" &&
+    systemctl restart "${services[@]}" &&
+    "$root/bin/health.sh" &&
+    systemctl enable "$gateway" &&
+    { ! $legacy_enabled || systemctl disable "$legacy"; }; then
+    echo "GoGet backend release $release is active"
+    exit 0
+fi
+
+echo "Activation failed. Restoring the previous backend." >&2
+set +e
+rollback_failed=0
+systemctl stop "${services[@]}" || rollback_failed=1
+if ! $gateway_enabled; then systemctl disable "$gateway" || rollback_failed=1; fi
+if $legacy_enabled; then systemctl enable "$legacy" || rollback_failed=1; fi
+if [[ -n $previous ]]; then
+    select_release "$previous" || rollback_failed=1
+else
+    rm -f -- "$root/current" || rollback_failed=1
+fi
+if $legacy_running; then
+    systemctl start "$legacy" || rollback_failed=1
+    curl --silent --show-error --fail --retry 5 --retry-connrefused --max-time 5 \
+        http://127.0.0.1:8000/api/health >/dev/null || rollback_failed=1
+elif [[ -n $previous ]]; then
+    systemctl start "${services[@]}" && "$root/bin/health.sh" || rollback_failed=1
+fi
+if (( rollback_failed )); then echo "Rollback requires operator attention" >&2; fi
+exit 1

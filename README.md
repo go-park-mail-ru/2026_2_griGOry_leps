@@ -38,9 +38,9 @@ AUTH_PORT=8081
 AUTH_GRPC_ADDR=127.0.0.1:9091
 ADS_PORT=8082
 SEARCH_PORT=8083
-AUTH_URL=http://localhost:8081
-ADS_URL=http://localhost:8082
-SEARCH_URL=http://localhost:8083
+AUTH_URL=http://127.0.0.1:8081
+ADS_URL=http://127.0.0.1:8082
+SEARCH_URL=http://127.0.0.1:8083
 FRONTEND_ORIGIN=http://localhost:5173
 PUBLIC_URL=http://localhost:8080
 COOKIE_SECURE=false
@@ -58,8 +58,10 @@ PUBLIC_URL указывает на gateway, включая ссылки тест
 
 Gateway направляет /api/search в search, операции аккаунта и аватары —
 в auth, каталог GET /api/listings и остальные прикладные запросы — в ads. Внутренние маршруты /internal/
-через gateway недоступны. При развёртывании ограничьте прямой внешний доступ
-к портам внутренних сервисов; само имя /internal не ограничивает доступ.
+через gateway недоступны. HTTP-порты auth, ads и search слушают только
+127.0.0.1, внешний трафик принимает gateway.
+
+Развёртывание и откат на сервере описаны в [инструкции для systemd](deploy/backend/README.md).
 
 Для запроса корзины ads берёт `session_id` из cookie и вызывает
 `auth.v1.AuthService/CheckSession` по адресу `AUTH_GRPC_ADDR`.

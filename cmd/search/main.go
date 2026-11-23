@@ -24,5 +24,5 @@ func main() {
 
 func run(cfg *config.Config) error {
 	router := delivery.NewSearchRouter(cfg.FrontendOrigin)
-	return httpserver.Run("search", httpserver.Env("SEARCH_PORT", "8083"), router)
+	return httpserver.Run("search", "127.0.0.1", httpserver.Env("SEARCH_PORT", "8083"), router)
 }
