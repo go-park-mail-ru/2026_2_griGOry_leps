@@ -72,7 +72,8 @@ rollback() {
         curl --silent --show-error --fail --retry 5 --retry-connrefused --max-time 5 \
             http://127.0.0.1:8000/api/health >/dev/null || rollback_failed=1
     elif [[ -n $previous ]]; then
-        systemctl start "${services[@]}" && "$root/bin/health.sh" || rollback_failed=1
+        systemctl start "${services[@]}" &&
+            ALLOW_SEARCH_STUB=1 "$root/bin/health.sh" || rollback_failed=1
     fi
     if (( rollback_failed )); then echo "Rollback requires operator attention" >&2; fi
     exit "$result"

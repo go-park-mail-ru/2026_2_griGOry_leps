@@ -41,8 +41,9 @@ check() {
         echo "gateway -> ads -> auth gRPC: session check returned ${code:-no response}" >&2
         return 1
     fi
-    if ! code=$(status "$gateway/api/search?q=goget") || [[ $code != 200 && $code != 501 ]]; then
-        echo "gateway -> search: search check returned ${code:-no response}" >&2
+    if ! code=$(status "$gateway/api/search?q=goget") ||
+        [[ $code != 200 && ! ( $code == 501 && ${ALLOW_SEARCH_STUB:-0} == 1 ) ]]; then
+        echo "gateway -> search -> ads gRPC: search check returned ${code:-no response}" >&2
         return 1
     fi
 }
