@@ -32,20 +32,32 @@ func (s *AdsGRPCServer) SearchPublished(
 		ctx = logger.WithRequestID(ctx, logger.NormalizeRequestID(ids[0]))
 	}
 
-	if req.Limit < 0 || req.Offset < 0 ||
+	if req == nil || req.Limit < 0 || req.Offset < 0 ||
 		req.Limit > math.MaxInt || req.Offset > math.MaxInt {
 		return nil, status.Error(codes.InvalidArgument, "invalid pagination")
 	}
+	if req.CategoryId < 0 || !validAdListText(req.Query) || !validAdListText(req.City) {
+		return nil, status.Error(codes.InvalidArgument, "invalid search parameters")
+	}
 
 	page, err := s.ads.List(ctx, domain.ListAdsParams{
-		Query:  req.Query,
-		Sort:   domain.AdSortNewest,
-		Limit:  int(req.Limit),
-		Offset: int(req.Offset),
+		Query:       req.Query,
+		CategoryID:  req.CategoryId,
+		City:        req.City,
+		PriceMin:    req.PriceMin,
+		PriceMax:    req.PriceMax,
+		HasDelivery: req.HasDelivery,
+		Sort:        req.Sort,
+		Limit:       int(req.Limit),
+		Offset:      int(req.Offset),
+		Cursor:      req.Cursor,
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, status.FromContextError(err).Err()
+		}
+		if invalidAdListParams(err) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 
 		slog.ErrorContext(ctx, "search published ads", "err", err)
@@ -53,9 +65,10 @@ func (s *AdsGRPCServer) SearchPublished(
 	}
 
 	result := &adsv1.SearchPage{
-		Total:  int64(page.Total),
-		Limit:  int64(page.Limit),
-		Offset: int64(page.Offset),
+		Total:      int64(page.Total),
+		Limit:      int64(page.Limit),
+		Offset:     int64(page.Offset),
+		NextCursor: page.NextCursor,
 	}
 
 	for _, ad := range page.Items {

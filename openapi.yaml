@@ -785,7 +785,9 @@ paths:
       description: |
         Ищет подстроку в названии или описании без учёта регистра.
         Пустой запрос или строка из пробелов возвращает все активные объявления.
-        Сначала идут свежие публикации. При одинаковой дате выше объявление с большим ID.
+        По умолчанию сначала идут свежие публикации. При одинаковой дате выше
+        объявление с большим ID. Для сортировки newest вместо offset можно
+        передать cursor из next_cursor предыдущей страницы с теми же фильтрами.
         Если совпадений нет, сервер возвращает пустой массив items и total, равный 0.
       security: []
       parameters:
@@ -794,15 +796,41 @@ paths:
           description: Текст для поиска
           schema: { type: string }
           example: телефон
+        - name: category_id
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: city
+          in: query
+          description: Точное название города без учёта регистра
+          schema: { type: string }
+        - name: price_min
+          in: query
+          schema: { $ref: '#/components/schemas/PriceFilter' }
+        - name: price_max
+          in: query
+          description: Цена должна быть не меньше price_min
+          schema: { $ref: '#/components/schemas/PriceFilter' }
+        - name: has_delivery
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/Sort'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
+        - name: cursor
+          in: query
+          description: Курсор следующей страницы из ответа GET /search
+          schema: { type: string }
       responses:
         '200':
           description: Страница результатов поиска
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AdPage' }
-        '400': { description: Некорректный limit или offset }
+        '400':
+          description: Некорректный параметр запроса
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '502': { description: Ошибка при выполнении запроса в ads }
         '503': { description: Сервис ads недоступен }
         '504': { description: Истекло время ожидания ответа от ads }
