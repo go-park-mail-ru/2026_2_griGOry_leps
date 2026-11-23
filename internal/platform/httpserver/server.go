@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,13 +20,13 @@ func Env(name, fallback string) string {
 	}
 	return fallback
 }
-func Run(name, port string, handler http.Handler) error {
+func Run(name, host, port string, handler http.Handler) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return RunContext(ctx, name, port, handler)
+	return RunContext(ctx, name, host, port, handler)
 }
 
-func RunContext(ctx context.Context, name, port string, handler http.Handler) error {
+func RunContext(ctx context.Context, name, host, port string, handler http.Handler) error {
 	trusted, configured := os.LookupEnv("TRUSTED_PROXY_CIDRS")
 	if !configured {
 		trusted = "127.0.0.1/32,::1/128"
@@ -34,11 +35,11 @@ func RunContext(ctx context.Context, name, port string, handler http.Handler) er
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: ":" + port, Handler: handler, ReadHeaderTimeout: 5 * time.Second,
+	server := &http.Server{Addr: net.JoinHostPort(host, port), Handler: handler, ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	result := make(chan error, 1)
 	go func() {
-		slog.Info("service starting", "service", name, "port", port)
+		slog.Info("service starting", "service", name, "address", server.Addr)
 		result <- server.ListenAndServe()
 	}()
 	select {

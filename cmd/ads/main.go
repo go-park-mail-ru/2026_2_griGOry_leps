@@ -107,7 +107,7 @@ func run(cfg *config.Config) error {
 	grpcDone := make(chan error, 1)
 
 	go func() {
-		httpDone <- httpserver.RunContext(ctx, "ads", httpserver.Env("ADS_PORT", "8082"), router)
+		httpDone <- httpserver.RunContext(ctx, "ads", "127.0.0.1", httpserver.Env("ADS_PORT", "8082"), router)
 		stop()
 	}()
 

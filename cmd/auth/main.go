@@ -81,7 +81,7 @@ func run(cfg *config.Config) error {
 	httpDone := make(chan error, 1)
 	grpcDone := make(chan error, 1)
 	go func() {
-		httpDone <- httpserver.RunContext(ctx, "auth", httpserver.Env("AUTH_PORT", "8081"), router)
+		httpDone <- httpserver.RunContext(ctx, "auth", "127.0.0.1", httpserver.Env("AUTH_PORT", "8081"), router)
 		stop()
 	}()
 	go func() {

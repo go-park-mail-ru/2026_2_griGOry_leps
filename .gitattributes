@@ -1,0 +1,3 @@
+deploy/backend/*.sh text eol=lf
+deploy/backend/*.service text eol=lf
+deploy/backend/*.env text eol=lf

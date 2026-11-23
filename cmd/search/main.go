@@ -38,5 +38,5 @@ func run(cfg *config.Config) error {
 	ads := adsv1.NewAdsServiceClient(conn)
 	router := delivery.NewSearchRouter(cfg.FrontendOrigin, ads)
 
-	return httpserver.Run("search", httpserver.Env("SEARCH_PORT", "8083"), router)
+	return httpserver.Run("search", "127.0.0.1", httpserver.Env("SEARCH_PORT", "8083"), router)
 }
