@@ -4,17 +4,22 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
 
 	authclient "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/client/auth"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	adsv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
@@ -87,7 +92,43 @@ func run(cfg *config.Config) error {
 	go func() { defer close(orderDone); runOrderMaintenance(maintenanceCtx, orderUsecase) }()
 	defer func() { stopMaintenance(); <-listingDone; <-orderDone }()
 	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler, delivery.NewModerationHandler(moderation))
-	return httpserver.Run("ads", httpserver.Env("ADS_PORT", "8082"), router)
+	listener, err := net.Listen("tcp", httpserver.Env("ADS_GRPC_ADDR", "127.0.0.1:9092"))
+	if err != nil {
+		return err
+	}
+
+	grpcServer := grpc.NewServer()
+	adsv1.RegisterAdsServiceServer(grpcServer, delivery.NewAdsGRPCServer(adUsecase))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	httpDone := make(chan error, 1)
+	grpcDone := make(chan error, 1)
+
+	go func() {
+		httpDone <- httpserver.RunContext(ctx, "ads", httpserver.Env("ADS_PORT", "8082"), router)
+		stop()
+	}()
+
+	go func() {
+		slog.Info("ads gRPC starting", "addr", listener.Addr().String())
+		grpcDone <- grpcServer.Serve(listener)
+		stop()
+	}()
+
+	<-ctx.Done()
+
+	timer := time.AfterFunc(10*time.Second, grpcServer.Stop)
+	grpcServer.GracefulStop()
+	timer.Stop()
+
+	grpcErr := <-grpcDone
+	if errors.Is(grpcErr, grpc.ErrServerStopped) {
+		grpcErr = nil
+	}
+
+	return errors.Join(<-httpDone, grpcErr)
 }
 
 const (

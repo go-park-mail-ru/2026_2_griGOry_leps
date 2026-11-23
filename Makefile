@@ -42,4 +42,4 @@ seed:
 	psql "$(DATABASE_URL)" -f db/seed.sql
 
 proto:
-	protoc -I proto --go_out=. --go_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps --go-grpc_out=. --go-grpc_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps proto/auth/v1/auth.proto
+	protoc -I proto --go_out=. --go_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps --go-grpc_out=. --go-grpc_opt=module=github.com/go-park-mail-ru/2026_2_griGOry_leps proto/auth/v1/auth.proto proto/ads/v1/search.proto
