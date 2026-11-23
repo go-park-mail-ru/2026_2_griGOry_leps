@@ -37,7 +37,7 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	adsRouter := NewAdsRouter("http://front.test", dir, NewSessionMiddleware(r.auth), NewAdHandler(r.ads),
 		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(), NewCartHandler(NewMockCartUsecase(ctrl)),
 		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city), NewSellerHandler(r.seller),
-		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"))
+		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"), NewModerationHandler(nil))
 	searchRouter := NewSearchRouter("http://front.test", nil)
 	r.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
@@ -193,6 +193,10 @@ func TestRouter_NewRoutesRequireAuth(t *testing.T) {
 	captureLogs(t)
 	for _, route := range []struct{ method, path string }{
 		{http.MethodGet, "/api/me/listings"},
+		{http.MethodGet, "/api/moderation/listings"},
+		{http.MethodGet, "/api/moderation/listings/7"},
+		{http.MethodPost, "/api/moderation/listings/7/approve"},
+		{http.MethodPost, "/api/moderation/listings/7/reject"},
 		{http.MethodGet, "/api/me/addresses"},
 		{http.MethodPost, "/api/me/addresses"},
 		{http.MethodPatch, "/api/me/addresses/1"},

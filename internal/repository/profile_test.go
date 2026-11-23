@@ -282,8 +282,8 @@ func profileMockRows(p domain.Profile) *sqlmock.Rows {
 	if p.City != nil {
 		cityID, cityName = p.City.ID, p.City.Name
 	}
-	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "rating", "reviews"}).
-		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.Rating, p.ReviewsCount)
+	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "rating", "reviews", "is_moderator"}).
+		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.Rating, p.ReviewsCount, p.IsModerator)
 }
 
 func userStateRows(u domain.User) *sqlmock.Rows {

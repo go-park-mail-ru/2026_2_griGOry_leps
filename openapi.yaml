@@ -986,8 +986,9 @@ paths:
         | Кто и статус | Ответ |
         | --- | --- |
         | Любой, `active` | 200 |
-        | Не автор, `closed` или `sold` | 200 со статусом; купить нельзя |
-        | Не автор, `draft` или `moderation` | 404 |
+        | Не автор, `closed` с опубликованной версией или `sold` | 200 со статусом; купить нельзя |
+        | Не автор, `closed` без опубликованной версии | 404 |
+        | Не автор, `draft`, `moderation` или `rejected` | 404 |
         | Автор, любой статус | 200, `is_owner` = true, виден `close_reason` |
         | Удалённое | 404 |
 
@@ -1020,10 +1021,19 @@ paths:
           по всем правилам создания с `publish` = true. Если проверка прошла —
           статус становится `moderation`, иначе 400 с полем, и ничего не сохраняется.
 
-        **Остальные статусы**: очистить обязательное поле нельзя — `null` и пустой
-        `photo_ids` дают 400 с полем. `publish` не принимается — 409.
-        Статус при правке не меняется, кроме `rejected`: исправленное
-        объявление снова уходит на модерацию (`moderation`).
+        **Отклонённое** (`rejected`): изменения можно сохранить отдельно.
+        `publish: true` отправляет исправленное объявление на повторную проверку
+        и очищает прежнюю причину. Для отправки требуется подтверждённая почта.
+
+        **Активное** (`active`): при изменении полей или фотографий объявление
+        снова уходит на проверку. Если есть активный заказ, сервер возвращает 409.
+        Запрос с теми же значениями сохраняет текущий статус и версию.
+
+        **Закрытое** (`closed`): можно сохранить изменения. При изменении полей
+        или фотографий карточка остаётся закрытой и доступна только автору.
+
+        В любом статусе, кроме черновика, нельзя очистить обязательное поле.
+        В других статусах поле `publish` не принимается.
       security:
         - sessionCookie: []
           csrfToken: []
@@ -1043,7 +1053,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/ListingNotFound' }
         '409':
-          description: Проданное объявление править нельзя; `publish` — только у черновика
+          description: Объявление продано, есть активный заказ или отправка на проверку недоступна в текущем статусе
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1087,6 +1097,7 @@ paths:
       description: |
         Только автор. Снять можно активное объявление или объявление на проверке.
         Статус становится `closed`, причину видит только автор.
+        Если объявление снято во время проверки, карточка доступна только автору.
         Объявление пропадает из ленты и со страницы продавца, а в чужих корзинах
         становится недоступным (`unavailable_reason` = `closed`).
       security:
@@ -1125,6 +1136,122 @@ paths:
         '500': { $ref: '#/components/responses/InternalError' }
 
   # ---------------------------------------------------------------- Продавцы
+  /moderation/listings:
+    get:
+      tags: [Объявления]
+      operationId: listModerationQueue
+      summary: Очередь объявлений для модератора
+      description: Самые ранние заявки идут первыми. Свои объявления модератор видит в личном кабинете автора.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+          description: Курсор из предыдущей страницы.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 60, default: 20 }
+      responses:
+        '200':
+          description: Страница очереди
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, price, requested_at]
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        price: { type: string, nullable: true, example: '2500.00' }
+                        requested_at: { type: string, format: date-time }
+                  next_cursor: { type: string, nullable: true }
+        '400': { description: Неверный курсор или размер страницы }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ModerationForbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listing_id}:
+    parameters:
+      - &moderationListingID
+        name: listing_id
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Объявления]
+      operationId: getModerationListing
+      summary: Открыть объявление на проверке и получить его версию
+      security: [{ sessionCookie: [] }]
+      responses:
+        '200':
+          description: Снимок объявления для принятия решения
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [listing, revision, requested_at]
+                properties:
+                  listing: { $ref: '#/components/schemas/Listing' }
+                  revision: { type: integer, format: int64 }
+                  requested_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ModerationForbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409': { $ref: '#/components/responses/ModerationConflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listing_id}/approve:
+    parameters: [*moderationListingID]
+    post:
+      tags: [Объявления]
+      operationId: approveModerationListing
+      summary: Одобрить объявление и опубликовать его
+      security: &moderationWriteSecurity
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: { type: integer, format: int64, minimum: 1 }
+      responses: &moderationWriteResponses
+        '204': { description: Решение сохранено }
+        '400': { description: Неверная версия или причина }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/ModerationForbidden' }
+        '404': { $ref: '#/components/responses/ListingNotFound' }
+        '409': { $ref: '#/components/responses/ModerationConflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listing_id}/reject:
+    parameters: [*moderationListingID]
+    post:
+      tags: [Объявления]
+      operationId: rejectModerationListing
+      summary: Отклонить объявление с причиной для автора
+      security: *moderationWriteSecurity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, reason]
+              properties:
+                revision: { type: integer, format: int64, minimum: 1 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses: *moderationWriteResponses
+
   /sellers/{seller_id}:
     parameters:
       - $ref: '#/components/parameters/SellerId'
@@ -1686,6 +1813,16 @@ components:
       schema: { type: integer, minimum: 0, default: 0 }
 
   responses:
+    ModerationForbidden:
+      description: Доступ требует роли модератора и чужого объявления. Для записи требуется CSRF-токен.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ModerationConflict:
+      description: Объявление изменилось или его уже сняли с проверки. Нужно обновить очередь.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     InvalidCSRF:
       description: Нет заголовка `X-CSRF-Token`, токен протух, подделан или выдан для другой сессии
       content:
@@ -1913,7 +2050,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/User'
         - type: object
-          required: [pending_email, phone_verified, city, about, avatar_url, rating, reviews_count, created_at]
+          required: [pending_email, phone_verified, city, about, avatar_url, rating, reviews_count, created_at, is_moderator]
           properties:
             first_name:
               description: «Имя или никнейм», виден покупателям и продавцам.
@@ -1923,6 +2060,7 @@ components:
               nullable: true
               description: Новая почта, которая ждёт подтверждения. null, если смены нет.
             phone_verified: { type: boolean }
+            is_moderator: { type: boolean, description: Роль модератора текущего аккаунта. }
             city:
               type: object
               nullable: true
@@ -2133,13 +2271,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/AdCard'
         - type: object
-          required: [status, close_reason, updated_at]
+          required: [status, close_reason, rejection_reason, updated_at]
           properties:
             status: { $ref: '#/components/schemas/ListingStatus' }
             close_reason:
               type: string
               enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
               nullable: true
+            rejection_reason: { type: string, nullable: true, maxLength: 500 }
             updated_at: { type: string, format: date-time }
 
     MyListingPage:
@@ -2291,6 +2430,10 @@ components:
           enum: [sold_on_goget, sold_elsewhere, changed_mind, other]
           nullable: true
           description: Видна только автору, остальным всегда null.
+        rejection_reason:
+          type: string
+          maxLength: 500
+          description: Причина отказа. Присутствует у отклонённого объявления в ответе для его автора.
         seller: { $ref: '#/components/schemas/SellerShort' }
         is_owner: { type: boolean, description: 'true, если запрос от автора.' }
         in_cart: { type: boolean, description: 'true, если объявление в корзине текущего пользователя; без сессии false.' }
@@ -2350,7 +2493,7 @@ components:
         has_delivery: { type: boolean }
         publish:
           type: boolean
-          description: Только для черновика. true — применить изменения и отправить на модерацию.
+          description: true — отправить черновик или отклонённое объявление на проверку.
       example:
         title: 'Велосипед горный Stels Navigator 29"'
         address: null
