@@ -27,6 +27,11 @@ func Run(name, host, port string, handler http.Handler) error {
 }
 
 func RunContext(ctx context.Context, name, host, port string, handler http.Handler) error {
+	switch name {
+	case "auth", "ads", "search":
+		handler = withMetrics(handler)
+	}
+
 	trusted, configured := os.LookupEnv("TRUSTED_PROXY_CIDRS")
 	if !configured {
 		trusted = "127.0.0.1/32,::1/128"

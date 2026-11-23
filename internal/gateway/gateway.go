@@ -46,7 +46,7 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id, X-CSRF-Token, Idempotency-Key")
 		w.Header().Set("Access-Control-Expose-Headers", "X-Request-Id, Retry-After")
 		p := path.Clean(r.URL.Path)
-		if p == "/internal" || strings.HasPrefix(p, "/internal/") {
+		if p == "/metrics" || p == "/internal" || strings.HasPrefix(p, "/internal/") {
 			http.NotFound(w, r)
 			return
 		}

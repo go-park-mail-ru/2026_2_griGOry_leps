@@ -1,3 +1,5 @@
 deploy/backend/*.sh text eol=lf
 deploy/backend/*.service text eol=lf
 deploy/backend/*.env text eol=lf
+deploy/monitoring/*.yml text eol=lf
+deploy/monitoring/**/*.conf text eol=lf
