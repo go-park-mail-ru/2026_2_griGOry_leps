@@ -3,7 +3,7 @@ package repository
 const getListingQuery = `
     SELECT a.id, a.user_id, a.category_id, COALESCE(c.name, ''), COALESCE(cp.path, ''),
            a.title, COALESCE(a.description, ''), a.price, a.is_free, a.is_negotiable, a.condition,
-           COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason,
+           COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason, a.rejection_reason,
            a.published_at, a.created_at, a.updated_at,
            u.first_name, COALESCE(u.avatar, ''), u.created_at,
            COALESCE(r.rating, 0), COALESCE(r.reviews_count, 0),
@@ -12,7 +12,12 @@ const getListingQuery = `
                FROM cart_item ci
                JOIN cart ct ON ct.id = ci.cart_id
                WHERE ct.user_id = $2 AND ci.ad_id = a.id
-           )
+           ),
+           COALESCE((
+               SELECT jsonb_agg(jsonb_build_object('ID', image_id, 'URL', url) ORDER BY position, image_id)
+               FROM ad_image
+               WHERE ad_id = a.id
+           ), '[]'::jsonb)
     FROM ad a
     JOIN user_account u ON u.user_id = a.user_id
     LEFT JOIN category c ON c.category_id = a.category_id
@@ -67,7 +72,8 @@ const createListingQuery = `
 const updateListingQuery = `
     UPDATE ad
     SET status = $2, category_id = $3, title = $4, description = NULLIF($5, ''), price = $6,
-        is_free = $7, is_negotiable = $8, condition = $9, address = $10, has_delivery = $11
+        is_free = $7, is_negotiable = $8, condition = $9, address = $10, has_delivery = $11,
+        published_at = CASE WHEN status = 'closed' THEN NULL ELSE published_at END
     WHERE id = $1
 `
 
@@ -110,7 +116,8 @@ const deleteListingQuery = `
 
 const closeListingQuery = `
     UPDATE ad
-    SET status = 'closed', close_reason = $2
+    SET status = 'closed', close_reason = $2,
+        published_at = CASE WHEN status = 'moderation' THEN NULL ELSE published_at END
     WHERE id = $1
 `
 
@@ -137,12 +144,6 @@ const createPhotoQuery = `
     INSERT INTO ad_image (user_id, url)
     VALUES ($1, $2)
     RETURNING image_id
-`
-
-const approveModerationQuery = `
-    UPDATE ad
-    SET status = 'active', published_at = COALESCE(published_at, now())
-    WHERE status = 'moderation'
 `
 
 const deleteStalePhotosQuery = `

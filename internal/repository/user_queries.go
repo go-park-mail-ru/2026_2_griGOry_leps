@@ -33,7 +33,7 @@ const getUserByPhoneQuery = `
 const getProfileQuery = `
     SELECT u.user_id, u.first_name, u.email, u.phone_number, u.created_at,
            u.email_verified, COALESCE(u.pending_email, ''), u.phone_verified, c.city_id, c.name, u.about, COALESCE(u.avatar, ''),
-           COALESCE(r.rating, 0), COALESCE(r.reviews_count, 0)
+           COALESCE(r.rating, 0), COALESCE(r.reviews_count, 0), u.is_moderator
     FROM user_account u
     LEFT JOIN city c ON c.city_id = u.city_id
     LEFT JOIN LATERAL (

@@ -69,11 +69,11 @@ func TestAd_ListMine(t *testing.T) {
 		"items": [{
 			"id": 1, "title": "Диван", "price": "0.00", "is_free": true, "image_url": "/uploads/listings/1.jpg",
 			"city": "Москва", "has_delivery": false, "category_id": 4, "created_at": "2026-10-01T10:00:00Z",
-			"status": "closed", "close_reason": "changed_mind", "updated_at": "2026-10-01T10:00:00Z"
+			"status": "closed", "close_reason": "changed_mind", "rejection_reason": null, "updated_at": "2026-10-01T10:00:00Z"
 		}, {
 			"id": 2, "title": "Черновик", "price": null, "is_free": false, "image_url": null,
 			"city": "", "has_delivery": false, "category_id": 0, "created_at": "2026-10-01T10:00:00Z",
-			"status": "draft", "close_reason": null, "updated_at": "2026-10-01T10:00:00Z"
+			"status": "draft", "close_reason": null, "rejection_reason": null, "updated_at": "2026-10-01T10:00:00Z"
 		}],
 		"total": 2, "limit": 60, "offset": 0,
 		"counts": {"all": 2, "closed": 1, "draft": 1}

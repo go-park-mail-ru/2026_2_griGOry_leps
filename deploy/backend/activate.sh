@@ -39,41 +39,67 @@ if systemctl is-active --quiet "$legacy"; then legacy_running=true; fi
 if systemctl is-enabled --quiet "$legacy"; then legacy_enabled=true; fi
 if systemctl is-enabled --quiet "$gateway"; then gateway_enabled=true; fi
 
+link="$root/.current.$$"
+health_pid=''
+
 select_release() {
-    local link="$root/.current.$$"
     ln -s -- "$1" "$link" && mv -Tf -- "$link" "$root/current"
 }
+
+rollback() {
+    local result=$1
+    local rollback_failed=0
+    trap - EXIT
+    trap '' HUP INT TERM
+
+    if [[ -n $health_pid ]]; then
+        kill "$health_pid" 2>/dev/null || true
+        wait "$health_pid" 2>/dev/null || true
+    fi
+
+    echo "Activation failed. Restoring the previous backend." >&2
+    systemctl stop "${services[@]}" || rollback_failed=1
+    if ! $gateway_enabled; then systemctl disable "$gateway" || rollback_failed=1; fi
+    if $legacy_enabled; then systemctl enable "$legacy" || rollback_failed=1; fi
+    rm -f -- "$link" || rollback_failed=1
+    if [[ -n $previous ]]; then
+        select_release "$previous" || rollback_failed=1
+    else
+        rm -f -- "$root/current" || rollback_failed=1
+    fi
+    if $legacy_running; then
+        systemctl start "$legacy" || rollback_failed=1
+        curl --silent --show-error --fail --retry 5 --retry-connrefused --max-time 5 \
+            http://127.0.0.1:8000/api/health >/dev/null || rollback_failed=1
+    elif [[ -n $previous ]]; then
+        systemctl start "${services[@]}" && "$root/bin/health.sh" || rollback_failed=1
+    fi
+    if (( rollback_failed )); then echo "Rollback requires operator attention" >&2; fi
+    exit "$result"
+}
+
+trap 'rollback "$?"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if $legacy_running; then
     systemctl stop "$legacy"
 fi
 
-if select_release "$target" &&
-    systemctl restart "${services[@]}" &&
-    "$root/bin/health.sh" &&
-    systemctl enable "$gateway" &&
-    { ! $legacy_enabled || systemctl disable "$legacy"; }; then
-    echo "GoGet backend release $release is active"
-    exit 0
-fi
-
-echo "Activation failed. Restoring the previous backend." >&2
-set +e
-rollback_failed=0
-systemctl stop "${services[@]}" || rollback_failed=1
-if ! $gateway_enabled; then systemctl disable "$gateway" || rollback_failed=1; fi
-if $legacy_enabled; then systemctl enable "$legacy" || rollback_failed=1; fi
-if [[ -n $previous ]]; then
-    select_release "$previous" || rollback_failed=1
+select_release "$target"
+systemctl restart "${services[@]}"
+"$root/bin/health.sh" &
+health_pid=$!
+if wait "$health_pid"; then
+    health_pid=''
 else
-    rm -f -- "$root/current" || rollback_failed=1
+    result=$?
+    health_pid=''
+    exit "$result"
 fi
-if $legacy_running; then
-    systemctl start "$legacy" || rollback_failed=1
-    curl --silent --show-error --fail --retry 5 --retry-connrefused --max-time 5 \
-        http://127.0.0.1:8000/api/health >/dev/null || rollback_failed=1
-elif [[ -n $previous ]]; then
-    systemctl start "${services[@]}" && "$root/bin/health.sh" || rollback_failed=1
-fi
-if (( rollback_failed )); then echo "Rollback requires operator attention" >&2; fi
-exit 1
+systemctl enable "$gateway"
+if $legacy_enabled; then systemctl disable "$legacy"; fi
+
+trap - EXIT HUP INT TERM
+echo "GoGet backend release $release is active"

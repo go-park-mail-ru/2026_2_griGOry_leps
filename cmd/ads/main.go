@@ -66,7 +66,9 @@ func run(cfg *config.Config) error {
 	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
 	cityUsecase := usecase.NewCityUsecase(cityRepo)
 	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
-	listingUsecase := usecase.NewListingUsecase(repository.NewListingRepository(pool), listingPhotoStorage, tx)
+	listingRepo := repository.NewListingRepository(pool)
+	listingUsecase := usecase.NewListingUsecase(listingRepo, listingPhotoStorage, tx)
+	moderation := usecase.NewModerationUsecase(repository.NewModerationRepository(pool), listingRepo, tx)
 	cartRepo := repository.NewCartRepository(pool)
 	prices := domain.DeliveryPrices{Courier: cfg.CourierPrice, PickupPoint: cfg.PickupPointPrice}
 	cartUsecase := usecase.NewCartUsecase(cartRepo, tx, prices)
@@ -84,7 +86,7 @@ func run(cfg *config.Config) error {
 	go func() { defer close(listingDone); runListingMaintenance(maintenanceCtx, listingUsecase) }()
 	go func() { defer close(orderDone); runOrderMaintenance(maintenanceCtx, orderUsecase) }()
 	defer func() { stopMaintenance(); <-listingDone; <-orderDone }()
-	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler)
+	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler, delivery.NewModerationHandler(moderation))
 	return httpserver.Run("ads", "127.0.0.1", httpserver.Env("ADS_PORT", "8082"), router)
 }
 

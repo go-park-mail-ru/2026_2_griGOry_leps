@@ -60,6 +60,7 @@ func TestProfile_Get(t *testing.T) {
 		"first_name": "Анна",
 		"phone": "+79990000001",
 		"email_verified": false,
+		"is_moderator": false,
 		"pending_email": null,
 		"phone_verified": false,
 		"city": {"id": 1, "name": "Москва"},

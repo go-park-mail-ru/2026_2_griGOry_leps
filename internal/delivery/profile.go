@@ -35,6 +35,7 @@ type profileResponse struct {
 	FirstName     string        `json:"first_name"`
 	Phone         string        `json:"phone"`
 	EmailVerified bool          `json:"email_verified"`
+	IsModerator   bool          `json:"is_moderator"`
 	PendingEmail  *string       `json:"pending_email"`
 	PhoneVerified bool          `json:"phone_verified"`
 	City          *cityResponse `json:"city"`
@@ -52,6 +53,7 @@ func newProfileResponse(p domain.Profile) profileResponse {
 		FirstName:     p.FirstName,
 		Phone:         p.Phone,
 		EmailVerified: p.EmailVerified,
+		IsModerator:   p.IsModerator,
 		PhoneVerified: p.PhoneVerified,
 		About:         p.About,
 		Rating:        p.Rating,
