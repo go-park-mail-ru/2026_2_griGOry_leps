@@ -63,6 +63,7 @@ Gateway направляет /api/search в search, операции аккау�
 127.0.0.1, внешний трафик принимает gateway.
 
 Развёртывание и откат на сервере описаны в [инструкции для systemd](deploy/backend/README.md).
+Сбор метрик сервисов и хоста описан в [инструкции по мониторингу](deploy/monitoring/README.md).
 
 Для запроса корзины ads берёт `session_id` из cookie и вызывает
 `auth.v1.AuthService/CheckSession` по адресу `AUTH_GRPC_ADDR`.
