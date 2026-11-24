@@ -36,7 +36,7 @@ func TestModerationLifecycle(t *testing.T) {
 
 	title, address, price, condition := "Стул", "Москва", "150", "used_good"
 	fields := domain.ListingFields{
-		CategoryID: domain.Optional[int32]{Set: true, Value: 2},
+		CategoryID: domain.Optional[int32]{Set: true, Value: f.bikes},
 		Title:      &title,
 		PhotoIDs:   &[]int32{photoID},
 		Address:    domain.Optional[string]{Set: true, Value: address},
@@ -48,7 +48,7 @@ func TestModerationLifecycle(t *testing.T) {
 	require.Equal(t, domain.AdStatusModeration, pending.Status)
 	require.NoError(t, listings.RunMaintenance(ctx, time.Now()))
 
-	nextID := f.ad(t, 2, "Велосипед", 100, domain.AdStatusModeration, 0)
+	nextID := f.ad(t, f.bikes, "Велосипед", 100, domain.AdStatusModeration, 0)
 	page, err := moderation.List(ctx, f.buyer, "", 1)
 	require.NoError(t, err)
 	require.Len(t, page.Items, 1)

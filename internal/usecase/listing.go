@@ -289,7 +289,7 @@ func (uc *ListingUsecase) apply(ctx context.Context, state *domain.ListingState,
 	if f.CategoryID.Set {
 		if f.CategoryID.Null {
 			state.CategoryID = nil
-		} else {
+		} else if state.CategoryID == nil || *state.CategoryID != f.CategoryID.Value {
 			ok, err := uc.listings.IsLeafCategory(ctx, f.CategoryID.Value)
 			if err != nil {
 				return err

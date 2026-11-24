@@ -798,6 +798,7 @@ paths:
           example: телефон
         - name: category_id
           in: query
+          description: Категория и все её подкатегории, включая объявления в самой категории.
           schema: { type: integer, minimum: 1 }
         - name: city
           in: query
@@ -854,6 +855,7 @@ paths:
           schema: { type: string }
         - name: category_id
           in: query
+          description: Категория и все её подкатегории, включая объявления в самой категории.
           schema: { type: integer, minimum: 1 }
         - name: city
           in: query
