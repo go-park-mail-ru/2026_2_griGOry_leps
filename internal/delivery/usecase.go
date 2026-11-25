@@ -88,3 +88,9 @@ type OrderUsecase interface {
 type SessionChecker interface {
 	Me(ctx context.Context, sessionID string) (domain.User, error)
 }
+
+type FavoritesUsecase interface {
+	List(ctx context.Context, userID int32) ([]domain.Ad, error)
+	Add(ctx context.Context, userID, listingID int32) error
+	Remove(ctx context.Context, userID, listingID int32) error
+}

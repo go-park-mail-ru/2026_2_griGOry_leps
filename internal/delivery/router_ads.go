@@ -9,7 +9,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
-func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler) http.Handler {
+func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler, favoritesHandler *FavoritesHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -24,6 +24,10 @@ func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, 
 	auth := func(h http.HandlerFunc) http.Handler { return session.RequireAuth(h) }
 	verified := func(h http.HandlerFunc) http.Handler { return session.RequireAuth(requireVerifiedEmail(h)) }
 	reportLimit := ratelimit.New(5, 10*time.Minute)
+	const favoritePath = "/api/favorites/{listing_id:[0-9]+}"
+	r.Handle("/api/favorites", auth(favoritesHandler.List)).Methods(http.MethodGet)
+	r.Handle(favoritePath, auth(favoritesHandler.Add)).Methods(http.MethodPut)
+	r.Handle(favoritePath, auth(favoritesHandler.Remove)).Methods(http.MethodDelete)
 	r.Handle("/api/me/listings", auth(adHandler.ListMine)).Methods(http.MethodGet)
 
 	const addressPath = "/api/me/addresses/{address_id:[0-9]+}"

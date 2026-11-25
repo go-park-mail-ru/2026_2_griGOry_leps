@@ -82,6 +82,9 @@ func run(cfg *config.Config) error {
 	cityHandler := delivery.NewCityHandler(cityUsecase)
 	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
 	cartHandler := delivery.NewCartHandler(cartUsecase)
+	favoritesRepo := repository.NewFavoritesRepository(pool)
+	favoritesUsecase := usecase.NewFavoritesUsecase(favoritesRepo)
+	favoritesHandler := delivery.NewFavoritesHandler(favoritesUsecase)
 	orderHandler := delivery.NewOrderHandler(orderUsecase, cfg.PublicURL, cfg.FrontendOrigin)
 	csrfHandler := delivery.NewCSRFHandler(csrf.New([]byte(cfg.CSRFSecret), 24*time.Hour), cfg.CookieSecure)
 	maintenanceCtx, stopMaintenance := context.WithCancel(context.Background())
@@ -89,7 +92,7 @@ func run(cfg *config.Config) error {
 	go func() { defer close(listingDone); runListingMaintenance(maintenanceCtx, listingUsecase) }()
 	go func() { defer close(orderDone); runOrderMaintenance(maintenanceCtx, orderUsecase) }()
 	defer func() { stopMaintenance(); <-listingDone; <-orderDone }()
-	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler)
+	router := delivery.NewAdsRouter(cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler, csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler, orderHandler, favoritesHandler)
 	listener, err := net.Listen("tcp", httpserver.Env("ADS_GRPC_ADDR", "127.0.0.1:9092"))
 	if err != nil {
 		return err
