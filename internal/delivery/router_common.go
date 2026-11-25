@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 const (
@@ -12,6 +14,14 @@ const (
 	avatarPath       = "/api/me/avatar"
 	listingPhotoPath = "/api/listing-photos"
 )
+
+func newAPIRouter() *mux.Router {
+	router := mux.NewRouter()
+	router.Use(captureMetricRoute, recoverMiddleware)
+	router.NotFoundHandler = http.HandlerFunc(notFound)
+	router.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
+	return router
+}
 
 func uploads(dir string) http.Handler {
 	root := http.Dir(dir)
