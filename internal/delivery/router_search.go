@@ -36,15 +36,7 @@ func NewSearchRouter(frontendOrigin string, ads adsv1.AdsServiceClient) http.Han
 
 func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-
-		limit, err := intParam(q, "limit", 1)
-		if err != nil {
-			writeError(r.Context(), w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		offset, err := intParam(q, "offset", 0)
+		params, err := parseAdListParams(r.URL.RawQuery)
 		if err != nil {
 			writeError(r.Context(), w, http.StatusBadRequest, err.Error())
 			return
@@ -55,12 +47,21 @@ func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {
 
 		ctx = metadata.AppendToOutgoingContext(ctx, "x-request-id", logger.RequestID(ctx))
 		result, err := ads.SearchPublished(ctx, &adsv1.SearchRequest{
-			Query:  q.Get("q"),
-			Limit:  int64(limit),
-			Offset: int64(offset),
+			Query:       params.Query,
+			CategoryId:  params.CategoryID,
+			City:        params.City,
+			PriceMin:    params.PriceMin,
+			PriceMax:    params.PriceMax,
+			HasDelivery: params.HasDelivery,
+			Sort:        params.Sort,
+			Limit:       int64(params.Limit),
+			Offset:      int64(params.Offset),
+			Cursor:      params.Cursor,
 		})
 		if err != nil {
 			switch status.Code(err) {
+			case codes.InvalidArgument:
+				writeError(ctx, w, http.StatusBadRequest, status.Convert(err).Message())
 			case codes.Unavailable:
 				writeError(ctx, w, http.StatusServiceUnavailable, "ads unavailable")
 			case codes.DeadlineExceeded:
@@ -72,9 +73,10 @@ func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {
 		}
 
 		page := domain.AdPage{
-			Total:  int(result.Total),
-			Limit:  int(result.Limit),
-			Offset: int(result.Offset),
+			Total:      int(result.Total),
+			Limit:      int(result.Limit),
+			Offset:     int(result.Offset),
+			NextCursor: result.NextCursor,
 		}
 
 		for _, card := range result.Items {
@@ -91,6 +93,6 @@ func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {
 			})
 		}
 
-		writeJSON(ctx, w, http.StatusOK, adPageResponse(page, adResponse))
+		writeJSON(ctx, w, http.StatusOK, publicAdPageResponse(page))
 	}
 }

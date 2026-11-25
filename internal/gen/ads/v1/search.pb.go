@@ -26,6 +26,13 @@ type SearchRequest struct {
 	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Limit         int64                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int64                  `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
+	CategoryId    int32                  `protobuf:"varint,4,opt,name=category_id,json=categoryId,proto3" json:"category_id,omitempty"`
+	City          string                 `protobuf:"bytes,5,opt,name=city,proto3" json:"city,omitempty"`
+	PriceMin      string                 `protobuf:"bytes,6,opt,name=price_min,json=priceMin,proto3" json:"price_min,omitempty"`
+	PriceMax      string                 `protobuf:"bytes,7,opt,name=price_max,json=priceMax,proto3" json:"price_max,omitempty"`
+	HasDelivery   *bool                  `protobuf:"varint,8,opt,name=has_delivery,json=hasDelivery,proto3,oneof" json:"has_delivery,omitempty"`
+	Sort          string                 `protobuf:"bytes,9,opt,name=sort,proto3" json:"sort,omitempty"`
+	Cursor        string                 `protobuf:"bytes,10,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -81,12 +88,62 @@ func (x *SearchRequest) GetOffset() int64 {
 	return 0
 }
 
+func (x *SearchRequest) GetCategoryId() int32 {
+	if x != nil {
+		return x.CategoryId
+	}
+	return 0
+}
+
+func (x *SearchRequest) GetCity() string {
+	if x != nil {
+		return x.City
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetPriceMin() string {
+	if x != nil {
+		return x.PriceMin
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetPriceMax() string {
+	if x != nil {
+		return x.PriceMax
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetHasDelivery() bool {
+	if x != nil && x.HasDelivery != nil {
+		return *x.HasDelivery
+	}
+	return false
+}
+
+func (x *SearchRequest) GetSort() string {
+	if x != nil {
+		return x.Sort
+	}
+	return ""
+}
+
+func (x *SearchRequest) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
 type SearchPage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*SearchCard          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
 	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	Limit         int64                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
 	Offset        int64                  `protobuf:"varint,4,opt,name=offset,proto3" json:"offset,omitempty"`
+	NextCursor    string                 `protobuf:"bytes,5,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,6 +204,13 @@ func (x *SearchPage) GetOffset() int64 {
 		return x.Offset
 	}
 	return 0
+}
+
+func (x *SearchPage) GetNextCursor() string {
+	if x != nil {
+		return x.NextCursor
+	}
+	return ""
 }
 
 type SearchCard struct {
@@ -261,17 +325,29 @@ var File_ads_v1_search_proto protoreflect.FileDescriptor
 
 const file_ads_v1_search_proto_rawDesc = "" +
 	"\n" +
-	"\x13ads/v1/search.proto\x12\x06ads.v1\"S\n" +
+	"\x13ads/v1/search.proto\x12\x06ads.v1\"\xa7\x02\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x03R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x03 \x01(\x03R\x06offset\"z\n" +
+	"\x06offset\x18\x03 \x01(\x03R\x06offset\x12\x1f\n" +
+	"\vcategory_id\x18\x04 \x01(\x05R\n" +
+	"categoryId\x12\x12\n" +
+	"\x04city\x18\x05 \x01(\tR\x04city\x12\x1b\n" +
+	"\tprice_min\x18\x06 \x01(\tR\bpriceMin\x12\x1b\n" +
+	"\tprice_max\x18\a \x01(\tR\bpriceMax\x12&\n" +
+	"\fhas_delivery\x18\b \x01(\bH\x00R\vhasDelivery\x88\x01\x01\x12\x12\n" +
+	"\x04sort\x18\t \x01(\tR\x04sort\x12\x16\n" +
+	"\x06cursor\x18\n" +
+	" \x01(\tR\x06cursorB\x0f\n" +
+	"\r_has_delivery\"\x9b\x01\n" +
 	"\n" +
 	"SearchPage\x12(\n" +
 	"\x05items\x18\x01 \x03(\v2\x12.ads.v1.SearchCardR\x05items\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x03R\x05limit\x12\x16\n" +
-	"\x06offset\x18\x04 \x01(\x03R\x06offset\"\xb0\x02\n" +
+	"\x06offset\x18\x04 \x01(\x03R\x06offset\x12\x1f\n" +
+	"\vnext_cursor\x18\x05 \x01(\tR\n" +
+	"nextCursor\"\xb0\x02\n" +
 	"\n" +
 	"SearchCard\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x05R\x02id\x12\x14\n" +
@@ -323,6 +399,7 @@ func file_ads_v1_search_proto_init() {
 	if File_ads_v1_search_proto != nil {
 		return
 	}
+	file_ads_v1_search_proto_msgTypes[0].OneofWrappers = []any{}
 	file_ads_v1_search_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

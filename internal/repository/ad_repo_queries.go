@@ -4,7 +4,7 @@ const adCardColumns = `
  a.id,a.user_id,COALESCE(a.category_id,0),a.title,
  COALESCE(a.description,''),a.price,
  COALESCE(a.city,''),a.has_delivery,a.is_free,COALESCE(image.url,''),a.status,
- COALESCE(a.close_reason,''),COALESCE(a.published_at,a.created_at),a.updated_at
+ COALESCE(a.close_reason,''),COALESCE(a.published_at,a.created_at),a.updated_at,COALESCE(a.rejection_reason,'')
 `
 
 const adMainImageJoin = `
@@ -13,19 +13,28 @@ const adMainImageJoin = `
  ) image ON true
 `
 
+const categoryBranch = `
+ WITH RECURSIVE category_branch(category_id) AS (
+  SELECT category_id FROM category WHERE category_id=$2
+  UNION
+  SELECT child.category_id
+  FROM category child JOIN category_branch parent ON child.parent_id=parent.category_id
+ )
+`
+
 const adFilter = `
  WHERE a.status='active'
  AND ($1::text='' OR strpos(lower(a.title),lower($1))>0
       OR strpos(lower(COALESCE(a.description,'')),lower($1))>0)
- AND ($2::integer=0 OR a.category_id=$2)
+ AND ($2::integer=0 OR a.category_id IN (SELECT category_id FROM category_branch))
  AND ($3::text='' OR lower(a.city)=lower($3))
  AND ($4::bigint IS NULL OR a.price >= $4)
  AND ($5::bigint IS NULL OR a.price <= $5)
  AND ($6::boolean IS NULL OR a.has_delivery=$6)
 `
-const countAdsQuery = `SELECT count(*) FROM ad a` + adFilter
+const countAdsQuery = categoryBranch + `SELECT count(*) FROM ad a` + adFilter
 
-const listAdsQuery = `
+const listAdsQuery = categoryBranch + `
  SELECT ` + adCardColumns + `
  FROM ad a
 ` + adMainImageJoin + adFilter + `

@@ -20,6 +20,7 @@ type City struct {
 
 type Profile struct {
 	User
+	IsModerator   bool
 	PhoneVerified bool
 	City          *City
 	About         string

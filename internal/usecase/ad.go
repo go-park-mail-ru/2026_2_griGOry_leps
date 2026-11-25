@@ -85,9 +85,13 @@ func (uc *AdUsecase) List(ctx context.Context, p domain.ListAdsParams) (domain.A
 	page := domain.AdPage{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}
 	if f.Sort == domain.AdSortNewest && len(items) == f.Limit {
 		last := items[len(items)-1]
-		page.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%d", last.CreatedAt.UnixMicro(), last.ID)))
+		page.NextCursor = encodeAdCursor(last.CreatedAt, last.ID)
 	}
 	return page, nil
+}
+
+func encodeAdCursor(at time.Time, id int32) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf("%d:%d", at.UnixMicro(), id)))
 }
 
 func parseAdCursor(cursor string) (time.Time, int32, error) {

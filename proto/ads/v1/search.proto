@@ -12,6 +12,13 @@ message SearchRequest {
   string query = 1;
   int64 limit = 2;
   int64 offset = 3;
+  int32 category_id = 4;
+  string city = 5;
+  string price_min = 6;
+  string price_max = 7;
+  optional bool has_delivery = 8;
+  string sort = 9;
+  string cursor = 10;
 }
 
 message SearchPage {
@@ -19,6 +26,7 @@ message SearchPage {
   int64 total = 2;
   int64 limit = 3;
   int64 offset = 4;
+  string next_cursor = 5;
 }
 
 message SearchCard {

@@ -9,7 +9,20 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
-func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler, favoritesHandler *FavoritesHandler) http.Handler {
+func NewAdsRouter(
+	frontendOrigin, uploadDir string,
+	session *SessionMiddleware,
+	adHandler *AdHandler,
+	listingHandler *ListingHandler,
+	csrfHandler *CSRFHandler,
+	cartHandler *CartHandler,
+	addressHandler *AddressHandler,
+	cityHandler *CityHandler,
+	sellerHandler *SellerHandler,
+	orderHandler *OrderHandler,
+	moderationHandler *ModerationHandler,
+	favoritesHandler *FavoritesHandler,
+) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -48,6 +61,13 @@ func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, 
 	r.HandleFunc("/api/listings", adHandler.List).Methods(http.MethodGet)
 	r.Handle("/api/listings", auth(listingHandler.Create)).Methods(http.MethodPost)
 	r.Handle(listingPhotoPath, auth(listingHandler.UploadPhoto)).Methods(http.MethodPost)
+
+	const moderationPath = "/api/moderation/listings"
+	const moderationItemPath = moderationPath + "/{listing_id:[0-9]+}"
+	r.Handle(moderationPath, auth(moderationHandler.List)).Methods(http.MethodGet)
+	r.Handle(moderationItemPath, auth(moderationHandler.Get)).Methods(http.MethodGet)
+	r.Handle(moderationItemPath+"/approve", auth(moderationHandler.Decide(true))).Methods(http.MethodPost)
+	r.Handle(moderationItemPath+"/reject", auth(moderationHandler.Decide(false))).Methods(http.MethodPost)
 
 	const listingPath = "/api/listings/{listing_id:[0-9]+}"
 	r.Handle(listingPath, session.OptionalAuth(http.HandlerFunc(listingHandler.Get))).Methods(http.MethodGet)
