@@ -59,5 +59,6 @@ func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, c
 		timed.ServeHTTP(w, req)
 	})
 
-	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
+	chain := requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
+	return withHTTPMetrics(r, chain)
 }

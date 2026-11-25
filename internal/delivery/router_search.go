@@ -31,7 +31,8 @@ func NewSearchRouter(frontendOrigin string, ads adsv1.AdsServiceClient) http.Han
 	r.HandleFunc("/api/search", searchPublished(ads)).Methods(http.MethodGet)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
-	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
+	chain := requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
+	return withHTTPMetrics(r, chain)
 }
 
 func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {

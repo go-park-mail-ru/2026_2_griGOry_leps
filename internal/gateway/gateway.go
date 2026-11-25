@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/clientip"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/metrics"
 )
 
 func IsAuthPath(p string) bool {
@@ -35,7 +36,7 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := logger.NormalizeRequestID(r.Header.Get(logger.RequestIDHeader))
 		r = r.Clone(logger.WithRequestID(r.Context(), id))
 		r.Header.Set(logger.RequestIDHeader, id)
@@ -61,6 +62,20 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 			search.ServeHTTP(w, r)
 		default:
 			ads.ServeHTTP(w, r)
+		}
+	})
+
+	return metrics.RecordHTTPRequest(handler, func(r *http.Request) string {
+		p := path.Clean(r.URL.Path)
+		switch {
+		case p == "/metrics" || p == "/internal" || strings.HasPrefix(p, "/internal/"):
+			return "blocked"
+		case IsAuthPath(p):
+			return "auth"
+		case p == "/api/search":
+			return "search"
+		default:
+			return "ads"
 		}
 	}), nil
 }

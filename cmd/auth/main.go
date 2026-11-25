@@ -21,6 +21,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/mail"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/metrics"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -73,7 +74,9 @@ func run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(metrics.RecordGRPCRequest),
+	)
 	authv1.RegisterAuthServiceServer(grpcServer, delivery.NewAuthGRPCServer(authUsecase))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
