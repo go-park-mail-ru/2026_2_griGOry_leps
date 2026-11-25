@@ -162,8 +162,8 @@ func TestSellerRepo_ReviewsSurviveListingDeletion(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
 	repo := NewSellerRepository(f.pool)
-	bike := f.ad(t, 2, "Велосипед", 100, domain.AdStatusActive, time.Hour)
-	book := f.ad(t, 3, "Книга", 100, domain.AdStatusActive, time.Hour)
+	bike := f.ad(t, f.bikes, "Велосипед", 100, domain.AdStatusActive, time.Hour)
+	book := f.ad(t, f.books, "Книга", 100, domain.AdStatusActive, time.Hour)
 	id := f.review(t, f.buyer, bike, 1, time.Hour)
 
 	var sellerID int32
@@ -201,7 +201,7 @@ func TestSellerRepo_ReviewsSurviveListingDeletion(t *testing.T) {
 func TestSellerRepo_TriggerTakesSellerFromListing(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
-	bike := f.ad(t, 2, "Велосипед", 100, domain.AdStatusActive, time.Hour)
+	bike := f.ad(t, f.bikes, "Велосипед", 100, domain.AdStatusActive, time.Hour)
 
 	var sellerID int32
 	var title string
@@ -216,7 +216,7 @@ func TestSellerRepo_RatingMustBeOneToFive(t *testing.T) {
 	f := newSellerFixture(t)
 
 	for i, rating := range []float64{0, 0.5, 5.5} {
-		ad := f.ad(t, 2, fmt.Sprintf("Велосипед %d", i), 100, domain.AdStatusActive, time.Hour)
+		ad := f.ad(t, f.bikes, fmt.Sprintf("Велосипед %d", i), 100, domain.AdStatusActive, time.Hour)
 		_, err := f.pool.ExecContext(context.Background(), `INSERT INTO review (user_id, ad_id, rating) VALUES ($1, $2, $3)`,
 			f.buyer, ad, rating)
 		var pgErr *pgconn.PgError
@@ -224,7 +224,7 @@ func TestSellerRepo_RatingMustBeOneToFive(t *testing.T) {
 		require.Equal(t, "review_rating_check", pgErr.ConstraintName, rating)
 	}
 
-	ad := f.ad(t, 2, "Велосипед 5", 100, domain.AdStatusActive, time.Hour)
+	ad := f.ad(t, f.bikes, "Велосипед 5", 100, domain.AdStatusActive, time.Hour)
 	f.review(t, f.buyer, ad, 1, time.Hour)
 }
 

@@ -16,6 +16,8 @@ type sellerFixture struct {
 	pool   *sql.DB
 	seller int32
 	buyer  int32
+	bikes  int32
+	books  int32
 }
 
 func newSellerFixture(t *testing.T) sellerFixture {
@@ -29,11 +31,13 @@ func newSellerFixture(t *testing.T) sellerFixture {
 	buyer, err := users.Create(ctx, "buyer@goget.pw", "hash", "Анна", "+79990000002")
 	require.NoError(t, err)
 
-	_, err = pool.ExecContext(ctx, `INSERT INTO category (category_id, parent_id, name, slug) OVERRIDING SYSTEM VALUE VALUES
-		(1, NULL, 'Спорт и отдых', 'sport'), (2, 1, 'Велосипеды', 'bikes'), (3, NULL, 'Книги', 'books')`)
+	var bikes, books int32
+	err = pool.QueryRowContext(ctx, "SELECT category_id FROM category WHERE slug = 'sport-bikes'").Scan(&bikes)
+	require.NoError(t, err)
+	err = pool.QueryRowContext(ctx, "SELECT category_id FROM category WHERE slug = 'books'").Scan(&books)
 	require.NoError(t, err)
 
-	return sellerFixture{pool: pool, seller: seller.ID, buyer: buyer.ID}
+	return sellerFixture{pool: pool, seller: seller.ID, buyer: buyer.ID, bikes: bikes, books: books}
 }
 
 func (f sellerFixture) ad(t *testing.T, categoryID int32, title string, price int64, status string, age time.Duration) int32 {
@@ -122,26 +126,32 @@ func TestListingRepo_CategoryDelivery(t *testing.T) {
 	_, err := f.pool.ExecContext(ctx, "UPDATE category SET delivery_allowed = false WHERE slug = 'books'")
 	require.NoError(t, err)
 
-	allowed, err := repo.CategoryAllowsDelivery(ctx, 2)
+	allowed, err := repo.CategoryAllowsDelivery(ctx, f.bikes)
 	require.NoError(t, err)
 	require.True(t, allowed)
-	allowed, err = repo.CategoryAllowsDelivery(ctx, 3)
+	allowed, err = repo.CategoryAllowsDelivery(ctx, f.books)
 	require.NoError(t, err)
 	require.False(t, allowed)
-	_, err = repo.CategoryAllowsDelivery(ctx, 99)
+	_, err = repo.CategoryAllowsDelivery(ctx, 9999)
 	require.ErrorIs(t, err, domain.ErrInvalidCategory)
 
 	categories, err := repo.ListCategories(ctx)
 	require.NoError(t, err)
-	require.True(t, categories[0].DeliveryAllowed)
-	require.False(t, categories[2].DeliveryAllowed)
+	bySlug := make(map[string]domain.Category, len(categories))
+	for _, c := range categories {
+		bySlug[c.Slug] = c
+	}
+	require.True(t, bySlug["sport-bikes"].DeliveryAllowed)
+	require.NotNil(t, bySlug["sport-bikes"].ParentID)
+	require.Equal(t, bySlug["sport"].ID, *bySlug["sport-bikes"].ParentID)
+	require.False(t, bySlug["books"].DeliveryAllowed)
 }
 
 func TestListingRepo_ActiveOrderOnlyWhileUnpaid(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
 	repo := NewListingRepository(f.pool)
-	adID := f.ad(t, 2, "Велосипед", 1000000, domain.AdStatusActive, time.Hour)
+	adID := f.ad(t, f.bikes, "Велосипед", 1000000, domain.AdStatusActive, time.Hour)
 
 	order := func(status, payment string, payUntil time.Duration) int32 {
 		t.Helper()
@@ -182,8 +192,8 @@ func TestListingRepo_ActiveOrderOnlyWhileUnpaid(t *testing.T) {
 func TestAdRepo_NewestByPublication(t *testing.T) {
 	f := newSellerFixture(t)
 	ctx := context.Background()
-	old := f.ad(t, 2, "Черновик недели", 100000, domain.AdStatusActive, 7*24*time.Hour)
-	fresh := f.ad(t, 2, "Вчерашний", 100000, domain.AdStatusActive, 24*time.Hour)
+	old := f.ad(t, f.bikes, "Черновик недели", 100000, domain.AdStatusActive, 7*24*time.Hour)
+	fresh := f.ad(t, f.bikes, "Вчерашний", 100000, domain.AdStatusActive, 24*time.Hour)
 	_, err := f.pool.ExecContext(ctx, `UPDATE ad SET published_at = now() - interval '1 minute' WHERE id = $1`, old)
 	require.NoError(t, err)
 
