@@ -4,16 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
 func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler, moderationHandler *ModerationHandler) http.Handler {
-	r := mux.NewRouter()
-	r.Use(recoverMiddleware, csrfHandler.Middleware)
-	r.NotFoundHandler = http.HandlerFunc(notFound)
-	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
+	r := newAPIRouter()
+	r.Use(csrfHandler.Middleware)
 
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok", "service": "ads"})
@@ -86,6 +82,6 @@ func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, 
 		}
 		timed.ServeHTTP(w, req)
 	})
-	chain := requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
-	return withHTTPMetrics(r, chain)
+
+	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
 }

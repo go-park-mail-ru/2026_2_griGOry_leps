@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/clientip"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/metrics"
 )
 
 func IsAuthPath(p string) bool {
@@ -65,19 +64,22 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		}
 	})
 
-	return metrics.RecordHTTPRequest(handler, func(r *http.Request) string {
-		p := path.Clean(r.URL.Path)
-		switch {
-		case p == "/metrics" || p == "/internal" || strings.HasPrefix(p, "/internal/"):
-			return "blocked"
-		case IsAuthPath(p):
-			return "auth"
-		case p == "/api/search":
-			return "search"
-		default:
-			return "ads"
-		}
-	}), nil
+	return handler, nil
+}
+
+func MetricRoute(r *http.Request) string {
+	p := path.Clean(r.URL.Path)
+	switch {
+	case p == "/metrics" || p == "/internal" || strings.HasPrefix(p, "/internal/"):
+		return "blocked"
+	case IsAuthPath(p):
+		return "auth"
+	case p == "/api/search":
+		return "search"
+	default:
+		return "ads"
+	}
+
 }
 
 func newProxy(rawURL string) (*httputil.ReverseProxy, error) {
@@ -101,7 +103,6 @@ func newProxy(rawURL string) (*httputil.ReverseProxy, error) {
 		req.Out.Header.Del("Forwarded")
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		// Keep the ID set at the gateway, without a duplicate upstream header.
 		resp.Header.Del(logger.RequestIDHeader)
 		for name := range resp.Header {
 			if strings.HasPrefix(strings.ToLower(name), "access-control-") {

@@ -4,17 +4,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
 func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, csrfHandler *CSRFHandler, profileHandler *ProfileHandler, resetHandler *PasswordResetHandler, verifyHandler *EmailVerificationHandler) http.Handler {
 	session := NewSessionMiddleware(authHandler.auth)
-	r := mux.NewRouter()
-	r.Use(recoverMiddleware, csrfHandler.Middleware)
-	r.NotFoundHandler = http.HandlerFunc(notFound)
-	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
+	r := newAPIRouter()
+	r.Use(csrfHandler.Middleware)
 
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok", "service": "auth"})
@@ -59,6 +55,5 @@ func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, c
 		timed.ServeHTTP(w, req)
 	})
 
-	chain := requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
-	return withHTTPMetrics(r, chain)
+	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(handler))))
 }

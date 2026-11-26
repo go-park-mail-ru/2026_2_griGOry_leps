@@ -15,6 +15,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gateway"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
@@ -32,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := run(handler); err != nil {
+	if err := run(delivery.WithGatewayMetrics(handler)); err != nil {
 		log.Fatal(err)
 	}
 }

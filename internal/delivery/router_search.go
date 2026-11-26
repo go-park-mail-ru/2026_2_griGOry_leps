@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -16,10 +15,7 @@ import (
 )
 
 func NewSearchRouter(frontendOrigin string, ads adsv1.AdsServiceClient) http.Handler {
-	r := mux.NewRouter()
-	r.Use(recoverMiddleware)
-	r.NotFoundHandler = http.HandlerFunc(notFound)
-	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
+	r := newAPIRouter()
 
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(req.Context(), w, http.StatusOK, map[string]string{
@@ -31,8 +27,7 @@ func NewSearchRouter(frontendOrigin string, ads adsv1.AdsServiceClient) http.Han
 	r.HandleFunc("/api/search", searchPublished(ads)).Methods(http.MethodGet)
 
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
-	chain := requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
-	return withHTTPMetrics(r, chain)
+	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
 }
 
 func searchPublished(ads adsv1.AdsServiceClient) http.HandlerFunc {
