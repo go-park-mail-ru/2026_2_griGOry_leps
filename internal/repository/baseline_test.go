@@ -23,7 +23,7 @@ var schemaQueries = map[string]string{
 		SELECT tablename || ' ' || indexname || ' ' || replace(indexdef, current_schema() || '.', '')
 		FROM pg_indexes WHERE schemaname = current_schema()`,
 	"constraints": `
-		SELECT conrelid::regclass::text || ' ' || conname || ' ' || contype || ' ' || pg_get_constraintdef(oid)
+		SELECT conrelid::regclass::text || ' ' || conname || ' ' || contype::text || ' ' || pg_get_constraintdef(oid)
 		FROM pg_constraint WHERE connamespace = current_schema()::regnamespace`,
 	"triggers": `
 		SELECT event_object_table || ' ' || trigger_name || ' ' || action_timing || ' ' || event_manipulation || ' ' || action_statement

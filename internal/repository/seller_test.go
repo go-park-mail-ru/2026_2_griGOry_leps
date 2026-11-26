@@ -170,9 +170,9 @@ func TestSellerRepo_ReviewsSurviveListingDeletion(t *testing.T) {
 	require.Equal(t, 1, s.ReviewsCount)
 	require.InDelta(t, 1, s.Rating, 0.001)
 
-	p, err := NewUserRepository(f.pool).GetProfile(ctx, f.seller)
+	stats, err := repo.Stats(ctx, f.seller)
 	require.NoError(t, err)
-	require.Equal(t, 1, p.ReviewsCount)
+	require.Equal(t, domain.SellerStats{Rating: 1, ReviewsCount: 1}, stats)
 
 	l, err := NewListingRepository(f.pool).Get(ctx, book, f.buyer)
 	require.NoError(t, err)
