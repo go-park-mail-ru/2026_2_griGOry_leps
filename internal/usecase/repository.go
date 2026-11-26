@@ -100,6 +100,7 @@ type UserLocker interface {
 }
 
 type ListingRepository interface {
+	RecordView(ctx context.Context, id, viewerID int32) (int64, error)
 	Get(ctx context.Context, id, viewerID int32) (domain.Listing, error)
 	GetStateForUpdate(ctx context.Context, id int32) (domain.ListingState, error)
 	Create(ctx context.Context, s domain.ListingState) (int32, error)

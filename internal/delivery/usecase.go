@@ -60,6 +60,7 @@ type CityUsecase interface {
 }
 
 type ListingUsecase interface {
+	View(ctx context.Context, id, viewerID int32) (domain.Listing, error)
 	Get(ctx context.Context, id, viewerID int32) (domain.Listing, error)
 	Create(ctx context.Context, userID int32, f domain.ListingFields, publish bool) (domain.Listing, error)
 	Update(ctx context.Context, userID, id int32, f domain.ListingFields, publish *bool) (domain.Listing, error)

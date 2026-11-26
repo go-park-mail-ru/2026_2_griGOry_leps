@@ -60,6 +60,18 @@ func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.L
 	return l, nil
 }
 
+func (uc *ListingUsecase) View(ctx context.Context, id, viewerID int32) (domain.Listing, error) {
+	l, err := uc.Get(ctx, id, viewerID)
+	if err != nil || l.IsOwner || viewerID == 0 {
+		return l, err
+	}
+	l.ViewsCount, err = uc.listings.RecordView(ctx, id, viewerID)
+	if err != nil {
+		return domain.Listing{}, err
+	}
+	return l, nil
+}
+
 func (uc *ListingUsecase) Categories(ctx context.Context) ([]domain.CategoryNode, error) {
 	categories, err := uc.listings.ListCategories(ctx)
 	if err != nil {

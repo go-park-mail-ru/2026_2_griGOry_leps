@@ -28,9 +28,10 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		catName    string
 		catPath    string
 		photosJSON []byte
+		daysJSON   []byte
 	)
 	err := db.QueryRowContext(ctx, getListingQuery, id, viewerID).Scan(
-		&l.ID, &l.Seller.ID, &categoryID, &catName, &catPath,
+		&l.ViewsCount, &daysJSON, &l.ID, &l.Seller.ID, &categoryID, &catName, &catPath,
 		&l.Title, &l.Description, &l.Price, &l.IsFree, &l.IsNegotiable, &l.Condition,
 		&l.City, &l.Address, &l.HasDelivery, &l.Status, &l.CloseReason, &l.RejectionReason,
 		&l.PublishedAt, &l.CreatedAt, &l.UpdatedAt,
@@ -49,11 +50,26 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		l.Category = &domain.ListingCategory{ID: *categoryID, Name: catName, Path: catPath}
 	}
 
+	if err := json.Unmarshal(daysJSON, &l.ViewsByDay); err != nil {
+		return domain.Listing{}, fmt.Errorf("decode listing views: %w", err)
+	}
 	if err := json.Unmarshal(photosJSON, &l.Photos); err != nil {
 		return domain.Listing{}, fmt.Errorf("decode listing photos: %w", err)
 	}
 
 	return l, nil
+}
+
+func (r *ListingRepository) RecordView(ctx context.Context, id, viewerID int32) (int64, error) {
+	db := conn(ctx, r.db)
+	_, err := db.ExecContext(ctx, `INSERT INTO views (ad_id, user_id, is_first) VALUES ($1, $2, true)
+		ON CONFLICT (ad_id, user_id) WHERE is_first DO NOTHING`, id, viewerID)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM views WHERE ad_id = $1 AND is_first`, id).Scan(&total)
+	return total, err
 }
 
 func (r *ListingRepository) GetStateForUpdate(ctx context.Context, id int32) (domain.ListingState, error) {

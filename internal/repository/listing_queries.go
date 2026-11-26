@@ -1,7 +1,16 @@
 package repository
 
 const getListingQuery = `
-    SELECT a.id, a.user_id, a.category_id, COALESCE(c.name, ''), COALESCE(cp.path, ''),
+    SELECT (SELECT COUNT(*) FROM views WHERE ad_id = a.id AND is_first),
+           CASE WHEN a.user_id = $2 THEN (
+               SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.date), '[]'::jsonb)
+               FROM (
+                   SELECT (view_at AT TIME ZONE 'Europe/Moscow')::date AS date, COUNT(*) AS count
+                   FROM views WHERE ad_id = a.id AND is_first
+                   GROUP BY 1 ORDER BY 1 DESC LIMIT 5
+               ) d
+           ) ELSE '[]'::jsonb END,
+           a.id, a.user_id, a.category_id, COALESCE(c.name, ''), COALESCE(cp.path, ''),
            a.title, COALESCE(a.description, ''), a.price, a.is_free, a.is_negotiable, a.condition,
            COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason, a.rejection_reason,
            a.published_at, a.created_at, a.updated_at,

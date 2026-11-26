@@ -90,6 +90,8 @@ type sellerShortResponse struct {
 }
 
 type listingResponse struct {
+	ViewsByDay      []domain.DailyViews        `json:"views_by_day"`
+	ViewsCount      int64                      `json:"views_count"`
 	ID              int32                      `json:"id"`
 	Title           string                     `json:"title"`
 	Category        *listingCategoryResponse   `json:"category"`
@@ -120,6 +122,7 @@ func formatPrice(kopecks int64) string {
 
 func newListingResponse(l domain.Listing) listingResponse {
 	resp := listingResponse{
+		ViewsCount:      l.ViewsCount,
 		ID:              l.ID,
 		Title:           l.Title,
 		Description:     l.Description,
@@ -142,6 +145,10 @@ func newListingResponse(l domain.Listing) listingResponse {
 		UpdatedAt:       l.UpdatedAt,
 	}
 
+	resp.ViewsByDay = l.ViewsByDay
+	if resp.ViewsByDay == nil {
+		resp.ViewsByDay = []domain.DailyViews{}
+	}
 	if l.Category != nil {
 		resp.Category = &listingCategoryResponse{ID: l.Category.ID, Name: l.Category.Name, Path: l.Category.Path}
 	}
@@ -209,7 +216,12 @@ func (h *ListingHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	listing, err := h.listings.Get(r.Context(), id, userIDFromContext(r.Context()))
+	load := h.listings.Get
+	if r.URL.Query().Get("view") == "true" {
+		load = h.listings.View
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	listing, err := load(r.Context(), id, userIDFromContext(r.Context()))
 	if err != nil {
 		writeListingError(w, r, "get listing", err)
 		return

@@ -12,6 +12,7 @@ const (
 )
 
 type Ad struct {
+	ViewsCount      int64
 	ID              int32
 	UserID          int32
 	CategoryID      int32

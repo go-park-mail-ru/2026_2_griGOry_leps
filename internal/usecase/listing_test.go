@@ -401,6 +401,28 @@ func TestListing_CategoriesBuildsTree(t *testing.T) {
 	require.Equal(t, "orphans", tree[1].Slug)
 }
 
+func TestListing_View(t *testing.T) {
+	e := newListingTestEnv(t)
+	ctx := context.Background()
+	id := int32(7)
+	listing := domain.Listing{Seller: domain.Seller{ID: authorID}, Status: domain.AdStatusActive, ViewsCount: 12}
+	for _, viewer := range []int32{0, otherID, authorID} {
+		e.repo.EXPECT().Get(ctx, id, viewer).Return(listing, nil)
+		want := listing.ViewsCount
+		if viewer == otherID {
+			want++
+			e.repo.EXPECT().RecordView(ctx, id, viewer).Return(want, nil)
+		}
+		got, err := e.uc.View(ctx, id, viewer)
+		require.NoError(t, err)
+		require.Equal(t, want, got.ViewsCount)
+	}
+	listing.Status = domain.AdStatusDraft
+	e.repo.EXPECT().Get(ctx, id, otherID).Return(listing, nil)
+	_, err := e.uc.View(ctx, id, otherID)
+	require.ErrorIs(t, err, domain.ErrListingNotFound)
+}
+
 func TestListing_GetHidesRejectedFromOthers(t *testing.T) {
 	e := newListingTestEnv(t)
 	l := domain.Listing{Status: domain.AdStatusRejected, Seller: domain.Seller{ID: authorID}}

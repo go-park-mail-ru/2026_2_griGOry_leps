@@ -66,8 +66,41 @@ func expectMyAds(mock sqlmock.Sqlmock, f domain.MyAdFilter, counts map[string]in
 	}
 	mock.ExpectBegin()
 	mock.ExpectQuery(countMyAdsQuery).WithArgs(f.UserID).WillReturnRows(rows).RowsWillBeClosed()
-	mock.ExpectQuery(listMyAdsQuery).WithArgs(f.UserID, f.Status, f.Limit, f.Offset).WillReturnRows(adMockRows(ads...)).RowsWillBeClosed()
+	mock.ExpectQuery(listMyAdsQuery).WithArgs(f.UserID, f.Status, f.Limit, f.Offset).WillReturnRows(cardMockRows(true, ads...)).RowsWillBeClosed()
 	mock.ExpectCommit()
+}
+
+func TestListingViewsByDay(t *testing.T) {
+	f := newSellerFixture(t)
+	ctx := context.Background()
+	id := f.ad(t, 2, "Bike", 100, domain.AdStatusActive, 0)
+	_, err := f.pool.ExecContext(ctx, `INSERT INTO views(ad_id, is_first, view_at)
+		SELECT $1, true, '2026-11-01 00:00+03'::timestamptz + n * interval '24 hours'
+		FROM generate_series(0, 5) n`, id)
+	require.NoError(t, err)
+	_, err = f.pool.ExecContext(ctx, `INSERT INTO views(ad_id, is_first, view_at) VALUES ($1, true, '2026-11-05 21:00+00')`, id)
+	require.NoError(t, err)
+	repo := NewListingRepository(f.pool)
+	owner, err := repo.Get(ctx, id, f.seller)
+	require.NoError(t, err)
+	require.EqualValues(t, 7, owner.ViewsCount)
+	require.Equal(t, []domain.DailyViews{
+		{Date: "2026-11-02", Count: 1}, {Date: "2026-11-03", Count: 1},
+		{Date: "2026-11-04", Count: 1}, {Date: "2026-11-05", Count: 1},
+		{Date: "2026-11-06", Count: 2},
+	}, owner.ViewsByDay)
+	visitor, err := repo.Get(ctx, id, 0)
+	require.NoError(t, err)
+	require.Empty(t, visitor.ViewsByDay)
+	items, _, err := NewAdRepository(f.pool).ListByUser(ctx, domain.MyAdFilter{UserID: f.seller, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, owner.ViewsCount, items[0].ViewsCount)
+	for i := 0; i < 2; i++ {
+		count, err := repo.RecordView(ctx, id, f.buyer)
+		require.NoError(t, err)
+		require.EqualValues(t, 8, count)
+	}
 }
 
 func TestAdRepo_ListByUser(t *testing.T) {

@@ -55,7 +55,7 @@ const countMyAdsQuery = `
 `
 
 const listMyAdsQuery = `
- SELECT ` + adCardColumns + `
+ SELECT ` + adCardColumns + `, (SELECT COUNT(*) FROM views WHERE ad_id = a.id AND is_first)
  FROM ad a
 ` + adMainImageJoin + `
  WHERE a.user_id=$1 AND ($2::text='' OR a.status=$2)

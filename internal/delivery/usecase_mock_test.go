@@ -695,6 +695,21 @@ func (mr *MockListingUsecaseMockRecorder) Get(ctx, id, viewerID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockListingUsecase)(nil).Get), ctx, id, viewerID)
 }
 
+// View mocks base method.
+func (m *MockListingUsecase) View(ctx context.Context, id, viewerID int32) (domain.Listing, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "View", ctx, id, viewerID)
+	ret0, _ := ret[0].(domain.Listing)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// View indicates an expected call of View.
+func (mr *MockListingUsecaseMockRecorder) View(ctx, id, viewerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "View", reflect.TypeOf((*MockListingUsecase)(nil).View), ctx, id, viewerID)
+}
+
 // Update mocks base method.
 func (m *MockListingUsecase) Update(ctx context.Context, userID, id int32, f domain.ListingFields, publish *bool) (domain.Listing, error) {
 	m.ctrl.T.Helper()
