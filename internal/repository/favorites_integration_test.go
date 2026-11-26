@@ -68,6 +68,20 @@ func TestFavoritesLifecycle(t *testing.T) {
 		require.Equal(t, status, items[0].Status)
 	}
 
+	_, err = db.ExecContext(ctx, `
+    UPDATE ad
+    SET status = 'closed', published_at = NULL, title = 'Новый заголовок'
+    WHERE id = $1
+	`, listingID)
+	require.NoError(t, err)
+
+	items, err = repo.List(ctx, aliceID)
+	require.NoError(t, err)
+	require.Empty(t, items)
+
+	require.ErrorIs(t, repo.Add(ctx, aliceID, listingID), domain.ErrListingNotFound)
+	require.ErrorIs(t, repo.Add(ctx, timurID, listingID), domain.ErrListingNotFound)
+
 	_, err = db.ExecContext(ctx, `DELETE FROM ad WHERE id = $1`, listingID)
 	require.NoError(t, err)
 

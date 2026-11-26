@@ -24,7 +24,10 @@ func (r *FavoritesRepository) List(ctx context.Context, userID int32) ([]domain.
 		JOIN ad a ON a.id = f.ad_id
 		` + adMainImageJoin + `
 		WHERE f.user_id = $1
-		  AND a.status IN ('active', 'closed', 'sold')
+		  AND (
+			a.status IN ('active', 'sold')
+			OR (a.status = 'closed' AND a.published_at IS NOT NULL)
+			)	
 		ORDER BY f.id DESC
 	`
 
@@ -56,7 +59,10 @@ func (r *FavoritesRepository) Add(ctx context.Context, userID, listingID int32) 
 			SELECT id, status
 			FROM ad
 			WHERE id = $2
-			  AND status IN ('active', 'closed', 'sold')
+			  AND (
+					status IN ('active', 'sold')
+					OR (status = 'closed' AND published_at IS NOT NULL)
+				)
 			FOR SHARE
 		),
 		added AS (
