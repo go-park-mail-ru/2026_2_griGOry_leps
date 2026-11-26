@@ -46,20 +46,6 @@ func TestProfile_GetNotFound(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
 
-func TestProfile_RatingFromReviewsOnOwnAds(t *testing.T) {
-	db, mock := newSQLMock(t)
-	repo := NewUserRepository(db)
-	mock.ExpectQuery(getProfileQuery).WithArgs(int32(1)).WillReturnRows(profileMockRows(domain.Profile{User: domain.User{ID: 1}, Rating: 4.5, ReviewsCount: 2}))
-	p, err := repo.GetProfile(context.Background(), 1)
-	require.NoError(t, err)
-	require.InDelta(t, 4.5, p.Rating, 0.001)
-	require.Equal(t, 2, p.ReviewsCount)
-	mock.ExpectQuery(getProfileQuery).WithArgs(int32(2)).WillReturnRows(profileMockRows(domain.Profile{User: domain.User{ID: 2}}))
-	p, err = repo.GetProfile(context.Background(), 2)
-	require.NoError(t, err)
-	require.Zero(t, p.ReviewsCount)
-}
-
 func TestProfile_UpdatePartial(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := NewUserRepository(db)
@@ -282,11 +268,11 @@ func profileMockRows(p domain.Profile) *sqlmock.Rows {
 	if p.City != nil {
 		cityID, cityName = p.City.ID, p.City.Name
 	}
-	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "rating", "reviews", "is_moderator"}).
-		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.Rating, p.ReviewsCount, p.IsModerator)
+	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "created", "email_verified", "pending_email", "phone_verified", "city_id", "city_name", "about", "avatar", "is_moderator"}).
+		AddRow(p.ID, p.FirstName, p.Email, p.Phone, p.CreatedAt, p.EmailVerified, p.PendingEmail, p.PhoneVerified, cityID, cityName, p.About, p.Avatar, p.IsModerator)
 }
 
 func userStateRows(u domain.User) *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "hash", "email_verified", "pending_email", "created"}).
-		AddRow(u.ID, u.FirstName, u.Email, u.Phone, u.PasswordHash, u.EmailVerified, u.PendingEmail, u.CreatedAt)
+	return sqlmock.NewRows([]string{"id", "name", "email", "phone", "hash", "email_verified", "pending_email", "created", "is_moderator"}).
+		AddRow(u.ID, u.FirstName, u.Email, u.Phone, u.PasswordHash, u.EmailVerified, u.PendingEmail, u.CreatedAt, u.IsModerator)
 }

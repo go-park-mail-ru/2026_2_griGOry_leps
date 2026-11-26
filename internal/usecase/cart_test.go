@@ -20,16 +20,17 @@ const (
 var testPrices = domain.DeliveryPrices{Courier: 39000, PickupPoint: 19000}
 
 type cartTestEnv struct {
-	uc   *CartUsecase
-	repo *MockCartRepository
-	tx   *MockTransactor
+	uc    *CartUsecase
+	repo  *MockCartRepository
+	users *fakeDirectory
+	tx    *MockTransactor
 }
 
 func newCartTestEnv(t *testing.T) *cartTestEnv {
 	t.Helper()
 	c := gomock.NewController(t)
-	e := &cartTestEnv{repo: NewMockCartRepository(c), tx: NewMockTransactor(c)}
-	e.uc = NewCartUsecase(e.repo, e.tx, testPrices)
+	e := &cartTestEnv{repo: NewMockCartRepository(c), users: newFakeDirectory(), tx: NewMockTransactor(c)}
+	e.uc = NewCartUsecase(e.repo, e.users, e.tx, testPrices)
 	return e
 }
 
@@ -174,4 +175,49 @@ func TestCart_BulkAddLocksInIDOrder(t *testing.T) {
 	_, skipped, err := e.uc.BulkAdd(context.Background(), buyerID, []int32{201, 999, 101, 102})
 	require.NoError(t, err)
 	require.Equal(t, []int32{999}, skipped)
+}
+
+func TestCart_Get_FillsSellersFromDirectory(t *testing.T) {
+	e := newCartTestEnv(t)
+	e.users.cards[sellerA] = domain.UserCard{ID: sellerA, FirstName: "Анна", Avatar: "a.png"}
+	e.users.cards[sellerB] = domain.UserCard{ID: sellerB, FirstName: "Олег"}
+	entries := []domain.CartEntry{cartEntry(1, sellerA, 100, false), cartEntry(2, sellerB, 200, false), cartEntry(3, sellerA, 300, false)}
+	for i := range entries {
+		entries[i].Seller.FirstName = ""
+	}
+	e.repo.EXPECT().Entries(gomock.Any(), buyerID).Return(entries, nil)
+
+	cart, err := e.uc.Get(context.Background(), buyerID)
+
+	require.NoError(t, err)
+	require.Len(t, cart.Groups, 2)
+	require.Equal(t, "Анна", cart.Groups[0].Seller.FirstName)
+	require.Equal(t, "a.png", cart.Groups[0].Seller.Avatar)
+	require.Equal(t, "Олег", cart.Groups[1].Seller.FirstName)
+	require.Equal(t, [][]int32{{sellerA, sellerB}}, e.users.calls)
+}
+
+func TestCart_Get_DeletedListingKeepsSeller(t *testing.T) {
+	e := newCartTestEnv(t)
+	e.users.cards[sellerA] = domain.UserCard{ID: sellerA, FirstName: "Анна"}
+	gone := cartEntry(1, sellerA, 100, false)
+	gone.Status = domain.ListingDeleted
+	gone.Seller.FirstName = ""
+	e.repo.EXPECT().Entries(gomock.Any(), buyerID).Return([]domain.CartEntry{gone}, nil)
+
+	cart, err := e.uc.Get(context.Background(), buyerID)
+
+	require.NoError(t, err)
+	require.Equal(t, "Анна", cart.Groups[0].Seller.FirstName)
+	require.Equal(t, domain.ReasonDeleted, cart.Groups[0].Items[0].UnavailableReason())
+}
+
+func TestCart_Get_SellerMissingFromDirectory(t *testing.T) {
+	e := newCartTestEnv(t)
+	e.users.missing[sellerA] = true
+	e.repo.EXPECT().Entries(gomock.Any(), buyerID).Return([]domain.CartEntry{cartEntry(1, sellerA, 100, false)}, nil)
+
+	_, err := e.uc.Get(context.Background(), buyerID)
+
+	require.ErrorIs(t, err, domain.ErrUserMissing)
 }

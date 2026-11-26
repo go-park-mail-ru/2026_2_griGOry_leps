@@ -190,6 +190,9 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 func writeCartError(w http.ResponseWriter, r *http.Request, op string, err error) {
+	if writeUsersError(w, r, err) {
+		return
+	}
 	ctx := r.Context()
 	var unavailable *domain.ItemsUnavailableError
 	switch {

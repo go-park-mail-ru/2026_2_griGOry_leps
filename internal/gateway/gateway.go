@@ -16,7 +16,7 @@ import (
 
 func IsAuthPath(p string) bool {
 	switch p {
-	case "/api/register", "/api/login", "/api/logout", "/api/csrf", "/api/me", "/api/me/password", "/api/me/avatar":
+	case "/api/register", "/api/login", "/api/logout", "/api/csrf", "/api/cities", "/api/me", "/api/me/password", "/api/me/avatar":
 		return true
 	}
 	return strings.HasPrefix(p, "/api/password/") || strings.HasPrefix(p, "/api/email/") || strings.HasPrefix(p, "/api/me/email/") || strings.HasPrefix(p, "/uploads/avatars/")

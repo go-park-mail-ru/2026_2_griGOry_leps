@@ -13,6 +13,7 @@ type UserRepository interface {
 	GetByPhone(ctx context.Context, phone string) (domain.User, error)
 	GetByID(ctx context.Context, id int32) (domain.User, error)
 	GetProfile(ctx context.Context, id int32) (domain.Profile, error)
+	GetCards(ctx context.Context, ids []int32) ([]domain.UserCard, error)
 	UpdateProfile(ctx context.Context, id int32, upd domain.ProfileUpdate) error
 	LockByID(ctx context.Context, id int32) error
 	GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error)
@@ -22,6 +23,12 @@ type UserRepository interface {
 	ConfirmPendingEmail(ctx context.Context, id int32) error
 	GetAvatarForUpdate(ctx context.Context, id int32) (string, error)
 	UpdateAvatar(ctx context.Context, id int32, avatar string) error
+}
+
+// UserDirectory отдаёт публичные данные пользователей, которыми владеет auth.
+// Неизвестные ID в результат не попадают.
+type UserDirectory interface {
+	Users(ctx context.Context, ids []int32) (map[int32]domain.UserCard, error)
 }
 
 type SessionRepository interface {
@@ -78,6 +85,12 @@ type SellerRepository interface {
 	ListAds(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error)
 	ListReviews(ctx context.Context, f domain.ReviewFilter) (domain.ReviewPage, error)
 	CreateReport(ctx context.Context, report domain.SellerReport) error
+	Stats(ctx context.Context, id int32) (domain.SellerStats, error)
+}
+
+// SellerStatsSource отдаёт рейтинг продавца; для auth это вызов в ads.
+type SellerStatsSource interface {
+	SellerStats(ctx context.Context, userID int32) (domain.SellerStats, error)
 }
 
 type AddressRepository interface {
@@ -89,14 +102,11 @@ type AddressRepository interface {
 	Delete(ctx context.Context, userID, id int32) error
 	ClearDefault(ctx context.Context, userID int32) error
 	PromoteOldest(ctx context.Context, userID, exceptID int32) error
+	LockUser(ctx context.Context, userID int32) error
 }
 
 type CityRepository interface {
 	Search(ctx context.Context, prefix string, limit int) ([]domain.City, error)
-}
-
-type UserLocker interface {
-	LockByID(ctx context.Context, id int32) error
 }
 
 type ListingRepository interface {

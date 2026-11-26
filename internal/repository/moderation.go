@@ -16,20 +16,6 @@ func NewModerationRepository(db DB) *ModerationRepository {
 	return &ModerationRepository{db: db}
 }
 
-func (r *ModerationRepository) CheckRole(ctx context.Context, userID int32) error {
-	var moderator bool
-	err := conn(ctx, r.db).QueryRowContext(ctx, `
-		SELECT is_moderator FROM user_account WHERE user_id = $1 FOR SHARE
-	`, userID).Scan(&moderator)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && !moderator {
-		return domain.ErrForbidden
-	}
-	if err != nil {
-		return fmt.Errorf("check moderator role: %w", err)
-	}
-	return nil
-}
-
 const listModerationQuery = `
 	SELECT id, title, price, moderation_requested_at
 	FROM ad

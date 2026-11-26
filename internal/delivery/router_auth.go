@@ -9,7 +9,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
-func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, csrfHandler *CSRFHandler, profileHandler *ProfileHandler, resetHandler *PasswordResetHandler, verifyHandler *EmailVerificationHandler) http.Handler {
+func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, csrfHandler *CSRFHandler, profileHandler *ProfileHandler, resetHandler *PasswordResetHandler, verifyHandler *EmailVerificationHandler, cityHandler *CityHandler) http.Handler {
 	session := NewSessionMiddleware(authHandler.auth)
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
@@ -43,6 +43,8 @@ func NewAuthRouter(frontendOrigin, uploadDir string, authHandler *AuthHandler, c
 	r.Handle("/api/email/verify/resend", auth(rateLimit(resendLimit, verifyHandler.Resend))).Methods(http.MethodPost)
 	r.HandleFunc("/api/email/verify/resend-by-link", rateLimit(resendLimit, verifyHandler.ResendByToken)).Methods(http.MethodPost)
 	r.Handle("/api/me/email/pending", auth(verifyHandler.CancelEmailChange)).Methods(http.MethodDelete)
+
+	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
 
 	r.Handle("/api/me", auth(profileHandler.Get)).Methods(http.MethodGet)
 	r.Handle("/api/me", auth(rateLimit(profileLimit, profileHandler.Update))).Methods(http.MethodPatch)

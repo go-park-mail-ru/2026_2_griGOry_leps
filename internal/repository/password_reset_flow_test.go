@@ -75,7 +75,7 @@ func TestResetPassword_LinkDiesAfterEmailOrPasswordChange(t *testing.T) {
 	tx := NewTransactor(pool)
 	verifier := usecase.NewEmailVerificationUsecase(users, NewEmailVerificationRepository(pool), resets, noopMailer{}, tx, "http://front.test/verify-email")
 	resetUC := usecase.NewPasswordResetUsecase(users, sessions, resets, verifier, noopMailer{}, tx, "http://front.test/reset-password")
-	profileUC := usecase.NewProfileUsecase(users, sessions, resets, verifier, nil, tx)
+	profileUC := usecase.NewProfileUsecase(users, sessions, resets, verifier, nil, zeroSellerStats{}, tx)
 	user, err := users.Create(ctx, "anna@goget.pw", "hash", "Анна", "+79990000001")
 	require.NoError(t, err)
 
@@ -90,4 +90,11 @@ func TestResetPassword_LinkDiesAfterEmailOrPasswordChange(t *testing.T) {
 	require.NoError(t, resets.Create(ctx, sha256Hex("after-reset"), user.ID, time.Now().Add(time.Hour)))
 	require.NoError(t, profileUC.ChangePassword(ctx, user.ID, "session", "NewSecret1", "OtherSecret2"))
 	require.ErrorIs(t, resetUC.ResetPassword(ctx, "after-reset", "ThirdSecret3"), domain.ErrInvalidResetToken)
+}
+
+// zeroSellerStats — заглушка рейтинга: тесты сброса пароля не зависят от ads.
+type zeroSellerStats struct{}
+
+func (zeroSellerStats) SellerStats(context.Context, int32) (domain.SellerStats, error) {
+	return domain.SellerStats{}, nil
 }

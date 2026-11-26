@@ -31,6 +31,7 @@ func (h *SessionMiddleware) RequireAuth(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), userIDKey{}, user.ID)
 		ctx = context.WithValue(ctx, emailVerifiedKey{}, user.EmailVerified)
+		ctx = context.WithValue(ctx, moderatorKey{}, user.IsModerator)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

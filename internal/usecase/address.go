@@ -18,12 +18,11 @@ const (
 
 type AddressUsecase struct {
 	addresses AddressRepository
-	users     UserLocker
 	tx        Transactor
 }
 
-func NewAddressUsecase(addresses AddressRepository, users UserLocker, tx Transactor) *AddressUsecase {
-	return &AddressUsecase{addresses: addresses, users: users, tx: tx}
+func NewAddressUsecase(addresses AddressRepository, tx Transactor) *AddressUsecase {
+	return &AddressUsecase{addresses: addresses, tx: tx}
 }
 
 func (uc *AddressUsecase) List(ctx context.Context, userID int32) ([]domain.Address, error) {
@@ -109,7 +108,7 @@ func (uc *AddressUsecase) Create(ctx context.Context, userID int32, in domain.Ad
 
 	var created domain.Address
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.users.LockByID(ctx, userID); err != nil {
+		if err := uc.addresses.LockUser(ctx, userID); err != nil {
 			return err
 		}
 		count, err := uc.addresses.Count(ctx, userID)
@@ -136,7 +135,7 @@ func (uc *AddressUsecase) Update(ctx context.Context, userID, id int32, in domai
 
 	var updated domain.Address
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.users.LockByID(ctx, userID); err != nil {
+		if err := uc.addresses.LockUser(ctx, userID); err != nil {
 			return err
 		}
 		a, err := uc.addresses.GetForUpdate(ctx, userID, id)
@@ -192,7 +191,7 @@ func (uc *AddressUsecase) Update(ctx context.Context, userID, id int32, in domai
 
 func (uc *AddressUsecase) Delete(ctx context.Context, userID, id int32) error {
 	return uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.users.LockByID(ctx, userID); err != nil {
+		if err := uc.addresses.LockUser(ctx, userID); err != nil {
 			return err
 		}
 		a, err := uc.addresses.GetForUpdate(ctx, userID, id)

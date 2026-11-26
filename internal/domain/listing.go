@@ -77,6 +77,7 @@ type ListingState struct {
 	Condition    *string
 	Address      *string
 	HasDelivery  bool
+	City         string
 }
 
 type Category struct {

@@ -45,7 +45,7 @@ func TestPublishedSearch(t *testing.T) {
 
 	server := grpc.NewServer()
 	ads := usecase.NewAdUsecase(NewAdRepository(db))
-	adsv1.RegisterAdsServiceServer(server, delivery.NewAdsGRPCServer(ads))
+	adsv1.RegisterAdsServiceServer(server, delivery.NewAdsGRPCServer(ads, usecase.NewSellerUsecase(NewSellerRepository(db), emptyDirectory{})))
 
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)

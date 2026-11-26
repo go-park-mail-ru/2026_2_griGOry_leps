@@ -9,7 +9,7 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
-func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, cityHandler *CityHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler, moderationHandler *ModerationHandler) http.Handler {
+func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, adHandler *AdHandler, listingHandler *ListingHandler, csrfHandler *CSRFHandler, cartHandler *CartHandler, addressHandler *AddressHandler, sellerHandler *SellerHandler, orderHandler *OrderHandler, moderationHandler *ModerationHandler) http.Handler {
 	r := mux.NewRouter()
 	r.Use(recoverMiddleware, csrfHandler.Middleware)
 	r.NotFoundHandler = http.HandlerFunc(notFound)
@@ -31,8 +31,6 @@ func NewAdsRouter(frontendOrigin, uploadDir string, session *SessionMiddleware, 
 	r.Handle("/api/me/addresses", verified(addressHandler.Create)).Methods(http.MethodPost)
 	r.Handle(addressPath, verified(addressHandler.Update)).Methods(http.MethodPatch)
 	r.Handle(addressPath, verified(addressHandler.Delete)).Methods(http.MethodDelete)
-
-	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
 
 	const sellerPath = "/api/sellers/{seller_id:[0-9]+}"
 	r.HandleFunc(sellerPath, sellerHandler.Get).Methods(http.MethodGet)

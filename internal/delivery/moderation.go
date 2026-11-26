@@ -30,7 +30,19 @@ type moderationRequestResponse struct {
 	RequestedAt time.Time `json:"requested_at"`
 }
 
+// requireModerator отвечает 403 и возвращает false, если сессия не принадлежит модератору.
+func requireModerator(w http.ResponseWriter, r *http.Request) bool {
+	if isModerator(r.Context()) {
+		return true
+	}
+	writeModerationError(w, r, domain.ErrForbidden)
+	return false
+}
+
 func (h *ModerationHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !requireModerator(w, r) {
+		return
+	}
 	q := r.URL.Query()
 	limit, err := intParam(q, "limit", 1)
 	if err != nil || limit > 60 {
@@ -59,6 +71,9 @@ func (h *ModerationHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ModerationHandler) Get(w http.ResponseWriter, r *http.Request) {
+	if !requireModerator(w, r) {
+		return
+	}
 	id, ok := listingID(r)
 	if !ok {
 		writeModerationError(w, r, domain.ErrListingNotFound)
@@ -79,6 +94,9 @@ func (h *ModerationHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *ModerationHandler) Decide(approve bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !requireModerator(w, r) {
+			return
+		}
 		id, ok := listingID(r)
 		if !ok {
 			writeModerationError(w, r, domain.ErrListingNotFound)

@@ -2,10 +2,13 @@ syntax = "proto3";
 
 package ads.v1;
 
+import "ads/v1/seller.proto";
+
 option go_package = "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1;adsv1";
 
 service AdsService {
   rpc SearchPublished(SearchRequest) returns (SearchPage);
+  rpc GetSellerStats(SellerStatsRequest) returns (SellerStats);
 }
 
 message SearchRequest {

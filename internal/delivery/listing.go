@@ -347,6 +347,9 @@ func listingID(r *http.Request) (int32, bool) {
 }
 
 func writeListingError(w http.ResponseWriter, r *http.Request, op string, err error) {
+	if writeUsersError(w, r, err) {
+		return
+	}
 	ctx := r.Context()
 	var orderErr *domain.ListingOrderError
 	if field := listingErrorField(err); field != "" {

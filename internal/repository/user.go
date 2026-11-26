@@ -20,7 +20,7 @@ func NewUserRepository(db DB) *UserRepository {
 
 func scanUser(row scanner) (domain.User, error) {
 	var user domain.User
-	err := row.Scan(&user.ID, &user.FirstName, &user.Email, &user.Phone, &user.PasswordHash, &user.EmailVerified, &user.PendingEmail, &user.CreatedAt)
+	err := row.Scan(&user.ID, &user.FirstName, &user.Email, &user.Phone, &user.PasswordHash, &user.EmailVerified, &user.PendingEmail, &user.CreatedAt, &user.IsModerator)
 	return user, err
 }
 
@@ -75,6 +75,27 @@ func (r *UserRepository) get(ctx context.Context, query string, arg any) (domain
 	return user, nil
 }
 
+func (r *UserRepository) GetCards(ctx context.Context, ids []int32) ([]domain.UserCard, error) {
+	rows, err := conn(ctx, r.db).QueryContext(ctx, getUserCardsQuery, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get user cards: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	cards := make([]domain.UserCard, 0, len(ids))
+	for rows.Next() {
+		var c domain.UserCard
+		if err := rows.Scan(&c.ID, &c.FirstName, &c.Avatar, &c.CreatedAt, &c.City, &c.PhoneVerified, &c.Phone); err != nil {
+			return nil, fmt.Errorf("scan user card: %w", err)
+		}
+		cards = append(cards, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("get user cards: %w", err)
+	}
+	return cards, nil
+}
+
 func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profile, error) {
 	var (
 		p        domain.Profile
@@ -84,7 +105,7 @@ func (r *UserRepository) GetProfile(ctx context.Context, id int32) (domain.Profi
 	err := conn(ctx, r.db).QueryRowContext(ctx, getProfileQuery, id).Scan(
 		&p.ID, &p.FirstName, &p.Email, &p.Phone, &p.CreatedAt,
 		&p.EmailVerified, &p.PendingEmail, &p.PhoneVerified, &cityID, &cityName, &p.About, &p.Avatar,
-		&p.Rating, &p.ReviewsCount, &p.IsModerator,
+		&p.IsModerator,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Profile{}, domain.ErrUserNotFound

@@ -21,7 +21,7 @@ func scanCartEntries(rows *sql.Rows) ([]domain.CartEntry, error) {
 	return collectRows(rows, func(row scanner) (domain.CartEntry, error) {
 		var e domain.CartEntry
 		err := row.Scan(&e.ListingID, &e.Title, &e.Price, &e.ImageURL, &e.Address, &e.HasDelivery, &e.Status, &e.Reserved,
-			&e.Seller.ID, &e.Seller.FirstName, &e.Seller.Avatar, &e.Seller.Rating)
+			&e.Seller.ID, &e.Seller.Rating)
 		return e, err
 	})
 }

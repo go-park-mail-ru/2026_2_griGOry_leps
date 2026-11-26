@@ -28,6 +28,16 @@ func pngBytes(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// fakeSellerStats — ручная замена SellerStatsSource: нулевое значение отдаёт нули без ошибки.
+type fakeSellerStats struct {
+	stats domain.SellerStats
+	err   error
+}
+
+func (f *fakeSellerStats) SellerStats(context.Context, int32) (domain.SellerStats, error) {
+	return f.stats, f.err
+}
+
 type profileTestEnv struct {
 	uc       *ProfileUsecase
 	users    *MockUserRepository
@@ -36,14 +46,15 @@ type profileTestEnv struct {
 	verifier *MockEmailVerifier
 	storage  *MockFileStorage
 	tx       *MockTransactor
+	stats    *fakeSellerStats
 	userID   int32
 }
 
 func newProfileTestEnv(t *testing.T) *profileTestEnv {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	e := &profileTestEnv{users: NewMockUserRepository(ctrl), sessions: NewMockSessionRepository(ctrl), resets: NewMockPasswordResetRepository(ctrl), verifier: NewMockEmailVerifier(ctrl), storage: NewMockFileStorage(ctrl), tx: NewMockTransactor(ctrl), userID: 7}
-	e.uc = NewProfileUsecase(e.users, e.sessions, e.resets, e.verifier, e.storage, e.tx)
+	e := &profileTestEnv{users: NewMockUserRepository(ctrl), sessions: NewMockSessionRepository(ctrl), resets: NewMockPasswordResetRepository(ctrl), verifier: NewMockEmailVerifier(ctrl), storage: NewMockFileStorage(ctrl), tx: NewMockTransactor(ctrl), stats: &fakeSellerStats{}, userID: 7}
+	e.uc = NewProfileUsecase(e.users, e.sessions, e.resets, e.verifier, e.storage, e.stats, e.tx)
 	return e
 }
 
@@ -108,6 +119,30 @@ func TestProfile_Get(t *testing.T) {
 	got, err := e.uc.Profile(context.Background(), e.userID)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestProfile_Get_FillsSellerStats(t *testing.T) {
+	e := newProfileTestEnv(t)
+	e.stats.stats = domain.SellerStats{Rating: 4.5, ReviewsCount: 2}
+	e.users.EXPECT().GetProfile(gomock.Any(), e.userID).Return(domain.Profile{User: profileUser()}, nil)
+
+	got, err := e.uc.Profile(context.Background(), e.userID)
+
+	require.NoError(t, err)
+	require.InDelta(t, 4.5, got.Rating, 0.001)
+	require.Equal(t, 2, got.ReviewsCount)
+}
+
+func TestProfile_Get_StatsErrorDegradesToZero(t *testing.T) {
+	e := newProfileTestEnv(t)
+	e.stats.err = errors.New("ads unavailable")
+	e.users.EXPECT().GetProfile(gomock.Any(), e.userID).Return(domain.Profile{User: profileUser(), Rating: 3}, nil)
+
+	got, err := e.uc.Profile(context.Background(), e.userID)
+
+	require.NoError(t, err)
+	require.Zero(t, got.Rating)
+	require.Zero(t, got.ReviewsCount)
 }
 
 func TestUpdateProfile_OnlySentFieldsChange(t *testing.T) {

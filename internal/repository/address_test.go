@@ -120,3 +120,10 @@ func TestCityRepo_Search(t *testing.T) {
 		require.Equal(t, tc.cities, cities)
 	}
 }
+
+func TestAddressRepo_LockUser(t *testing.T) {
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(lockAddressUserQuery).WithArgs(int32(7)).WillReturnResult(sqlmock.NewResult(0, 0))
+
+	require.NoError(t, NewAddressRepository(db).LockUser(context.Background(), 7))
+}

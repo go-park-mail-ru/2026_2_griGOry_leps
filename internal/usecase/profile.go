@@ -30,16 +30,33 @@ type ProfileUsecase struct {
 	resets   PasswordResetRepository
 	verifier EmailVerifier
 	avatars  FileStorage
+	stats    SellerStatsSource
 	tx       Transactor
 }
 
 func NewProfileUsecase(users UserRepository, sessions SessionRepository, resets PasswordResetRepository,
-	verifier EmailVerifier, avatars FileStorage, tx Transactor) *ProfileUsecase {
-	return &ProfileUsecase{users: users, sessions: sessions, resets: resets, verifier: verifier, avatars: avatars, tx: tx}
+	verifier EmailVerifier, avatars FileStorage, stats SellerStatsSource, tx Transactor) *ProfileUsecase {
+	return &ProfileUsecase{users: users, sessions: sessions, resets: resets, verifier: verifier, avatars: avatars, stats: stats, tx: tx}
 }
 
 func (uc *ProfileUsecase) Profile(ctx context.Context, userID int32) (domain.Profile, error) {
-	return uc.users.GetProfile(ctx, userID)
+	return uc.profileWithStats(ctx, userID)
+}
+
+// profileWithStats дополняет профиль рейтингом из ads. Без ответа ads рейтинг нулевой:
+// по /api/me фронт определяет, вошёл ли пользователь, и ошибка там выглядела бы как разлогин.
+func (uc *ProfileUsecase) profileWithStats(ctx context.Context, userID int32) (domain.Profile, error) {
+	p, err := uc.users.GetProfile(ctx, userID)
+	if err != nil {
+		return domain.Profile{}, err
+	}
+	stats, err := uc.stats.SellerStats(ctx, userID)
+	if err != nil {
+		slog.WarnContext(ctx, "seller stats", "err", err)
+		stats = domain.SellerStats{}
+	}
+	p.Rating, p.ReviewsCount = stats.Rating, stats.ReviewsCount
+	return p, nil
 }
 
 func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd domain.ProfileUpdate) (domain.Profile, error) {
@@ -106,7 +123,7 @@ func (uc *ProfileUsecase) UpdateProfile(ctx context.Context, userID int32, upd d
 	if sendLink != nil {
 		sendLink()
 	}
-	return uc.users.GetProfile(ctx, userID)
+	return uc.profileWithStats(ctx, userID)
 }
 
 func (uc *ProfileUsecase) checkEmailFree(ctx context.Context, userID int32, email string) error {

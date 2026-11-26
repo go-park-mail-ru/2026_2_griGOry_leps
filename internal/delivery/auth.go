@@ -175,6 +175,13 @@ type userIDKey struct{}
 
 type emailVerifiedKey struct{}
 
+type moderatorKey struct{}
+
+func isModerator(ctx context.Context) bool {
+	moderator, _ := ctx.Value(moderatorKey{}).(bool)
+	return moderator
+}
+
 func userIDFromContext(ctx context.Context) int32 {
 	id, _ := ctx.Value(userIDKey{}).(int32)
 	return id

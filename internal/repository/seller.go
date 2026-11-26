@@ -3,11 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -21,28 +19,22 @@ func NewSellerRepository(pool *sql.DB) *SellerRepository {
 
 func (r *SellerRepository) Get(ctx context.Context, id int32) (domain.SellerProfile, error) {
 	var s domain.SellerProfile
+	s.ID = id
 	err := r.pool.QueryRowContext(ctx, getSellerQuery, id).Scan(
-		&s.ID, &s.FirstName, &s.Avatar, &s.Rating, &s.ReviewsCount, &s.CreatedAt,
-		&s.Location, &s.PhoneVerified, &s.CompletedSalesCount, &s.ActiveListingsCount,
+		&s.Rating, &s.ReviewsCount, &s.CompletedSalesCount, &s.ActiveListingsCount,
 	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.SellerProfile{}, domain.ErrSellerNotFound
-	}
 	if err != nil {
 		return domain.SellerProfile{}, fmt.Errorf("get seller: %w", err)
 	}
 	return s, nil
 }
 
-func ensureSeller(ctx context.Context, tx *sql.Tx, id int32) error {
-	var exists bool
-	if err := tx.QueryRowContext(ctx, sellerExistsQuery, id).Scan(&exists); err != nil {
-		return fmt.Errorf("check seller: %w", err)
+func (r *SellerRepository) Stats(ctx context.Context, id int32) (domain.SellerStats, error) {
+	var s domain.SellerStats
+	if err := r.pool.QueryRowContext(ctx, sellerStatsQuery, id).Scan(&s.Rating, &s.ReviewsCount); err != nil {
+		return domain.SellerStats{}, fmt.Errorf("get seller stats: %w", err)
 	}
-	if !exists {
-		return domain.ErrSellerNotFound
-	}
-	return nil
+	return s, nil
 }
 
 func (r *SellerRepository) ListAds(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error) {
@@ -52,9 +44,6 @@ func (r *SellerRepository) ListAds(ctx context.Context, f domain.SellerAdFilter)
 
 	page := domain.SellerAdPage{AdPage: domain.AdPage{Limit: f.Limit, Offset: f.Offset}}
 	err := readOnly(ctx, r.pool, func(tx *sql.Tx) error {
-		if err := ensureSeller(ctx, tx, f.SellerID); err != nil {
-			return err
-		}
 		if err := tx.QueryRowContext(ctx, countSellerAdsQuery, f.SellerID, f.CategoryID).Scan(&page.Total); err != nil {
 			return fmt.Errorf("count seller ads: %w", err)
 		}
@@ -98,9 +87,6 @@ func (r *SellerRepository) ListReviews(ctx context.Context, f domain.ReviewFilte
 
 	page := domain.ReviewPage{Limit: f.Limit, Offset: f.Offset}
 	err := readOnly(ctx, r.pool, func(tx *sql.Tx) error {
-		if err := ensureSeller(ctx, tx, f.SellerID); err != nil {
-			return err
-		}
 		if err := tx.QueryRowContext(ctx, countSellerReviewsQuery, f.SellerID, f.WithPhotos).Scan(&page.Total); err != nil {
 			return fmt.Errorf("count seller reviews: %w", err)
 		}
@@ -128,7 +114,7 @@ func listReviews(ctx context.Context, tx *sql.Tx, f domain.ReviewFilter) ([]doma
 	reviews := make([]domain.Review, 0)
 	for rows.Next() {
 		var rv domain.Review
-		err := rows.Scan(&rv.ID, &rv.Author.ID, &rv.Author.FirstName, &rv.Author.Avatar,
+		err := rows.Scan(&rv.ID, &rv.Author.ID,
 			&rv.Rating, &rv.Text, &rv.ListingTitle, &rv.CreatedAt, pgtype.NewMap().SQLScanner(&rv.Photos))
 		if err != nil {
 			return nil, fmt.Errorf("scan review: %w", err)
@@ -167,10 +153,6 @@ func reviewSummary(ctx context.Context, tx *sql.Tx, sellerID int32) (domain.Revi
 
 func (r *SellerRepository) CreateReport(ctx context.Context, report domain.SellerReport) error {
 	_, err := r.pool.ExecContext(ctx, createSellerReportQuery, report.SellerID, report.ReporterID, report.Reason, report.Comment)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.ConstraintName == "seller_report_seller_id_fkey" {
-		return domain.ErrSellerNotFound
-	}
 	if err != nil {
 		return fmt.Errorf("create seller report: %w", err)
 	}

@@ -34,7 +34,6 @@ func (r *ListingRepository) Get(ctx context.Context, id, viewerID int32) (domain
 		&l.Title, &l.Description, &l.Price, &l.IsFree, &l.IsNegotiable, &l.Condition,
 		&l.City, &l.Address, &l.HasDelivery, &l.Status, &l.CloseReason, &l.RejectionReason,
 		&l.PublishedAt, &l.CreatedAt, &l.UpdatedAt,
-		&l.Seller.FirstName, &l.Seller.Avatar, &l.Seller.CreatedAt,
 		&l.Seller.Rating, &l.Seller.ReviewsCount,
 		&l.InCart, &photosJSON,
 	)
@@ -91,7 +90,7 @@ func (r *ListingRepository) Create(ctx context.Context, s domain.ListingState) (
 	var id int32
 	err := conn(ctx, r.db).QueryRowContext(ctx, createListingQuery,
 		s.UserID, s.Status, s.CategoryID, s.Title, s.Description, s.Price,
-		s.IsFree, s.IsNegotiable, s.Condition, s.Address, s.HasDelivery,
+		s.IsFree, s.IsNegotiable, s.Condition, s.Address, s.HasDelivery, s.City,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("create listing: %w", err)

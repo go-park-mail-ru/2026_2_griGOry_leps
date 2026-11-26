@@ -21,14 +21,29 @@ var (
 
 type SellerUsecase struct {
 	sellers SellerRepository
+	users   UserDirectory
 }
 
-func NewSellerUsecase(sellers SellerRepository) *SellerUsecase {
-	return &SellerUsecase{sellers: sellers}
+func NewSellerUsecase(sellers SellerRepository, users UserDirectory) *SellerUsecase {
+	return &SellerUsecase{sellers: sellers, users: users}
 }
 
 func (uc *SellerUsecase) Profile(ctx context.Context, id int32) (domain.SellerProfile, error) {
-	return uc.sellers.Get(ctx, id)
+	card, err := requireSeller(ctx, uc.users, id)
+	if err != nil {
+		return domain.SellerProfile{}, err
+	}
+	p, err := uc.sellers.Get(ctx, id)
+	if err != nil {
+		return domain.SellerProfile{}, err
+	}
+	p.FirstName, p.Avatar, p.CreatedAt = card.FirstName, card.Avatar, card.CreatedAt
+	p.Location, p.PhoneVerified = card.City, card.PhoneVerified
+	return p, nil
+}
+
+func (uc *SellerUsecase) Stats(ctx context.Context, id int32) (domain.SellerStats, error) {
+	return uc.sellers.Stats(ctx, id)
 }
 
 func (uc *SellerUsecase) Listings(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error) {
@@ -39,6 +54,9 @@ func (uc *SellerUsecase) Listings(ctx context.Context, f domain.SellerAdFilter) 
 		return domain.SellerAdPage{}, domain.ErrInvalidSort
 	}
 	f.Limit = pageLimit(f.Limit)
+	if _, err := requireSeller(ctx, uc.users, f.SellerID); err != nil {
+		return domain.SellerAdPage{}, err
+	}
 	return uc.sellers.ListAds(ctx, f)
 }
 
@@ -50,7 +68,30 @@ func (uc *SellerUsecase) Reviews(ctx context.Context, f domain.ReviewFilter) (do
 		return domain.ReviewPage{}, domain.ErrInvalidSort
 	}
 	f.Limit = pageLimit(f.Limit)
-	return uc.sellers.ListReviews(ctx, f)
+	page, err := uc.sellers.ListReviews(ctx, f)
+	if err != nil {
+		return domain.ReviewPage{}, err
+	}
+	// Продавец и авторы отзывов запрашиваются одним вызовом; пропавший продавец — 404, пропавший автор — ошибка данных.
+	ids := []int32{f.SellerID}
+	for _, rv := range page.Items {
+		ids = append(ids, rv.Author.ID)
+	}
+	cards, err := uc.users.Users(ctx, uniqueIDs(ids))
+	if err != nil {
+		return domain.ReviewPage{}, err
+	}
+	if _, ok := cards[f.SellerID]; !ok {
+		return domain.ReviewPage{}, domain.ErrSellerNotFound
+	}
+	for i := range page.Items {
+		card, ok := cards[page.Items[i].Author.ID]
+		if !ok {
+			return domain.ReviewPage{}, domain.ErrUserMissing
+		}
+		page.Items[i].Author.FirstName, page.Items[i].Author.Avatar = card.FirstName, card.Avatar
+	}
+	return page, nil
 }
 
 func (uc *SellerUsecase) Report(ctx context.Context, report domain.SellerReport) error {
@@ -63,6 +104,9 @@ func (uc *SellerUsecase) Report(ctx context.Context, report domain.SellerReport)
 	}
 	if report.SellerID == report.ReporterID {
 		return domain.ErrSelfReport
+	}
+	if _, err := requireSeller(ctx, uc.users, report.SellerID); err != nil {
+		return err
 	}
 	return uc.sellers.CreateReport(ctx, report)
 }

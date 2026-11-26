@@ -11,6 +11,18 @@ type User struct {
 	EmailVerified bool
 	PendingEmail  string
 	CreatedAt     time.Time
+	IsModerator   bool
+}
+
+// UserCard — публичные данные пользователя, которые auth отдаёт другим сервисам.
+type UserCard struct {
+	ID            int32
+	FirstName     string
+	Avatar        string
+	City          string
+	Phone         string
+	PhoneVerified bool
+	CreatedAt     time.Time
 }
 
 type City struct {
@@ -20,7 +32,6 @@ type City struct {
 
 type Profile struct {
 	User
-	IsModerator   bool
 	PhoneVerified bool
 	City          *City
 	About         string

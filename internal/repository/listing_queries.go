@@ -5,7 +5,6 @@ const getListingQuery = `
            a.title, COALESCE(a.description, ''), a.price, a.is_free, a.is_negotiable, a.condition,
            COALESCE(a.city, ''), a.address, a.has_delivery, a.status, a.close_reason, a.rejection_reason,
            a.published_at, a.created_at, a.updated_at,
-           u.first_name, COALESCE(u.avatar, ''), u.created_at,
            COALESCE(r.rating, 0), COALESCE(r.reviews_count, 0),
            EXISTS (
                SELECT 1
@@ -19,7 +18,6 @@ const getListingQuery = `
                WHERE ad_id = a.id
            ), '[]'::jsonb)
     FROM ad a
-    JOIN user_account u ON u.user_id = a.user_id
     LEFT JOIN category c ON c.category_id = a.category_id
     LEFT JOIN LATERAL (
         WITH RECURSIVE chain AS (
@@ -60,12 +58,7 @@ const getListingStateForUpdateQuery = `
 const createListingQuery = `
     INSERT INTO ad (user_id, status, category_id, title, description, price,
                     is_free, is_negotiable, condition, address, has_delivery, city)
-    VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, $11, (
-        SELECT c.name
-        FROM user_account u
-        JOIN city c ON c.city_id = u.city_id
-        WHERE u.user_id = $1
-    ))
+    VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, $11, NULLIF($12, ''))
     RETURNING id
 `
 

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -26,20 +25,16 @@ func (f sellerFixture) review(t *testing.T, authorID, adID int32, rating float64
 
 func TestSellerRepo_Get(t *testing.T) {
 	db, mock := newSQLMock(t)
-	repo := NewSellerRepository(db)
-	mock.ExpectQuery(getSellerQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"id", "name", "avatar", "rating", "reviews", "created", "location", "verified", "completed", "active"}).AddRow(1, "Timur", "", 4.5, 2, time.Now(), "Moscow", true, 1, 2))
-	seller, err := repo.Get(context.Background(), 1)
+	mock.ExpectQuery(getSellerQuery).WithArgs(int32(1)).WillReturnRows(sqlmock.NewRows([]string{"rating", "reviews", "completed", "active"}).AddRow(4.5, 2, 1, 2))
+
+	seller, err := NewSellerRepository(db).Get(context.Background(), 1)
+
 	require.NoError(t, err)
-	require.Equal(t, "Timur", seller.FirstName)
-	require.Equal(t, "Moscow", seller.Location)
-	require.True(t, seller.PhoneVerified)
+	require.Equal(t, int32(1), seller.ID)
 	require.InDelta(t, 4.5, seller.Rating, 0.001)
 	require.Equal(t, 2, seller.ReviewsCount)
 	require.Equal(t, 1, seller.CompletedSalesCount)
 	require.Equal(t, 2, seller.ActiveListingsCount)
-	mock.ExpectQuery(getSellerQuery).WithArgs(int32(999)).WillReturnError(sql.ErrNoRows)
-	_, err = repo.Get(context.Background(), 999)
-	require.ErrorIs(t, err, domain.ErrSellerNotFound)
 }
 
 func TestSellerRepo_ListAds(t *testing.T) {
@@ -58,7 +53,6 @@ func TestSellerRepo_ListAds(t *testing.T) {
 	} {
 		f := tc.filter
 		mock.ExpectBegin()
-		mock.ExpectQuery(sellerExistsQuery).WithArgs(f.SellerID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 		mock.ExpectQuery(countSellerAdsQuery).WithArgs(f.SellerID, f.CategoryID).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.total))
 		mock.ExpectQuery(listSellerAdsQuery).WithArgs(f.SellerID, f.CategoryID, f.Sort, f.Limit, f.Offset).WillReturnRows(adMockRows(tc.ads...)).RowsWillBeClosed()
 		rows := sqlmock.NewRows([]string{"id", "name", "count"})
@@ -73,11 +67,6 @@ func TestSellerRepo_ListAds(t *testing.T) {
 		require.Equal(t, adIDs(tc.ads), adIDs(page.Items))
 		require.Equal(t, tc.categories, page.Categories)
 	}
-	mock.ExpectBegin()
-	mock.ExpectQuery(sellerExistsQuery).WithArgs(int32(999)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectRollback()
-	_, err := repo.ListAds(context.Background(), domain.SellerAdFilter{SellerID: 999, Sort: domain.AdSortNewest, Limit: 24})
-	require.ErrorIs(t, err, domain.ErrSellerNotFound)
 }
 
 func TestSellerRepo_ListReviews(t *testing.T) {
@@ -95,14 +84,14 @@ func TestSellerRepo_ListReviews(t *testing.T) {
 		{domain.ReviewSortNewest, true, []int32{2}},
 	} {
 		f := domain.ReviewFilter{SellerID: 1, Sort: tc.sort, WithPhotos: tc.photos, Limit: 10}
-		rows := sqlmock.NewRows([]string{"id", "author", "name", "avatar", "rating", "text", "title", "created", "photos"})
+		rows := sqlmock.NewRows([]string{"id", "author", "rating", "text", "title", "created", "photos"})
 		for _, id := range tc.ids {
 			photos := "{}"
 			rating := map[int32]float64{1: 5, 2: 3.6, 3: 1}[id]
 			if id == 2 {
 				photos = "{/uploads/reviews/a.jpg,/uploads/reviews/b.jpg}"
 			}
-			rows.AddRow(id, 2, "Oleg", "", rating, "Review", "Bike", time.Now(), photos)
+			rows.AddRow(id, 2, rating, "Review", "Bike", time.Now(), photos)
 		}
 		expectReviews(mock, f, len(tc.ids), rows, 3.2, distribution)
 		page, err := repo.ListReviews(context.Background(), f)
@@ -112,7 +101,7 @@ func TestSellerRepo_ListReviews(t *testing.T) {
 		require.InDelta(t, 3.2, page.Rating, 0.001)
 		require.Equal(t, distribution, page.Distribution)
 		for _, review := range page.Items {
-			require.Equal(t, "Oleg", review.Author.FirstName)
+			require.Equal(t, int32(2), review.Author.ID)
 			require.Equal(t, "Bike", review.ListingTitle)
 			if review.ID == 2 {
 				require.Equal(t, []string{"/uploads/reviews/a.jpg", "/uploads/reviews/b.jpg"}, review.Photos)
@@ -121,17 +110,12 @@ func TestSellerRepo_ListReviews(t *testing.T) {
 			}
 		}
 	}
-	mock.ExpectBegin()
-	mock.ExpectQuery(sellerExistsQuery).WithArgs(int32(999)).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
-	mock.ExpectRollback()
-	_, err := repo.ListReviews(context.Background(), domain.ReviewFilter{SellerID: 999, Sort: domain.ReviewSortNewest, Limit: 10})
-	require.ErrorIs(t, err, domain.ErrSellerNotFound)
 }
 
 func TestSellerRepo_ListReviews_Empty(t *testing.T) {
 	db, mock := newSQLMock(t)
 	f := domain.ReviewFilter{SellerID: 1, Sort: domain.ReviewSortNewest, Limit: 10}
-	expectReviews(mock, f, 0, sqlmock.NewRows([]string{"id", "author", "name", "avatar", "rating", "text", "title", "created", "photos"}), 0, nil)
+	expectReviews(mock, f, 0, sqlmock.NewRows([]string{"id", "author", "rating", "text", "title", "created", "photos"}), 0, nil)
 	page, err := NewSellerRepository(db).ListReviews(context.Background(), f)
 	require.NoError(t, err)
 	require.Zero(t, page.Total)
@@ -154,8 +138,6 @@ func TestSellerRepo_CreateReport(t *testing.T) {
 	report := domain.SellerReport{SellerID: 1, ReporterID: 2, Reason: domain.ReportReasonRude, Comment: "Rude"}
 	mock.ExpectExec(createSellerReportQuery).WithArgs(report.SellerID, report.ReporterID, report.Reason, report.Comment).WillReturnResult(sqlmock.NewResult(0, 1))
 	require.NoError(t, repo.CreateReport(context.Background(), report))
-	mock.ExpectExec(createSellerReportQuery).WithArgs(int32(999), int32(2), domain.ReportReasonFraud, "").WillReturnError(&pgconn.PgError{Code: "23503", ConstraintName: "seller_report_seller_id_fkey"})
-	require.ErrorIs(t, repo.CreateReport(context.Background(), domain.SellerReport{SellerID: 999, ReporterID: 2, Reason: domain.ReportReasonFraud}), domain.ErrSellerNotFound)
 }
 
 func TestSellerRepo_ReviewsSurviveListingDeletion(t *testing.T) {
@@ -230,7 +212,6 @@ func TestSellerRepo_RatingMustBeOneToFive(t *testing.T) {
 
 func expectReviews(mock sqlmock.Sqlmock, f domain.ReviewFilter, total int, rows *sqlmock.Rows, rating float64, distribution map[int]int) {
 	mock.ExpectBegin()
-	mock.ExpectQuery(sellerExistsQuery).WithArgs(f.SellerID).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
 	mock.ExpectQuery(countSellerReviewsQuery).WithArgs(f.SellerID, f.WithPhotos).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(total))
 	mock.ExpectQuery(listSellerReviewsQuery).WithArgs(f.SellerID, f.WithPhotos, f.Sort, f.Limit, f.Offset).WillReturnRows(rows).RowsWillBeClosed()
 	mock.ExpectQuery(sellerRatingQuery).WithArgs(f.SellerID).WillReturnRows(sqlmock.NewRows([]string{"rating"}).AddRow(rating))
@@ -240,4 +221,14 @@ func expectReviews(mock sqlmock.Sqlmock, f domain.ReviewFilter, total int, rows 
 	}
 	mock.ExpectQuery(sellerRatingDistributionQuery).WithArgs(f.SellerID).WillReturnRows(counts).RowsWillBeClosed()
 	mock.ExpectCommit()
+}
+
+func TestSellerRepo_Stats(t *testing.T) {
+	db, mock := newSQLMock(t)
+	mock.ExpectQuery(sellerStatsQuery).WithArgs(int32(5)).WillReturnRows(sqlmock.NewRows([]string{"rating", "count"}).AddRow(4.5, 2))
+
+	stats, err := NewSellerRepository(db).Stats(context.Background(), 5)
+
+	require.NoError(t, err)
+	require.Equal(t, domain.SellerStats{Rating: 4.5, ReviewsCount: 2}, stats)
 }

@@ -18,15 +18,14 @@ const cartEntryColumns = `
         ORDER BY position, image_id
         LIMIT 1
     ), a.address, COALESCE(a.has_delivery, false), COALESCE(a.status, 'deleted'), ` + reservedByOthers + `,
-    u.user_id, u.first_name, COALESCE(u.avatar, ''), COALESCE(stats.rating, 0)
+    ci.seller_id, COALESCE(stats.rating, 0)
 `
 
 const cartSellerJoin = `
-    JOIN user_account u ON u.user_id = ci.seller_id
     LEFT JOIN LATERAL (
         SELECT ROUND(AVG(rv.rating), 2)::float8 AS rating
         FROM review rv
-        WHERE rv.seller_id = u.user_id
+        WHERE rv.seller_id = ci.seller_id
     ) stats ON true
 `
 

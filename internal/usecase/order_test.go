@@ -19,7 +19,7 @@ type orderTestEnv struct {
 	carts     *MockCartRepository
 	orders    *MockOrderRepository
 	addresses *MockAddressRepository
-	users     *MockUserRepository
+	users     *fakeDirectory
 	tx        *MockTransactor
 	now       time.Time
 }
@@ -27,7 +27,7 @@ type orderTestEnv struct {
 func newOrderTestEnv(t *testing.T) *orderTestEnv {
 	t.Helper()
 	c := gomock.NewController(t)
-	e := &orderTestEnv{carts: NewMockCartRepository(c), orders: NewMockOrderRepository(c), addresses: NewMockAddressRepository(c), users: NewMockUserRepository(c), tx: NewMockTransactor(c), now: time.Date(2026, 10, 26, 23, 30, 0, 0, moscow)}
+	e := &orderTestEnv{carts: NewMockCartRepository(c), orders: NewMockOrderRepository(c), addresses: NewMockAddressRepository(c), users: newFakeDirectory(), tx: NewMockTransactor(c), now: time.Date(2026, 10, 26, 23, 30, 0, 0, moscow)}
 	e.uc = NewOrderUsecase(e.carts, e.orders, e.addresses, e.users, e.tx, testPrices)
 	e.uc.now = func() time.Time { return e.now }
 	return e
@@ -128,7 +128,8 @@ func TestOrder_QuoteBuildsSellersAndSlots(t *testing.T) {
 	e := newOrderTestEnv(t)
 	entries := append(orderEntries(), cartEntry(102, sellerA, 230000, true))
 	e.carts.EXPECT().EntriesByIDs(gomock.Any(), buyerID, []int32{101, 102, 201}).Return(entries, nil)
-	e.users.EXPECT().GetByID(gomock.Any(), buyerID).Return(domain.User{FirstName: "Тимур", Phone: "+79001234567"}, nil)
+	e.users.cards[buyerID] = domain.UserCard{ID: buyerID, FirstName: "Тимур", Phone: "+79001234567"}
+	e.users.cards[sellerA] = domain.UserCard{ID: sellerA, FirstName: "Анна"}
 	e.addresses.EXPECT().List(gomock.Any(), buyerID).Return([]domain.Address{orderAddress()}, nil)
 	q, err := e.uc.Quote(context.Background(), buyerID, []int32{101, 102, 201})
 	require.NoError(t, err)
@@ -378,7 +379,6 @@ func TestOrder_SelfPickupShowsEveryListingAddress(t *testing.T) {
 	b := cartEntry(101, sellerA, 1500000, true)
 	b.Address = ptr("Москва, м. Сокол")
 	e.carts.EXPECT().EntriesByIDs(gomock.Any(), buyerID, []int32{101, 102}).Return([]domain.CartEntry{a, b}, nil)
-	e.users.EXPECT().GetByID(gomock.Any(), buyerID).Return(domain.User{}, nil)
 	e.addresses.EXPECT().List(gomock.Any(), buyerID).Return(nil, nil)
 	q, err := e.uc.Quote(context.Background(), buyerID, []int32{101, 102})
 	require.NoError(t, err)
