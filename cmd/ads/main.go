@@ -22,6 +22,7 @@ import (
 	adsv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/logger"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/httpserver"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/platform/metrics"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/repository"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
@@ -97,7 +98,9 @@ func run(cfg *config.Config) error {
 		return err
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(metrics.RecordGRPCRequest),
+	)
 	adsv1.RegisterAdsServiceServer(grpcServer, delivery.NewAdsGRPCServer(adUsecase))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

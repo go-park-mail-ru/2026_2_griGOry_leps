@@ -34,12 +34,15 @@ func accessLogMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w}
 
-		next.ServeHTTP(rec, r)
+		tracked, route := trackMetricRoute(r)
+		next.ServeHTTP(rec, tracked)
 
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
 
+		duration := time.Since(start)
+		observeHTTPRequest(r.Method, route.Load(), rec.status, duration)
 		level := slog.LevelInfo
 		if rec.status >= http.StatusInternalServerError {
 			level = slog.LevelError
@@ -50,7 +53,7 @@ func accessLogMiddleware(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", rec.status,
 			"bytes", rec.bytes,
-			"duration_ms", float64(time.Since(start).Microseconds())/1000,
+			"duration_ms", float64(duration.Microseconds())/1000,
 			"remote_addr", r.RemoteAddr,
 			"user_agent", r.UserAgent(),
 		)
