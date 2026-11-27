@@ -35,7 +35,7 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := logger.NormalizeRequestID(r.Header.Get(logger.RequestIDHeader))
 		r = r.Clone(logger.WithRequestID(r.Context(), id))
 		r.Header.Set(logger.RequestIDHeader, id)
@@ -62,7 +62,24 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		default:
 			ads.ServeHTTP(w, r)
 		}
-	}), nil
+	})
+
+	return handler, nil
+}
+
+func MetricRoute(r *http.Request) string {
+	p := path.Clean(r.URL.Path)
+	switch {
+	case p == "/metrics" || p == "/internal" || strings.HasPrefix(p, "/internal/"):
+		return "blocked"
+	case IsAuthPath(p):
+		return "auth"
+	case p == "/api/search":
+		return "search"
+	default:
+		return "ads"
+	}
+
 }
 
 func newProxy(rawURL string) (*httputil.ReverseProxy, error) {
@@ -86,7 +103,6 @@ func newProxy(rawURL string) (*httputil.ReverseProxy, error) {
 		req.Out.Header.Del("Forwarded")
 	}
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		// Keep the ID set at the gateway, without a duplicate upstream header.
 		resp.Header.Del(logger.RequestIDHeader)
 		for name := range resp.Header {
 			if strings.HasPrefix(strings.ToLower(name), "access-control-") {

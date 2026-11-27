@@ -48,14 +48,45 @@ curl -fsSG 'http://127.0.0.1:9090/api/v1/query' \
 SSH-туннель на этот порт. Node Exporter слушает `127.0.0.1:9100`.
 Gateway отвечает `404` на публичный запрос `/metrics`.
 
-## Запросы для дашборда GOS-49
+## Grafana
 
-| Панель | PromQL |
-| --- | --- |
-| CPU, % | `100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="node",mode="idle"}[5m])))` |
-| Используемая RAM, % | `100 * (1 - node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"})` |
-| Корневой диск, % | `100 * (1 - node_filesystem_avail_bytes{job="node",mountpoint="/"} / node_filesystem_size_bytes{job="node",mountpoint="/"})` |
-| Доступность сервисов | `up{job=~"auth\|ads\|search"}` |
+Дашборд «GoGet — Мониторинг» загружается из репозитория при запуске
+Grafana. Источник данных обращается к локальному Prometheus. В выпадающих
+списках «Сервис», «Метод» и «Маршрут» можно отфильтровать HTTP-графики.
 
-Запросы, ошибки HTTP и длительность ответов добавляются задачей GOS-48
-в реестр Prometheus каждого сервиса.
+1. Разверните бэкенд с `goget_http_requests_total` и
+   `goget_http_request_duration_seconds` по [инструкции](../backend/README.md).
+2. Скопируйте конфигурацию привязки Grafana к loopback перед установкой пакета.
+
+   ```bash
+   sudo install -D -m 0644 deploy/monitoring/grafana-server.service.d/10-goget.conf \
+     /etc/systemd/system/grafana-server.service.d/10-goget.conf
+   sudo systemctl daemon-reload
+   ```
+
+3. Установите пакет Grafana OSS `grafana` из [официального APT-репозитория](https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/).
+4. Из корня репозитория установите источник данных и дашборд.
+
+   ```bash
+   sudo install -D -m 0644 deploy/monitoring/grafana/provisioning/datasources/goget-prometheus.yml \
+     /etc/grafana/provisioning/datasources/goget-prometheus.yml
+   sudo install -D -m 0644 deploy/monitoring/grafana/provisioning/dashboards/goget.yml \
+     /etc/grafana/provisioning/dashboards/goget.yml
+   sudo install -D -m 0644 deploy/monitoring/grafana/dashboards/goget-monitoring.json \
+     /var/lib/grafana/dashboards/goget/goget-monitoring.json
+   sudo systemctl enable grafana-server
+   sudo systemctl restart grafana-server
+   curl -fsS http://127.0.0.1:3000/api/health
+   ```
+
+После запуска откройте SSH-туннель с рабочего компьютера. В своей обычной
+команде подключения укажите `-N -L 127.0.0.1:13000:127.0.0.1:3000`.
+Держите туннель открытым и перейдите в браузере на [http://127.0.0.1:13000](http://127.0.0.1:13000).
+При новой установке Grafana попросит сменить начальный пароль администратора.
+Откройте **Dashboards → GoGet → GoGet — Мониторинг**.
+
+Верхние индикаторы показывают доступность целей Prometheus. HTTP-панели
+показывают запросы в секунду, ответы 4xx и 5xx и p95 времени ответа.
+Ресурсы сервера отображаются в процентах. Диск — корневая файловая система
+`/`. Чтобы увидеть HTTP-графики после первой выкладки, сделайте несколько
+запросов к нужному сервису и дождитесь как минимум двух сборов метрик.
