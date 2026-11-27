@@ -117,25 +117,25 @@ for target in "$AUTH_DATABASE_URL" "$ADS_DATABASE_URL"; do
     fi
 done
 
-# 2. Остановка записи.
+# 2. Остановка записи. Обработчик восстановления ставится до первой остановки: частично остановленные
+# службы тоже запускаются обратно, а ошибка systemctl не оставляет приложение выключенным.
 legacy_running=false
 services_stopped=false
-if [[ ${SKIP_SERVICES:-0} != 1 ]]; then
-    if systemctl is-active --quiet "$legacy"; then legacy_running=true; fi
-    systemctl stop "${services[@]}"
-    if $legacy_running; then systemctl stop "$legacy"; fi
-    services_stopped=true
-fi
 
 restore() {
     local result=$1
     trap - EXIT
     trap '' HUP INT TERM
+    set +e
     echo "Split failed. Clearing the target databases." >&2
     truncate_all "$AUTH_DATABASE_URL" || echo "Could not clear the auth database" >&2
     truncate_all "$ADS_DATABASE_URL" || echo "Could not clear the ads database" >&2
     if $services_stopped; then
-        if $legacy_running; then systemctl start "$legacy"; else systemctl start "${services[@]}"; fi
+        if $legacy_running; then
+            systemctl start "$legacy" || echo "Could not start $legacy" >&2
+        else
+            systemctl start "${services[@]}" || echo "Could not start all services" >&2
+        fi
     fi
     exit "$result"
 }
@@ -143,6 +143,13 @@ trap 'restore "$?"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [[ ${SKIP_SERVICES:-0} != 1 ]]; then
+    if systemctl is-active --quiet "$legacy"; then legacy_running=true; fi
+    services_stopped=true
+    systemctl stop "${services[@]}"
+    if $legacy_running; then systemctl stop "$legacy"; fi
+fi
 
 # 3. Бэкап.
 mkdir -p "$backup_dir"

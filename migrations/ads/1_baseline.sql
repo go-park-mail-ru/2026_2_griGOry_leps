@@ -521,4 +521,16 @@ DROP FUNCTION log_ad_status_change();
 DROP FUNCTION check_message_sender();
 DROP FUNCTION set_conversation_seller();
 DROP FUNCTION log_price_change();
-DROP FUNCTION set_updated_at();
+-- +goose StatementBegin
+DO $$
+BEGIN
+    -- Функцию используют триггеры обоих сервисов: удаляем её, только когда зависимых триггеров не осталось
+    -- (при общей базе откат одного сервиса не должен ломаться на втором).
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+        WHERE p.proname = 'set_updated_at' AND p.pronamespace = current_schema()::regnamespace AND NOT t.tgisinternal
+    ) THEN
+        DROP FUNCTION set_updated_at();
+    END IF;
+END $$;
+-- +goose StatementEnd

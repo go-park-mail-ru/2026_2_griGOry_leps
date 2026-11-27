@@ -91,4 +91,16 @@ CREATE INDEX idx_email_verification_user_id ON email_verification (user_id, crea
 
 -- +goose Down
 DROP TABLE email_verification, password_reset, session, user_account, city;
--- set_updated_at() не удаляется: от неё могут зависеть триггеры ads, если обе схемы лежат в одной базе.
+-- +goose StatementBegin
+DO $$
+BEGIN
+    -- Функцию используют триггеры обоих сервисов: удаляем её, только когда зависимых триггеров не осталось
+    -- (при общей базе откат одного сервиса не должен ломаться на втором).
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+        WHERE p.proname = 'set_updated_at' AND p.pronamespace = current_schema()::regnamespace AND NOT t.tgisinternal
+    ) THEN
+        DROP FUNCTION set_updated_at();
+    END IF;
+END $$;
+-- +goose StatementEnd
