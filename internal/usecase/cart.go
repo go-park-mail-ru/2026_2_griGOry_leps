@@ -10,17 +10,21 @@ import (
 
 type CartUsecase struct {
 	carts  CartRepository
+	users  UserDirectory
 	tx     Transactor
 	prices domain.DeliveryPrices
 }
 
-func NewCartUsecase(carts CartRepository, tx Transactor, prices domain.DeliveryPrices) *CartUsecase {
-	return &CartUsecase{carts: carts, tx: tx, prices: prices}
+func NewCartUsecase(carts CartRepository, users UserDirectory, tx Transactor, prices domain.DeliveryPrices) *CartUsecase {
+	return &CartUsecase{carts: carts, users: users, tx: tx, prices: prices}
 }
 
 func (uc *CartUsecase) Get(ctx context.Context, userID int32) (domain.Cart, error) {
 	entries, err := uc.carts.Entries(ctx, userID)
 	if err != nil {
+		return domain.Cart{}, err
+	}
+	if _, err := fillCartSellers(ctx, uc.users, entries); err != nil {
 		return domain.Cart{}, err
 	}
 	cheapest := uc.prices.Cheapest()

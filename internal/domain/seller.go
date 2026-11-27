@@ -21,6 +21,12 @@ type SellerProfile struct {
 	ActiveListingsCount int
 }
 
+// SellerStats — рейтинг продавца по отзывам; считает ads.
+type SellerStats struct {
+	Rating       float64
+	ReviewsCount int
+}
+
 type SellerAdFilter struct {
 	SellerID   int32
 	CategoryID int32

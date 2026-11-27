@@ -98,3 +98,21 @@ func TestLoad_DeliveryPrices(t *testing.T) {
 	require.Equal(t, int64(45050), cfg.CourierPrice)
 	require.Equal(t, int64(19000), cfg.PickupPointPrice)
 }
+
+func TestLoad_ServiceDatabaseURLs(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://shared")
+	t.Setenv("AUTH_DATABASE_URL", "")
+	t.Setenv("ADS_DATABASE_URL", "")
+
+	cfg := Load()
+	require.Equal(t, "postgres://shared", cfg.AuthDatabaseURL)
+	require.Equal(t, "postgres://shared", cfg.AdsDatabaseURL)
+
+	t.Setenv("AUTH_DATABASE_URL", "postgres://auth")
+	t.Setenv("ADS_DATABASE_URL", "postgres://ads")
+
+	cfg = Load()
+	require.Equal(t, "postgres://auth", cfg.AuthDatabaseURL)
+	require.Equal(t, "postgres://ads", cfg.AdsDatabaseURL)
+	require.Equal(t, "postgres://shared", cfg.DatabaseURL)
+}

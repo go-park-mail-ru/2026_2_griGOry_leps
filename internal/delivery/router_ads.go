@@ -15,7 +15,6 @@ func NewAdsRouter(
 	csrfHandler *CSRFHandler,
 	cartHandler *CartHandler,
 	addressHandler *AddressHandler,
-	cityHandler *CityHandler,
 	sellerHandler *SellerHandler,
 	orderHandler *OrderHandler,
 	moderationHandler *ModerationHandler,
@@ -44,8 +43,6 @@ func NewAdsRouter(
 	r.Handle("/api/me/addresses", verified(addressHandler.Create)).Methods(http.MethodPost)
 	r.Handle(addressPath, verified(addressHandler.Update)).Methods(http.MethodPatch)
 	r.Handle(addressPath, verified(addressHandler.Delete)).Methods(http.MethodDelete)
-
-	r.HandleFunc("/api/cities", cityHandler.Search).Methods(http.MethodGet)
 
 	const sellerPath = "/api/sellers/{seller_id:[0-9]+}"
 	r.HandleFunc(sellerPath, sellerHandler.Get).Methods(http.MethodGet)

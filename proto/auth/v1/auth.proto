@@ -6,6 +6,7 @@ option go_package = "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen
 
 service AuthService {
   rpc CheckSession(CheckSessionRequest) returns (CheckSessionResponse);
+  rpc GetUsers(GetUsersRequest) returns (GetUsersResponse);
 }
 
 message CheckSessionRequest {
@@ -15,4 +16,23 @@ message CheckSessionRequest {
 message CheckSessionResponse {
   int32 user_id = 1;
   bool email_verified = 2;
+  bool is_moderator = 3;
+}
+
+message GetUsersRequest {
+  repeated int32 user_ids = 1;
+}
+
+message GetUsersResponse {
+  repeated UserCard users = 1;
+}
+
+message UserCard {
+  int32 user_id = 1;
+  string first_name = 2;
+  string avatar = 3;
+  int64 created_unix_micros = 4;
+  string city = 5;
+  bool phone_verified = 6;
+  string phone = 7;
 }

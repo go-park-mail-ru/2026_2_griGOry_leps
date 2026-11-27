@@ -29,11 +29,12 @@ var (
 type ListingUsecase struct {
 	listings ListingRepository
 	photos   FileStorage
+	users    UserDirectory
 	tx       Transactor
 }
 
-func NewListingUsecase(listings ListingRepository, photos FileStorage, tx Transactor) *ListingUsecase {
-	return &ListingUsecase{listings: listings, photos: photos, tx: tx}
+func NewListingUsecase(listings ListingRepository, photos FileStorage, users UserDirectory, tx Transactor) *ListingUsecase {
+	return &ListingUsecase{listings: listings, photos: photos, users: users, tx: tx}
 }
 
 func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.Listing, error) {
@@ -43,20 +44,22 @@ func (uc *ListingUsecase) Get(ctx context.Context, id, viewerID int32) (domain.L
 	}
 
 	l.IsOwner = viewerID != 0 && viewerID == l.Seller.ID
-	if l.IsOwner {
-		return l, nil
-	}
-	switch l.Status {
-	case domain.AdStatusActive, domain.AdStatusSold:
-	case domain.AdStatusClosed:
-		if l.PublishedAt == nil {
+	if !l.IsOwner {
+		switch l.Status {
+		case domain.AdStatusActive, domain.AdStatusSold:
+		case domain.AdStatusClosed:
+			if l.PublishedAt == nil {
+				return domain.Listing{}, domain.ErrListingNotFound
+			}
+		default:
 			return domain.Listing{}, domain.ErrListingNotFound
 		}
-	default:
-		return domain.Listing{}, domain.ErrListingNotFound
+		l.CloseReason = nil
+		l.RejectionReason = nil
 	}
-	l.CloseReason = nil
-	l.RejectionReason = nil
+	if err := fillSeller(ctx, uc.users, &l.Seller); err != nil {
+		return domain.Listing{}, err
+	}
 	return l, nil
 }
 
@@ -111,9 +114,14 @@ func (uc *ListingUsecase) Create(ctx context.Context, userID int32, f domain.Lis
 		}
 		state.Status = domain.AdStatusModeration
 	}
+	cards, err := userCards(ctx, uc.users, userID)
+	if err != nil {
+		return domain.Listing{}, err
+	}
+	state.City = cards[userID].City
 
 	var id int32
-	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err = uc.tx.WithinTx(ctx, func(ctx context.Context) error {
 		var err error
 		if id, err = uc.listings.Create(ctx, state); err != nil {
 			return err

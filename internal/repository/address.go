@@ -112,3 +112,10 @@ func (r *AddressRepository) PromoteOldest(ctx context.Context, userID, exceptID 
 	}
 	return nil
 }
+
+func (r *AddressRepository) LockUser(ctx context.Context, userID int32) error {
+	if _, err := conn(ctx, r.db).ExecContext(ctx, lockAddressUserQuery, userID); err != nil {
+		return fmt.Errorf("lock user addresses: %w", err)
+	}
+	return nil
+}

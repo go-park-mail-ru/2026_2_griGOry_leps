@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"testing"
 	"time"
 
@@ -14,8 +15,8 @@ import (
 )
 
 func userMockRows(id int32, email, phone string) *sqlmock.Rows {
-	return sqlmock.NewRows([]string{"user_id", "first_name", "email", "phone_number", "password_hash", "email_verified", "pending_email", "created_at"}).
-		AddRow(id, "ivan", email, phone, "hash", false, "", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	return sqlmock.NewRows([]string{"user_id", "first_name", "email", "phone_number", "password_hash", "email_verified", "pending_email", "created_at", "is_moderator"}).
+		AddRow(id, "ivan", email, phone, "hash", false, "", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), false)
 }
 
 func TestUser_Create_Success(t *testing.T) {
@@ -103,4 +104,39 @@ func TestUser_GetByID_NotFound(t *testing.T) {
 	mock.ExpectQuery(getUserByIDQuery).WithArgs(int32(1)).WillReturnError(sql.ErrNoRows)
 	_, err := NewUserRepository(db).GetByID(context.Background(), int32(1))
 	require.ErrorIs(t, err, domain.ErrUserNotFound)
+}
+
+func TestUser_GetByID_IsModerator(t *testing.T) {
+	db, mock := newSQLMock(t)
+	rows := sqlmock.NewRows([]string{"user_id", "first_name", "email", "phone_number", "password_hash", "email_verified", "pending_email", "created_at", "is_moderator"}).
+		AddRow(int32(1), "ivan", "a@b.ru", "+79001234567", "hash", true, "", time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC), true)
+	mock.ExpectQuery(getUserByIDQuery).WithArgs(int32(1)).WillReturnRows(rows)
+	user, err := NewUserRepository(db).GetByID(context.Background(), int32(1))
+	require.NoError(t, err)
+	require.True(t, user.IsModerator)
+}
+
+// passArgs пропускает []int32 как есть: стандартный конвертер sqlmock slices не принимает, а pgx stdlib принимает.
+type passArgs struct{}
+
+func (passArgs) ConvertValue(v any) (driver.Value, error) { return v, nil }
+
+func TestUser_GetCards(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual), sqlmock.ValueConverterOption(passArgs{}))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
+	created := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	rows := sqlmock.NewRows([]string{"user_id", "first_name", "avatar", "created_at", "city", "phone_verified", "phone_number"}).
+		AddRow(int32(3), "Анна", "3.png", created, "Казань", true, "+79001234567").
+		AddRow(int32(5), "Олег", "", created, "", false, "+79007654321")
+	mock.ExpectQuery(getUserCardsQuery).WithArgs([]int32{3, 5}).WillReturnRows(rows)
+
+	cards, err := NewUserRepository(db).GetCards(context.Background(), []int32{3, 5})
+
+	require.NoError(t, err)
+	require.Equal(t, []domain.UserCard{
+		{ID: 3, FirstName: "Анна", Avatar: "3.png", CreatedAt: created, City: "Казань", PhoneVerified: true, Phone: "+79001234567"},
+		{ID: 5, FirstName: "Олег", CreatedAt: created, Phone: "+79007654321"},
+	}, cards)
 }

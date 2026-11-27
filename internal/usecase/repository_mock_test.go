@@ -131,6 +131,21 @@ func (mr *MockUserRepositoryMockRecorder) GetByPhone(ctx, phone any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByPhone", reflect.TypeOf((*MockUserRepository)(nil).GetByPhone), ctx, phone)
 }
 
+// GetCards mocks base method.
+func (m *MockUserRepository) GetCards(ctx context.Context, ids []int32) ([]domain.UserCard, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCards", ctx, ids)
+	ret0, _ := ret[0].([]domain.UserCard)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCards indicates an expected call of GetCards.
+func (mr *MockUserRepositoryMockRecorder) GetCards(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCards", reflect.TypeOf((*MockUserRepository)(nil).GetCards), ctx, ids)
+}
+
 // GetPasswordHashForUpdate mocks base method.
 func (m *MockUserRepository) GetPasswordHashForUpdate(ctx context.Context, id int32) (string, error) {
 	m.ctrl.T.Helper()
@@ -243,6 +258,45 @@ func (m *MockUserRepository) UpdateProfile(ctx context.Context, id int32, upd do
 func (mr *MockUserRepositoryMockRecorder) UpdateProfile(ctx, id, upd any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockUserRepository)(nil).UpdateProfile), ctx, id, upd)
+}
+
+// MockUserDirectory is a mock of UserDirectory interface.
+type MockUserDirectory struct {
+	ctrl     *gomock.Controller
+	recorder *MockUserDirectoryMockRecorder
+	isgomock struct{}
+}
+
+// MockUserDirectoryMockRecorder is the mock recorder for MockUserDirectory.
+type MockUserDirectoryMockRecorder struct {
+	mock *MockUserDirectory
+}
+
+// NewMockUserDirectory creates a new mock instance.
+func NewMockUserDirectory(ctrl *gomock.Controller) *MockUserDirectory {
+	mock := &MockUserDirectory{ctrl: ctrl}
+	mock.recorder = &MockUserDirectoryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockUserDirectory) EXPECT() *MockUserDirectoryMockRecorder {
+	return m.recorder
+}
+
+// Users mocks base method.
+func (m *MockUserDirectory) Users(ctx context.Context, ids []int32) (map[int32]domain.UserCard, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Users", ctx, ids)
+	ret0, _ := ret[0].(map[int32]domain.UserCard)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Users indicates an expected call of Users.
+func (mr *MockUserDirectoryMockRecorder) Users(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Users", reflect.TypeOf((*MockUserDirectory)(nil).Users), ctx, ids)
 }
 
 // MockSessionRepository is a mock of SessionRepository interface.
@@ -868,6 +922,60 @@ func (mr *MockSellerRepositoryMockRecorder) ListReviews(ctx, f any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListReviews", reflect.TypeOf((*MockSellerRepository)(nil).ListReviews), ctx, f)
 }
 
+// Stats mocks base method.
+func (m *MockSellerRepository) Stats(ctx context.Context, id int32) (domain.SellerStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stats", ctx, id)
+	ret0, _ := ret[0].(domain.SellerStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stats indicates an expected call of Stats.
+func (mr *MockSellerRepositoryMockRecorder) Stats(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockSellerRepository)(nil).Stats), ctx, id)
+}
+
+// MockSellerStatsSource is a mock of SellerStatsSource interface.
+type MockSellerStatsSource struct {
+	ctrl     *gomock.Controller
+	recorder *MockSellerStatsSourceMockRecorder
+	isgomock struct{}
+}
+
+// MockSellerStatsSourceMockRecorder is the mock recorder for MockSellerStatsSource.
+type MockSellerStatsSourceMockRecorder struct {
+	mock *MockSellerStatsSource
+}
+
+// NewMockSellerStatsSource creates a new mock instance.
+func NewMockSellerStatsSource(ctrl *gomock.Controller) *MockSellerStatsSource {
+	mock := &MockSellerStatsSource{ctrl: ctrl}
+	mock.recorder = &MockSellerStatsSourceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSellerStatsSource) EXPECT() *MockSellerStatsSourceMockRecorder {
+	return m.recorder
+}
+
+// SellerStats mocks base method.
+func (m *MockSellerStatsSource) SellerStats(ctx context.Context, userID int32) (domain.SellerStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SellerStats", ctx, userID)
+	ret0, _ := ret[0].(domain.SellerStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SellerStats indicates an expected call of SellerStats.
+func (mr *MockSellerStatsSourceMockRecorder) SellerStats(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SellerStats", reflect.TypeOf((*MockSellerStatsSource)(nil).SellerStats), ctx, userID)
+}
+
 // MockAddressRepository is a mock of AddressRepository interface.
 type MockAddressRepository struct {
 	ctrl     *gomock.Controller
@@ -980,6 +1088,20 @@ func (mr *MockAddressRepositoryMockRecorder) List(ctx, userID any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockAddressRepository)(nil).List), ctx, userID)
 }
 
+// LockUser mocks base method.
+func (m *MockAddressRepository) LockUser(ctx context.Context, userID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockUser", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockUser indicates an expected call of LockUser.
+func (mr *MockAddressRepositoryMockRecorder) LockUser(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockUser", reflect.TypeOf((*MockAddressRepository)(nil).LockUser), ctx, userID)
+}
+
 // PromoteOldest mocks base method.
 func (m *MockAddressRepository) PromoteOldest(ctx context.Context, userID, exceptID int32) error {
 	m.ctrl.T.Helper()
@@ -1046,44 +1168,6 @@ func (m *MockCityRepository) Search(ctx context.Context, prefix string, limit in
 func (mr *MockCityRepositoryMockRecorder) Search(ctx, prefix, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockCityRepository)(nil).Search), ctx, prefix, limit)
-}
-
-// MockUserLocker is a mock of UserLocker interface.
-type MockUserLocker struct {
-	ctrl     *gomock.Controller
-	recorder *MockUserLockerMockRecorder
-	isgomock struct{}
-}
-
-// MockUserLockerMockRecorder is the mock recorder for MockUserLocker.
-type MockUserLockerMockRecorder struct {
-	mock *MockUserLocker
-}
-
-// NewMockUserLocker creates a new mock instance.
-func NewMockUserLocker(ctrl *gomock.Controller) *MockUserLocker {
-	mock := &MockUserLocker{ctrl: ctrl}
-	mock.recorder = &MockUserLockerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockUserLocker) EXPECT() *MockUserLockerMockRecorder {
-	return m.recorder
-}
-
-// LockByID mocks base method.
-func (m *MockUserLocker) LockByID(ctx context.Context, id int32) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LockByID", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// LockByID indicates an expected call of LockByID.
-func (mr *MockUserLockerMockRecorder) LockByID(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockByID", reflect.TypeOf((*MockUserLocker)(nil).LockByID), ctx, id)
 }
 
 // MockListingRepository is a mock of ListingRepository interface.

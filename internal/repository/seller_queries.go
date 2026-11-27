@@ -9,18 +9,12 @@ const sellerStatsJoin = `
 `
 
 const getSellerQuery = `
- SELECT u.user_id, u.first_name, COALESCE(u.avatar,''),
- COALESCE(stats.rating,0), COALESCE(stats.reviews_count,0), u.created_at,
- COALESCE(c.name,''), u.phone_verified,
+ SELECT COALESCE(stats.rating,0), COALESCE(stats.reviews_count,0),
  (SELECT count(*) FROM ad WHERE user_id=u.user_id AND status='sold'),
  (SELECT count(*) FROM ad WHERE user_id=u.user_id AND status='active')
- FROM user_account u
- LEFT JOIN city c ON c.city_id=u.city_id
+ FROM (SELECT $1::integer AS user_id) u
 ` + sellerStatsJoin + `
- WHERE u.user_id=$1
 `
-
-const sellerExistsQuery = `SELECT EXISTS (SELECT 1 FROM user_account WHERE user_id=$1)`
 
 const sellerAdFilter = `
  WHERE a.user_id=$1 AND a.status='active'
@@ -59,12 +53,11 @@ const sellerReviewFilter = `
 const countSellerReviewsQuery = `SELECT count(*)` + sellerReviewFilter
 
 const listSellerReviewsQuery = `
- SELECT rv.rew_id, au.user_id, au.first_name, COALESCE(au.avatar,''),
+ SELECT rv.rew_id, rv.user_id,
  rv.rating::float8, COALESCE(rv.text,''), COALESCE(rv.listing_title,''), rv.created_at,
  COALESCE((SELECT array_agg(ri.url ORDER BY ri.position, ri.image_id)
            FROM review_image ri WHERE ri.rew_id=rv.rew_id), '{}'::text[])
  FROM review rv
- JOIN user_account au ON au.user_id=rv.user_id
  WHERE rv.seller_id=$1
  AND (NOT $2::boolean OR EXISTS (SELECT 1 FROM review_image ri WHERE ri.rew_id=rv.rew_id))
  ORDER BY
@@ -73,6 +66,12 @@ const listSellerReviewsQuery = `
  rv.created_at DESC,
  rv.rew_id DESC
  LIMIT $4 OFFSET $5
+`
+
+const sellerStatsQuery = `
+ SELECT COALESCE(ROUND(AVG(rv.rating), 2)::float8, 0), count(*)
+ FROM review rv
+ WHERE rv.seller_id=$1
 `
 
 const sellerRatingQuery = `

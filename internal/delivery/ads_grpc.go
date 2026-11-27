@@ -17,11 +17,12 @@ import (
 
 type AdsGRPCServer struct {
 	adsv1.UnimplementedAdsServiceServer
-	ads AdUsecase
+	ads     AdUsecase
+	sellers SellerUsecase
 }
 
-func NewAdsGRPCServer(ads AdUsecase) *AdsGRPCServer {
-	return &AdsGRPCServer{ads: ads}
+func NewAdsGRPCServer(ads AdUsecase, sellers SellerUsecase) *AdsGRPCServer {
+	return &AdsGRPCServer{ads: ads, sellers: sellers}
 }
 
 func (s *AdsGRPCServer) SearchPublished(
@@ -86,4 +87,22 @@ func (s *AdsGRPCServer) SearchPublished(
 	}
 
 	return result, nil
+}
+
+func (s *AdsGRPCServer) GetSellerStats(ctx context.Context, req *adsv1.SellerStatsRequest) (*adsv1.SellerStats, error) {
+	if ids := metadata.ValueFromIncomingContext(ctx, "x-request-id"); len(ids) == 1 {
+		ctx = logger.WithRequestID(ctx, logger.NormalizeRequestID(ids[0]))
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid user id")
+	}
+	stats, err := s.sellers.Stats(ctx, req.GetUserId())
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, status.FromContextError(err).Err()
+		}
+		slog.ErrorContext(ctx, "get seller stats", "err", err)
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+	return &adsv1.SellerStats{Rating: stats.Rating, ReviewsCount: int64(stats.ReviewsCount)}, nil
 }

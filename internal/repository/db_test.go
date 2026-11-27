@@ -17,10 +17,19 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
-// Каждый тест получает отдельную схему и реальные таблицы из миграции.
+// Каждый тест получает отдельную схему и реальные таблицы из миграций обоих сервисов:
+// сервисные базы без межсервисных внешних ключей в одной тестовой схеме образуют прежнюю общую схему.
 func newTestPool(t *testing.T) *sql.DB {
+	t.Helper()
+	return newSchemaPool(t, "auth", "ads")
+}
+
+// newSchemaPool создаёт отдельную схему и применяет к ней миграции из каталогов migrations/<dir>.
+func newSchemaPool(t *testing.T, dirs ...string) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -58,16 +67,19 @@ func newTestPool(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pool.Close() })
 
-	files, err := filepath.Glob("../../migrations/*.sql")
-	require.NoError(t, err)
-	sort.Slice(files, func(i, j int) bool { return migrationNumber(t, files[i]) < migrationNumber(t, files[j]) })
-	for _, file := range files {
-		migration, err := os.ReadFile(file)
+	for _, dir := range dirs {
+		files, err := filepath.Glob("../../migrations/" + dir + "/*.sql")
 		require.NoError(t, err)
-		up, _, ok := strings.Cut(string(migration), "-- +goose Down")
-		require.True(t, ok, file)
-		_, err = pool.ExecContext(ctx, up)
-		require.NoError(t, err, file)
+		require.NotEmpty(t, files, dir)
+		sort.Slice(files, func(i, j int) bool { return migrationNumber(t, files[i]) < migrationNumber(t, files[j]) })
+		for _, file := range files {
+			migration, err := os.ReadFile(file)
+			require.NoError(t, err)
+			up, _, ok := strings.Cut(string(migration), "-- +goose Down")
+			require.True(t, ok, file)
+			_, err = pool.ExecContext(ctx, up)
+			require.NoError(t, err, file)
+		}
 	}
 	return pool
 }
@@ -87,4 +99,15 @@ func newSQLMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
 	t.Cleanup(func() { _ = db.Close() })
 	t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
 	return db, mock
+}
+
+// emptyDirectory — справочник пользователей для тестов репозиториев: карточка есть у любого ID, поля пустые.
+type emptyDirectory struct{}
+
+func (emptyDirectory) Users(_ context.Context, ids []int32) (map[int32]domain.UserCard, error) {
+	cards := make(map[int32]domain.UserCard, len(ids))
+	for _, id := range ids {
+		cards[id] = domain.UserCard{ID: id}
+	}
+	return cards, nil
 }

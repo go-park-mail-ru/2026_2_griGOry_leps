@@ -33,12 +33,12 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	r := &testRouter{auth: NewMockAuthUsecase(ctrl), ads: NewMockAdUsecase(ctrl), seller: NewMockSellerUsecase(ctrl), city: NewMockCityUsecase(ctrl)}
 	authRouter := NewAuthRouter("http://front.test", dir, NewAuthHandler(r.auth, false), newCSRFHandler(),
 		NewProfileHandler(NewMockProfileUsecase(ctrl)), NewPasswordResetHandler(NewMockPasswordResetUsecase(ctrl)),
-		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)))
+		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)), NewCityHandler(r.city))
 	adsRouter := NewAdsRouter(
 		"http://front.test", dir, NewSessionMiddleware(r.auth), NewAdHandler(r.ads),
 		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(),
 		NewCartHandler(NewMockCartUsecase(ctrl)),
-		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city),
+		NewAddressHandler(NewMockAddressUsecase(ctrl)),
 		NewSellerHandler(r.seller),
 		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"),
 		NewModerationHandler(nil),

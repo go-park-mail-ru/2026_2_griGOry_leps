@@ -166,6 +166,10 @@ func (uc *AuthUsecase) Me(ctx context.Context, sessionID string) (domain.User, e
 	return uc.users.GetByID(ctx, session.UserID)
 }
 
+func (uc *AuthUsecase) Users(ctx context.Context, ids []int32) ([]domain.UserCard, error) {
+	return uc.users.GetCards(ctx, ids)
+}
+
 func newSession(userID int32) (domain.Session, error) {
 	token, err := generateToken()
 	if err != nil {

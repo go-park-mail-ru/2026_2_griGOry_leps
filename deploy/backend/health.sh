@@ -37,6 +37,11 @@ check() {
         echo "gateway -> ads -> PostgreSQL: catalog check failed" >&2
         return 1
     fi
+    if id=$(get "$gateway/api/listings?limit=1" | jq -r '.items[0].id // empty') && [[ -n $id ]] &&
+        ! get "$gateway/api/listings/$id" | jq -e '.seller.first_name | type == "string" and length > 0' >/dev/null; then
+        echo "gateway -> ads -> auth gRPC: listing $id has no seller data" >&2
+        return 1
+    fi
     if ! code=$(status --cookie "session_id=$(printf '%064d' 0)" "$gateway/api/cart") || [[ $code != 401 ]]; then
         echo "gateway -> ads -> auth gRPC: session check returned ${code:-no response}" >&2
         return 1

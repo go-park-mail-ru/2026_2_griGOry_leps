@@ -57,7 +57,7 @@ PUBLIC_URL указывает на gateway, включая ссылки тест
 | search | Поиск опубликованных объявлений через gRPC-вызов в ads |
 | gateway | Маршрутизация запросов; бизнес-данных нет |
 
-Gateway направляет /api/search в search, операции аккаунта и аватары —
+Gateway направляет /api/search в search, операции аккаунта, аватары и /api/cities —
 в auth, каталог GET /api/listings и остальные прикладные запросы — в ads. Внутренние маршруты /internal/
 через gateway недоступны. HTTP-порты auth, ads и search слушают только
 127.0.0.1, внешний трафик принимает gateway.
@@ -94,9 +94,12 @@ CSRF-токен, полученный у auth через gateway, проверя
 следующей страницы можно передать `next_cursor` в параметре `cursor` и
 сохранить прежний запрос и фильтры. Курсор используется без `offset`.
 
-Auth и ads пока используют общую PostgreSQL-схему: существующие операции
-заказов и адресов в ads читают и блокируют записи пользователей. Владельцем
-изменения аккаунтов остаётся auth; полной изоляции данных ещё нет.
+У auth и ads отдельные базы: `AUTH_DATABASE_URL` и `ADS_DATABASE_URL` (если не заданы, берётся
+`DATABASE_URL`, и обе схемы можно держать в одной базе для локальной разработки). Ads не обращается к таблицам
+пользователей: имя, аватар, город и телефон он получает у auth через `auth.v1.AuthService/GetUsers`, а роль
+модератора — из `CheckSession`. Auth берёт рейтинг продавца у ads через `ads.v1.AdsService/GetSellerStats`;
+если ads недоступен, `GET /api/me` отдаёт нулевой рейтинг. Перенос данных продакшена из общей базы
+описан в [инструкции по деплою](deploy/backend/README.md#разделение-базы-данных).
 Модерация и фоновые задачи заказов выполняются только в ads.
 Общие HTTP-запуск и завершение вынесены в internal/platform/httpserver.
 
@@ -242,7 +245,8 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
    | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error`. На `debug` в лог пишутся и запросы к базе | `info` |
    | `CSRF_SECRET` | обязательный общий ключ подписи CSRF-токенов для auth и ads | — |
-   | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `DATABASE_URL` | адрес базы по умолчанию | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
+   | `AUTH_DATABASE_URL`, `ADS_DATABASE_URL` | базы сервисов auth и ads; если пусты, берётся `DATABASE_URL` | — |
    | `UPLOAD_DIR` | папка для загруженных файлов (аватарок), создаётся сама | `uploads` |
    | `SMTP_HOST` | почтовый сервер для писем сброса пароля. Если не задан, ссылка из письма пишется в лог | — |
    | `SMTP_PORT` | порт почтового сервера: `587` (STARTTLS) или `465` (TLS) | `587` |
@@ -266,7 +270,7 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
    make seed
    ```
 
-   `make seed` запускается один раз: он добавляет категории, продавца `seller@goget.pw` с паролем `Seller123` и 12 объявлений.
+   `make seed` запускается один раз: он добавляет продавца `seller@goget.pw` с паролем `Seller123`, двух покупателей и 12 объявлений. Категории и города создают сами миграции.
 
 5. Запустите сервер:
 
@@ -291,10 +295,10 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
 | `make test` | юнит-тесты, база не нужна |
 | `make test-integration` | тесты репозиториев на настоящей базе из `TEST_DATABASE_URL` |
 | `make tidy` | обновление `go.mod` и `go.sum` |
-| `make migrate-up` | накатить все миграции |
-| `make migrate-down` | откатить последнюю миграцию |
+| `make migrate-up` | накатить миграции auth и ads (`migrate-up-auth`, `migrate-up-ads`) |
+| `make migrate-down-auth`, `make migrate-down-ads` | откатить baseline сервиса: удаляет все его таблицы с данными |
 | `make migrate-status` | какие миграции уже применены |
-| `make seed` | тестовые категории, продавец и объявления |
+| `make seed` | тестовые аккаунты (`db/seed_auth.sql`) и объявления (`db/seed_ads.sql`) |
 
 ### Тесты
 
@@ -380,6 +384,8 @@ internal/csrf/       выпуск и проверка CSRF-токенов (HMAC)
 internal/ratelimit/  ограничение числа запросов с одного IP
 internal/usecase/    бизнес-логика и интерфейсы репозиториев
 internal/repository/ репозитории на PostgreSQL, транзакции, лог запросов к базе, хранилище файлов
-migrations/          миграции goose
-db/                  описание схемы и тестовые данные (seed.sql)
+migrations/auth/     схема сервиса auth
+migrations/ads/      схема сервиса ads
+migrations/legacy/   исторические миграции общей базы, нужны для переноса данных
+db/                  описание схемы и тестовые данные (seed_auth.sql, seed_ads.sql)
 ```

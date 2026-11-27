@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -21,14 +22,15 @@ type listingTestEnv struct {
 	uc      *ListingUsecase
 	repo    *MockListingRepository
 	storage *MockFileStorage
+	users   *fakeDirectory
 	tx      *MockTransactor
 }
 
 func newListingTestEnv(t *testing.T) *listingTestEnv {
 	t.Helper()
 	c := gomock.NewController(t)
-	e := &listingTestEnv{repo: NewMockListingRepository(c), storage: NewMockFileStorage(c), tx: NewMockTransactor(c)}
-	e.uc = NewListingUsecase(e.repo, e.storage, e.tx)
+	e := &listingTestEnv{repo: NewMockListingRepository(c), storage: NewMockFileStorage(c), users: newFakeDirectory(), tx: NewMockTransactor(c)}
+	e.uc = NewListingUsecase(e.repo, e.storage, e.users, e.tx)
 	return e
 }
 
@@ -429,4 +431,63 @@ func TestListing_UpdateRejectedGoesBackToModeration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, s.Status, l.Status)
 	require.Equal(t, s.Title, l.Title)
+}
+
+func TestListing_Get_FillsSellerFromDirectory(t *testing.T) {
+	e := newListingTestEnv(t)
+	created := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	e.users.cards[authorID] = domain.UserCard{ID: authorID, FirstName: "Анна", Avatar: "a.png", CreatedAt: created}
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), int32(0)).Return(domain.Listing{
+		Status: domain.AdStatusActive, Seller: domain.Seller{ID: authorID, Rating: 4.5, ReviewsCount: 2},
+	}, nil)
+
+	l, err := e.uc.Get(context.Background(), 7, 0)
+
+	require.NoError(t, err)
+	require.Equal(t, domain.Seller{ID: authorID, FirstName: "Анна", Avatar: "a.png", Rating: 4.5, ReviewsCount: 2, CreatedAt: created}, l.Seller)
+	require.Equal(t, [][]int32{{authorID}}, e.users.calls)
+}
+
+func TestListing_Get_SellerMissingFromDirectory(t *testing.T) {
+	e := newListingTestEnv(t)
+	e.users.missing[authorID] = true
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), int32(0)).Return(domain.Listing{Status: domain.AdStatusActive, Seller: domain.Seller{ID: authorID}}, nil)
+
+	_, err := e.uc.Get(context.Background(), 7, 0)
+
+	require.ErrorIs(t, err, domain.ErrUserMissing)
+}
+
+func TestListing_Get_DirectoryErrorPassesThrough(t *testing.T) {
+	e := newListingTestEnv(t)
+	boom := errors.New("users down")
+	e.users.err = boom
+	e.repo.EXPECT().Get(gomock.Any(), int32(7), int32(0)).Return(domain.Listing{Status: domain.AdStatusActive, Seller: domain.Seller{ID: authorID}}, nil)
+
+	_, err := e.uc.Get(context.Background(), 7, 0)
+
+	require.ErrorIs(t, err, boom)
+}
+
+func TestListing_Create_CityComesFromUserProfile(t *testing.T) {
+	e := newListingTestEnv(t)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(12)).Return(true, nil)
+	e.users.cards[authorID] = domain.UserCard{ID: authorID, City: "Казань"}
+	state := listingState(domain.AdStatusDraft)
+	state.City = "Казань"
+	expectListingCreate(e, state, true, domain.Listing{Seller: domain.Seller{ID: authorID}})
+
+	_, err := e.uc.Create(context.Background(), authorID, listingFields(), false)
+
+	require.NoError(t, err)
+}
+
+func TestListing_Create_UserMissingFromDirectory(t *testing.T) {
+	e := newListingTestEnv(t)
+	e.repo.EXPECT().IsLeafCategory(gomock.Any(), int32(12)).Return(true, nil)
+	e.users.missing[authorID] = true
+
+	_, err := e.uc.Create(context.Background(), authorID, listingFields(), false)
+
+	require.ErrorIs(t, err, domain.ErrUserMissing)
 }

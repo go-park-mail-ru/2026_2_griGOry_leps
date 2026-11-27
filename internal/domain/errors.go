@@ -36,6 +36,7 @@ var (
 
 	ErrInvalidStatus         = errors.New("invalid status")
 	ErrSellerNotFound        = errors.New("seller not found")
+	ErrUserMissing           = errors.New("referenced user not found")
 	ErrInvalidReportReason   = errors.New("invalid report reason")
 	ErrReportCommentTooLong  = errors.New("comment must be at most 500 characters")
 	ErrSelfReport            = errors.New("cannot report yourself")

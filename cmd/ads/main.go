@@ -42,7 +42,7 @@ func run(cfg *config.Config) error {
 		return errors.New("CSRF_SECRET must be set")
 	}
 	connectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	pool, err := repository.NewPool(connectCtx, cfg.DatabaseURL)
+	pool, err := repository.NewPool(connectCtx, cfg.AdsDatabaseURL)
 	cancel()
 	if err != nil {
 		return err
@@ -62,27 +62,23 @@ func run(cfg *config.Config) error {
 	defer checker.Close()
 
 	session := delivery.NewSessionMiddleware(checker)
-	userRepo := repository.NewUserRepository(pool)
 	adRepo := repository.NewAdRepository(pool)
 	addressRepo := repository.NewAddressRepository(pool)
-	cityRepo := repository.NewCityRepository(pool)
 	sellerRepo := repository.NewSellerRepository(pool)
 	tx := repository.NewTransactor(pool)
 	adUsecase := usecase.NewAdUsecase(adRepo)
-	addressUsecase := usecase.NewAddressUsecase(addressRepo, userRepo, tx)
-	cityUsecase := usecase.NewCityUsecase(cityRepo)
-	sellerUsecase := usecase.NewSellerUsecase(sellerRepo)
+	addressUsecase := usecase.NewAddressUsecase(addressRepo, tx)
+	sellerUsecase := usecase.NewSellerUsecase(sellerRepo, checker)
 	listingRepo := repository.NewListingRepository(pool)
-	listingUsecase := usecase.NewListingUsecase(listingRepo, listingPhotoStorage, tx)
-	moderation := usecase.NewModerationUsecase(repository.NewModerationRepository(pool), listingRepo, tx)
+	listingUsecase := usecase.NewListingUsecase(listingRepo, listingPhotoStorage, checker, tx)
+	moderation := usecase.NewModerationUsecase(repository.NewModerationRepository(pool), listingRepo, checker, tx)
 	cartRepo := repository.NewCartRepository(pool)
 	prices := domain.DeliveryPrices{Courier: cfg.CourierPrice, PickupPoint: cfg.PickupPointPrice}
-	cartUsecase := usecase.NewCartUsecase(cartRepo, tx, prices)
-	orderUsecase := usecase.NewOrderUsecase(cartRepo, repository.NewOrderRepository(pool), addressRepo, userRepo, tx, prices)
+	cartUsecase := usecase.NewCartUsecase(cartRepo, checker, tx, prices)
+	orderUsecase := usecase.NewOrderUsecase(cartRepo, repository.NewOrderRepository(pool), addressRepo, checker, tx, prices)
 	adHandler := delivery.NewAdHandler(adUsecase)
 	listingHandler := delivery.NewListingHandler(listingUsecase)
 	addressHandler := delivery.NewAddressHandler(addressUsecase)
-	cityHandler := delivery.NewCityHandler(cityUsecase)
 	sellerHandler := delivery.NewSellerHandler(sellerUsecase)
 	cartHandler := delivery.NewCartHandler(cartUsecase)
 	favoritesRepo := repository.NewFavoritesRepository(pool)
@@ -97,7 +93,7 @@ func run(cfg *config.Config) error {
 	defer func() { stopMaintenance(); <-listingDone; <-orderDone }()
 	router := delivery.NewAdsRouter(
 		cfg.FrontendOrigin, cfg.UploadDir, session, adHandler, listingHandler,
-		csrfHandler, cartHandler, addressHandler, cityHandler, sellerHandler,
+		csrfHandler, cartHandler, addressHandler, sellerHandler,
 		orderHandler, delivery.NewModerationHandler(moderation), favoritesHandler,
 	)
 	listener, err := net.Listen("tcp", httpserver.Env("ADS_GRPC_ADDR", "127.0.0.1:9092"))
@@ -108,7 +104,7 @@ func run(cfg *config.Config) error {
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(metrics.RecordGRPCRequest),
 	)
-	adsv1.RegisterAdsServiceServer(grpcServer, delivery.NewAdsGRPCServer(adUsecase))
+	adsv1.RegisterAdsServiceServer(grpcServer, delivery.NewAdsGRPCServer(adUsecase, sellerUsecase))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

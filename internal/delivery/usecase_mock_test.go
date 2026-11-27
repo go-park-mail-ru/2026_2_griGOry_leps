@@ -475,6 +475,21 @@ func (mr *MockSellerUsecaseMockRecorder) Reviews(ctx, f any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reviews", reflect.TypeOf((*MockSellerUsecase)(nil).Reviews), ctx, f)
 }
 
+// Stats mocks base method.
+func (m *MockSellerUsecase) Stats(ctx context.Context, id int32) (domain.SellerStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Stats", ctx, id)
+	ret0, _ := ret[0].(domain.SellerStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Stats indicates an expected call of Stats.
+func (mr *MockSellerUsecaseMockRecorder) Stats(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockSellerUsecase)(nil).Stats), ctx, id)
+}
+
 // MockAddressUsecase is a mock of AddressUsecase interface.
 type MockAddressUsecase struct {
 	ctrl     *gomock.Controller
@@ -922,6 +937,45 @@ func (m *MockOrderUsecase) TestPayment(ctx context.Context, token string, succes
 func (mr *MockOrderUsecaseMockRecorder) TestPayment(ctx, token, success any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestPayment", reflect.TypeOf((*MockOrderUsecase)(nil).TestPayment), ctx, token, success)
+}
+
+// MockUserLookup is a mock of UserLookup interface.
+type MockUserLookup struct {
+	ctrl     *gomock.Controller
+	recorder *MockUserLookupMockRecorder
+	isgomock struct{}
+}
+
+// MockUserLookupMockRecorder is the mock recorder for MockUserLookup.
+type MockUserLookupMockRecorder struct {
+	mock *MockUserLookup
+}
+
+// NewMockUserLookup creates a new mock instance.
+func NewMockUserLookup(ctrl *gomock.Controller) *MockUserLookup {
+	mock := &MockUserLookup{ctrl: ctrl}
+	mock.recorder = &MockUserLookupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockUserLookup) EXPECT() *MockUserLookupMockRecorder {
+	return m.recorder
+}
+
+// Users mocks base method.
+func (m *MockUserLookup) Users(ctx context.Context, ids []int32) ([]domain.UserCard, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Users", ctx, ids)
+	ret0, _ := ret[0].([]domain.UserCard)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Users indicates an expected call of Users.
+func (mr *MockUserLookupMockRecorder) Users(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Users", reflect.TypeOf((*MockUserLookup)(nil).Users), ctx, ids)
 }
 
 // MockSessionChecker is a mock of SessionChecker interface.

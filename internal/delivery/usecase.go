@@ -46,6 +46,7 @@ type SellerUsecase interface {
 	Listings(ctx context.Context, f domain.SellerAdFilter) (domain.SellerAdPage, error)
 	Reviews(ctx context.Context, f domain.ReviewFilter) (domain.ReviewPage, error)
 	Report(ctx context.Context, report domain.SellerReport) error
+	Stats(ctx context.Context, id int32) (domain.SellerStats, error)
 }
 
 type AddressUsecase interface {
@@ -83,6 +84,10 @@ type OrderUsecase interface {
 	Pay(ctx context.Context, userID, id int32, method string) (domain.Order, error)
 	TestPayment(ctx context.Context, token string, success bool) (int32, error)
 	PaymentPage(ctx context.Context, token string) (domain.Order, error)
+}
+
+type UserLookup interface {
+	Users(ctx context.Context, ids []int32) ([]domain.UserCard, error)
 }
 
 type SessionChecker interface {

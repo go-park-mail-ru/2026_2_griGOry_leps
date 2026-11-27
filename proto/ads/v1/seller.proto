@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package ads.v1;
+
+option go_package = "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1;adsv1";
+
+message SellerStatsRequest {
+  int32 user_id = 1;
+}
+
+message SellerStats {
+  double rating = 1;
+  int64 reviews_count = 2;
+}

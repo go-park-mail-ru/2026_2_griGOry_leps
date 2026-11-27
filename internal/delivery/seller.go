@@ -69,6 +69,9 @@ func sellerID(w http.ResponseWriter, r *http.Request) (int32, bool) {
 }
 
 func writeSellerError(w http.ResponseWriter, r *http.Request, action string, err error) {
+	if writeUsersError(w, r, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, domain.ErrSellerNotFound):
 		writeError(r.Context(), w, http.StatusNotFound, err.Error())

@@ -10,7 +10,6 @@ import (
 )
 
 type ModerationRepository interface {
-	CheckRole(ctx context.Context, actorID int32) error
 	List(ctx context.Context, actorID int32, after *time.Time, afterID int32, limit int) ([]domain.ModerationRequest, error)
 	LockPending(ctx context.Context, actorID, id int32) (int64, time.Time, error)
 	Decide(ctx context.Context, actorID, id int32, revision int64, status, reason string) error
@@ -19,11 +18,12 @@ type ModerationRepository interface {
 type ModerationUsecase struct {
 	repo     ModerationRepository
 	listings ListingRepository
+	users    UserDirectory
 	tx       Transactor
 }
 
-func NewModerationUsecase(repo ModerationRepository, listings ListingRepository, tx Transactor) *ModerationUsecase {
-	return &ModerationUsecase{repo: repo, listings: listings, tx: tx}
+func NewModerationUsecase(repo ModerationRepository, listings ListingRepository, users UserDirectory, tx Transactor) *ModerationUsecase {
+	return &ModerationUsecase{repo: repo, listings: listings, users: users, tx: tx}
 }
 
 func (uc *ModerationUsecase) List(ctx context.Context, actorID int32, cursor string, limit int) (domain.ModerationPage, error) {
@@ -32,9 +32,6 @@ func (uc *ModerationUsecase) List(ctx context.Context, actorID int32, cursor str
 	}
 	var page domain.ModerationPage
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.repo.CheckRole(ctx, actorID); err != nil {
-			return err
-		}
 		var after *time.Time
 		var afterID int32
 		if cursor != "" {
@@ -62,9 +59,6 @@ func (uc *ModerationUsecase) List(ctx context.Context, actorID int32, cursor str
 func (uc *ModerationUsecase) Get(ctx context.Context, actorID, id int32) (domain.ModerationSnapshot, error) {
 	var snapshot domain.ModerationSnapshot
 	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.repo.CheckRole(ctx, actorID); err != nil {
-			return err
-		}
 		var err error
 		snapshot.Revision, snapshot.RequestedAt, err = uc.repo.LockPending(ctx, actorID, id)
 		if err != nil {
@@ -73,14 +67,17 @@ func (uc *ModerationUsecase) Get(ctx context.Context, actorID, id int32) (domain
 		snapshot.Listing, err = uc.listings.Get(ctx, id, actorID)
 		return err
 	})
-	return snapshot, err
+	if err != nil {
+		return domain.ModerationSnapshot{}, err
+	}
+	if err := fillSeller(ctx, uc.users, &snapshot.Listing.Seller); err != nil {
+		return domain.ModerationSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (uc *ModerationUsecase) Decide(ctx context.Context, actorID, id int32, revision int64, approve bool, reason string) error {
 	return uc.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := uc.repo.CheckRole(ctx, actorID); err != nil {
-			return err
-		}
 		if revision <= 0 {
 			return domain.ErrInvalidRevision
 		}

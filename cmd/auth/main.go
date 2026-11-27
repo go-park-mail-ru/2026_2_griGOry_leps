@@ -14,6 +14,7 @@ import (
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 
+	adsclient "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/client/ads"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/config"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
@@ -41,7 +42,7 @@ func run(cfg *config.Config) error {
 		return errors.New("CSRF_SECRET must be set")
 	}
 	connectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	pool, err := repository.NewPool(connectCtx, cfg.DatabaseURL)
+	pool, err := repository.NewPool(connectCtx, cfg.AuthDatabaseURL)
 	cancel()
 	if err != nil {
 		return err
@@ -55,6 +56,11 @@ func run(cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+	adsStats, err := adsclient.New(httpserver.Env("ADS_GRPC_ADDR", "127.0.0.1:9092"), time.Second)
+	if err != nil {
+		return err
+	}
+	defer adsStats.Close()
 	userRepo := repository.NewUserRepository(pool)
 	sessionRepo := repository.NewSessionRepository(pool)
 	tx := repository.NewTransactor(pool)
@@ -62,14 +68,15 @@ func run(cfg *config.Config) error {
 	verifyRepo := repository.NewEmailVerificationRepository(pool)
 	verifyUsecase := usecase.NewEmailVerificationUsecase(userRepo, verifyRepo, resetRepo, mailer, tx, cfg.FrontendOrigin+"/verify-email")
 	authUsecase := usecase.NewAuthUsecase(userRepo, sessionRepo, verifyUsecase, tx)
-	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, avatarStorage, tx)
+	profileUsecase := usecase.NewProfileUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, avatarStorage, adsStats, tx)
 	resetUsecase := usecase.NewPasswordResetUsecase(userRepo, sessionRepo, resetRepo, verifyUsecase, mailer, tx, cfg.FrontendOrigin+"/reset-password")
 	authHandler := delivery.NewAuthHandler(authUsecase, cfg.CookieSecure)
 	profileHandler := delivery.NewProfileHandler(profileUsecase)
 	resetHandler := delivery.NewPasswordResetHandler(resetUsecase)
 	verifyHandler := delivery.NewEmailVerificationHandler(verifyUsecase)
+	cityHandler := delivery.NewCityHandler(usecase.NewCityUsecase(repository.NewCityRepository(pool)))
 	csrfHandler := delivery.NewCSRFHandler(csrf.New([]byte(cfg.CSRFSecret), 24*time.Hour), cfg.CookieSecure)
-	router := delivery.NewAuthRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, csrfHandler, profileHandler, resetHandler, verifyHandler)
+	router := delivery.NewAuthRouter(cfg.FrontendOrigin, cfg.UploadDir, authHandler, csrfHandler, profileHandler, resetHandler, verifyHandler, cityHandler)
 	listener, err := net.Listen("tcp", httpserver.Env("AUTH_GRPC_ADDR", "127.0.0.1:9091"))
 	if err != nil {
 		return err
@@ -77,7 +84,7 @@ func run(cfg *config.Config) error {
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(metrics.RecordGRPCRequest),
 	)
-	authv1.RegisterAuthServiceServer(grpcServer, delivery.NewAuthGRPCServer(authUsecase))
+	authv1.RegisterAuthServiceServer(grpcServer, delivery.NewAuthGRPCServer(authUsecase, authUsecase))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

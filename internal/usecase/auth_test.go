@@ -353,3 +353,14 @@ func TestLogin_PasswordChangedBeforeSessionCreated(t *testing.T) {
 	_, _, err := uc.Login(context.Background(), "a@b.ru", "Secret123")
 	require.ErrorIs(t, err, domain.ErrInvalidLogin)
 }
+
+func TestUsers_ProxiesToRepository(t *testing.T) {
+	uc := newTestUsecase(t)
+	want := []domain.UserCard{{ID: 3, FirstName: "Анна", City: "Казань"}}
+	uc.users.EXPECT().GetCards(gomock.Any(), []int32{3}).Return(want, nil)
+
+	got, err := uc.Users(context.Background(), []int32{3})
+
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}

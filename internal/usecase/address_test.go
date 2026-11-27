@@ -14,22 +14,21 @@ import (
 
 type addressTestEnv struct {
 	*AddressUsecase
-	repo  *MockAddressRepository
-	users *MockUserLocker
-	tx    *MockTransactor
+	repo *MockAddressRepository
+	tx   *MockTransactor
 }
 
 func newAddressTestEnv(t *testing.T) *addressTestEnv {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	e := &addressTestEnv{repo: NewMockAddressRepository(ctrl), users: NewMockUserLocker(ctrl), tx: NewMockTransactor(ctrl)}
-	e.AddressUsecase = NewAddressUsecase(e.repo, e.users, e.tx)
+	e := &addressTestEnv{repo: NewMockAddressRepository(ctrl), tx: NewMockTransactor(ctrl)}
+	e.AddressUsecase = NewAddressUsecase(e.repo, e.tx)
 	return e
 }
 
 func expectAddressLock(e *addressTestEnv, userID int32) *gomock.Call {
 	expectTransaction(e.tx)
-	return e.users.EXPECT().LockByID(gomock.Any(), userID).Return(nil)
+	return e.repo.EXPECT().LockUser(gomock.Any(), userID).Return(nil)
 }
 
 func str(s string) *string { return &s }

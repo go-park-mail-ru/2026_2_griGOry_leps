@@ -33,13 +33,13 @@ type OrderUsecase struct {
 	carts     CartRepository
 	orders    OrderRepository
 	addresses AddressRepository
-	users     UserRepository
+	users     UserDirectory
 	tx        Transactor
 	prices    domain.DeliveryPrices
 	now       func() time.Time
 }
 
-func NewOrderUsecase(carts CartRepository, orders OrderRepository, addresses AddressRepository, users UserRepository,
+func NewOrderUsecase(carts CartRepository, orders OrderRepository, addresses AddressRepository, users UserDirectory,
 	tx Transactor, prices domain.DeliveryPrices) *OrderUsecase {
 	return &OrderUsecase{carts: carts, orders: orders, addresses: addresses, users: users, tx: tx, prices: prices, now: time.Now}
 }
@@ -58,10 +58,11 @@ func (uc *OrderUsecase) Quote(ctx context.Context, userID int32, ids []int32) (d
 		return domain.CheckoutQuote{}, err
 	}
 
-	user, err := uc.users.GetByID(ctx, userID)
+	cards, err := fillCartSellers(ctx, uc.users, entries, userID)
 	if err != nil {
 		return domain.CheckoutQuote{}, err
 	}
+	user := cards[userID]
 	addresses, err := uc.addresses.List(ctx, userID)
 	if err != nil {
 		return domain.CheckoutQuote{}, err

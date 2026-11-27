@@ -47,3 +47,7 @@ const promoteOldestAddressQuery = `
   LIMIT 1
  )
 `
+
+const lockAddressUserQuery = `
+    SELECT pg_advisory_xact_lock(hashtext('addresses'), $1)
+`

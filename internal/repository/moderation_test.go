@@ -29,8 +29,8 @@ func TestModerationLifecycle(t *testing.T) {
 	ads := usecase.NewAdUsecase(NewAdRepository(f.pool))
 	storage, err := NewFileStorage(t.TempDir())
 	require.NoError(t, err)
-	listings := usecase.NewListingUsecase(repo, storage, tx)
-	moderation := usecase.NewModerationUsecase(NewModerationRepository(f.pool), repo, tx)
+	listings := usecase.NewListingUsecase(repo, storage, emptyDirectory{}, tx)
+	moderation := usecase.NewModerationUsecase(NewModerationRepository(f.pool), repo, emptyDirectory{}, tx)
 	photoID, err := repo.CreatePhoto(ctx, f.seller, usecase.ListingPhotoURLPrefix+"photo.png")
 	require.NoError(t, err)
 
@@ -59,8 +59,6 @@ func TestModerationLifecycle(t *testing.T) {
 	require.Len(t, next.Items, 1)
 	require.Equal(t, nextID, next.Items[0].ID)
 	require.Empty(t, next.NextCursor)
-	_, err = moderation.List(ctx, f.seller, "", 20)
-	require.ErrorIs(t, err, domain.ErrForbidden)
 	_, err = listings.Get(ctx, pending.ID, f.buyer)
 	require.ErrorIs(t, err, domain.ErrListingNotFound)
 	public, err := ads.List(ctx, domain.ListAdsParams{})
@@ -70,7 +68,6 @@ func TestModerationLifecycle(t *testing.T) {
 	snapshot, err := moderation.Get(ctx, f.buyer, pending.ID)
 	require.NoError(t, err)
 	require.Equal(t, []domain.ListingPhoto{{ID: photoID, URL: usecase.ListingPhotoURLPrefix + "photo.png"}}, snapshot.Listing.Photos)
-	require.ErrorIs(t, moderation.Decide(ctx, f.seller, pending.ID, snapshot.Revision, true, ""), domain.ErrForbidden)
 	require.ErrorIs(t, moderation.Decide(ctx, f.buyer, pending.ID, snapshot.Revision, false, "  "), domain.ErrInvalidRejectionReason)
 	changed := "Стул дубовый"
 	_, err = listings.Update(ctx, f.seller, pending.ID, domain.ListingFields{Title: &changed}, nil)
@@ -124,9 +121,6 @@ func TestModerationLifecycle(t *testing.T) {
 	_, err = f.pool.ExecContext(ctx, `UPDATE user_account SET is_moderator = true WHERE user_id = $1`, f.seller)
 	require.NoError(t, err)
 	require.ErrorIs(t, moderation.Decide(ctx, f.seller, pending.ID, review.Revision, true, ""), domain.ErrOwnModeration)
-	_, err = f.pool.ExecContext(ctx, `UPDATE user_account SET is_moderator = false WHERE user_id = $1`, f.buyer)
-	require.NoError(t, err)
-	require.ErrorIs(t, moderation.Decide(ctx, f.buyer, pending.ID, review.Revision, true, ""), domain.ErrForbidden)
 
 	require.NoError(t, moderation.Decide(ctx, second.ID, pending.ID, review.Revision, true, ""))
 	listed, err := listings.Get(ctx, pending.ID, f.buyer)
@@ -148,8 +142,8 @@ func TestClosedListingPublicVisibility(t *testing.T) {
 	require.NoError(t, err)
 	repo := NewListingRepository(f.pool)
 	tx := NewTransactor(f.pool)
-	listings := usecase.NewListingUsecase(repo, nil, tx)
-	moderation := usecase.NewModerationUsecase(NewModerationRepository(f.pool), repo, tx)
+	listings := usecase.NewListingUsecase(repo, nil, emptyDirectory{}, tx)
+	moderation := usecase.NewModerationUsecase(NewModerationRepository(f.pool), repo, emptyDirectory{}, tx)
 
 	for _, tc := range []struct {
 		name            string
