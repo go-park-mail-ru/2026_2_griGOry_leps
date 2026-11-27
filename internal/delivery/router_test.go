@@ -34,10 +34,16 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 	authRouter := NewAuthRouter("http://front.test", dir, NewAuthHandler(r.auth, false), newCSRFHandler(),
 		NewProfileHandler(NewMockProfileUsecase(ctrl)), NewPasswordResetHandler(NewMockPasswordResetUsecase(ctrl)),
 		NewEmailVerificationHandler(NewMockEmailVerificationUsecase(ctrl)))
-	adsRouter := NewAdsRouter("http://front.test", dir, NewSessionMiddleware(r.auth), NewAdHandler(r.ads),
-		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(), NewCartHandler(NewMockCartUsecase(ctrl)),
-		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city), NewSellerHandler(r.seller),
-		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"), NewModerationHandler(nil))
+	adsRouter := NewAdsRouter(
+		"http://front.test", dir, NewSessionMiddleware(r.auth), NewAdHandler(r.ads),
+		NewListingHandler(NewMockListingUsecase(ctrl)), newCSRFHandler(),
+		NewCartHandler(NewMockCartUsecase(ctrl)),
+		NewAddressHandler(NewMockAddressUsecase(ctrl)), NewCityHandler(r.city),
+		NewSellerHandler(r.seller),
+		NewOrderHandler(NewMockOrderUsecase(ctrl), "http://api.test", "http://front.test"),
+		NewModerationHandler(nil),
+		NewFavoritesHandler(NewMockFavoritesUsecase(ctrl)),
+	)
 	searchRouter := NewSearchRouter("http://front.test", nil)
 	r.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
@@ -254,4 +260,14 @@ func TestRouter_AddressIDMustBeNumeric(t *testing.T) {
 	newTestRouter(t).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/me/addresses/abc", nil))
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestFavoritesListRequiresAuth(t *testing.T) {
+	router := newTestRouter(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/favorites", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
