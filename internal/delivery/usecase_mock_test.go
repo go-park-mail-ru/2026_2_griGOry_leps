@@ -1016,3 +1016,70 @@ func (mr *MockSessionCheckerMockRecorder) Me(ctx, sessionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Me", reflect.TypeOf((*MockSessionChecker)(nil).Me), ctx, sessionID)
 }
+
+// MockFavoritesUsecase is a mock of FavoritesUsecase interface.
+type MockFavoritesUsecase struct {
+	ctrl     *gomock.Controller
+	recorder *MockFavoritesUsecaseMockRecorder
+	isgomock struct{}
+}
+
+// MockFavoritesUsecaseMockRecorder is the mock recorder for MockFavoritesUsecase.
+type MockFavoritesUsecaseMockRecorder struct {
+	mock *MockFavoritesUsecase
+}
+
+// NewMockFavoritesUsecase creates a new mock instance.
+func NewMockFavoritesUsecase(ctrl *gomock.Controller) *MockFavoritesUsecase {
+	mock := &MockFavoritesUsecase{ctrl: ctrl}
+	mock.recorder = &MockFavoritesUsecaseMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFavoritesUsecase) EXPECT() *MockFavoritesUsecaseMockRecorder {
+	return m.recorder
+}
+
+// Add mocks base method.
+func (m *MockFavoritesUsecase) Add(ctx context.Context, userID, listingID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Add", ctx, userID, listingID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Add indicates an expected call of Add.
+func (mr *MockFavoritesUsecaseMockRecorder) Add(ctx, userID, listingID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Add", reflect.TypeOf((*MockFavoritesUsecase)(nil).Add), ctx, userID, listingID)
+}
+
+// List mocks base method.
+func (m *MockFavoritesUsecase) List(ctx context.Context, userID int32) ([]domain.Ad, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, userID)
+	ret0, _ := ret[0].([]domain.Ad)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockFavoritesUsecaseMockRecorder) List(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockFavoritesUsecase)(nil).List), ctx, userID)
+}
+
+// Remove mocks base method.
+func (m *MockFavoritesUsecase) Remove(ctx context.Context, userID, listingID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Remove", ctx, userID, listingID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Remove indicates an expected call of Remove.
+func (mr *MockFavoritesUsecaseMockRecorder) Remove(ctx, userID, listingID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockFavoritesUsecase)(nil).Remove), ctx, userID, listingID)
+}

@@ -58,6 +58,9 @@ var frontendCalls = []struct{ method, path, service string }{
 	{http.MethodPost, "/api/moderation/listings/7/approve", "ads"},
 	{http.MethodPost, "/api/moderation/listings/7/reject", "ads"},
 	{http.MethodGet, "/uploads/listings/a.jpg", "ads"},
+	{http.MethodGet, "/api/favorites", "ads"},
+	{http.MethodPut, "/api/favorites/7", "ads"},
+	{http.MethodDelete, "/api/favorites/7", "ads"},
 
 	{http.MethodGet, "/api/search?q=bike&limit=24&offset=0", "search"},
 }
