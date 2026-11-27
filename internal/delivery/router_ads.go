@@ -4,8 +4,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gorilla/mux"
-
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/ratelimit"
 )
 
@@ -23,10 +21,8 @@ func NewAdsRouter(
 	moderationHandler *ModerationHandler,
 	favoritesHandler *FavoritesHandler,
 ) http.Handler {
-	r := mux.NewRouter()
-	r.Use(recoverMiddleware, csrfHandler.Middleware)
-	r.NotFoundHandler = http.HandlerFunc(notFound)
-	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowed)
+	r := newAPIRouter()
+	r.Use(csrfHandler.Middleware)
 
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
 		writeJSON(req.Context(), w, http.StatusOK, map[string]string{"status": "ok", "service": "ads"})
