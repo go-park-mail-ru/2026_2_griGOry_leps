@@ -73,22 +73,24 @@ copy_tables() {
     } | psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 --single-transaction --output=/dev/null "$target"
 }
 
-# Следующий ID каждой identity-колонки: max+1, а для пустой таблицы 1.
-reset_sequences() {
-    q "$1" <<'SQL'
-DO $$
-DECLARE r record;
-BEGIN
-    FOR r IN
-        SELECT table_name, column_name FROM information_schema.columns
-        WHERE table_schema = 'public' AND is_identity = 'YES' AND table_name NOT LIKE 'goose%'
-    LOOP
-        EXECUTE format(
-            'SELECT setval(pg_get_serial_sequence(%L, %L), COALESCE((SELECT max(%I) FROM public.%I), 1), (SELECT max(%I) FROM public.%I) IS NOT NULL)',
-            'public.' || r.table_name, r.column_name, r.column_name, r.table_name, r.column_name, r.table_name);
-    END LOOP;
-END $$;
-SQL
+# Переносит состояние последовательностей из исходной базы: ID удалённых строк повторно не выдаются.
+# max(id) в таблице служит нижней границей на случай, если последовательность отстаёт; пустая таблица
+# с нетронутой последовательностью даёт следующий ID 1.
+copy_sequences() {
+    local target=$1 table column src_seq last called
+    shift
+    for table in "$@"; do
+        while IFS= read -r column; do
+            [[ -n $column ]] || continue
+            src_seq=$(q "$SOURCE_DATABASE_URL" -c "SELECT pg_get_serial_sequence('public.$table', '$column')")
+            IFS='|' read -r last called < <(q "$SOURCE_DATABASE_URL" -c "SELECT last_value, is_called FROM $src_seq")
+            [[ $called == t ]] || last=0
+            q "$target" -c "
+                SELECT CASE WHEN v = 0 THEN setval(s, 1, false) ELSE setval(s, v, true) END
+                FROM (SELECT pg_get_serial_sequence('public.$table', '$column') AS s,
+                             GREATEST($last, COALESCE((SELECT max(\"$column\") FROM public.\"$table\"), 0)) AS v) x" >/dev/null
+        done < <(q "$target" -c "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '$table' AND is_identity = 'YES'")
+    done
 }
 
 # 1. Предпроверки: ничего не останавливаем и не меняем, пока они не пройдены.
@@ -167,8 +169,8 @@ truncate_all "$ADS_DATABASE_URL"
 # 5. Данные.
 copy_tables "$AUTH_DATABASE_URL" "${AUTH_TABLES[@]}"
 copy_tables "$ADS_DATABASE_URL" "${ADS_TABLES[@]}"
-reset_sequences "$AUTH_DATABASE_URL"
-reset_sequences "$ADS_DATABASE_URL"
+copy_sequences "$AUTH_DATABASE_URL" "${AUTH_TABLES[@]}"
+copy_sequences "$ADS_DATABASE_URL" "${ADS_TABLES[@]}"
 
 # 6. Сверка.
 if ! diff <(table_counts "$SOURCE_DATABASE_URL" "${AUTH_TABLES[@]}" "${ADS_TABLES[@]}") \

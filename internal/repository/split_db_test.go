@@ -131,6 +131,11 @@ func count(t *testing.T, db *sql.DB, table string) int {
 
 func TestSplitDB_CopiesDataAndKeepsSequences(t *testing.T) {
 	e := newSplitEnv(t, 14)
+	// Удалённое объявление с наибольшим ID: его номер уже выдан и повторно выдаваться не должен.
+	_, err := e.source.Exec(`DELETE FROM ad WHERE id = (SELECT max(id) FROM ad)`)
+	require.NoError(t, err)
+	var nextSourceAd int
+	require.NoError(t, e.source.QueryRow(`SELECT last_value + 1 FROM ad_id_seq`).Scan(&nextSourceAd))
 
 	out, err := e.run(t)
 	require.NoError(t, err, out)
@@ -148,10 +153,9 @@ func TestSplitDB_CopiesDataAndKeepsSequences(t *testing.T) {
 		}
 	}
 
-	var maxAd, newAd int
-	require.NoError(t, e.source.QueryRow(`SELECT max(id) FROM ad`).Scan(&maxAd))
+	var newAd int
 	require.NoError(t, e.ads.QueryRow(`INSERT INTO ad (title, user_id) VALUES ('Новое', 1) RETURNING id`).Scan(&newAd))
-	require.Equal(t, maxAd+1, newAd)
+	require.Equal(t, nextSourceAd, newAd, "sequence state must come from the source, not max(id)")
 
 	// Пустая таблица: следующий ID — 1, а не ошибка setval.
 	var promotionID int
