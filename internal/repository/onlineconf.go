@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -42,15 +43,15 @@ func onlineconfWriteError(err error) error {
 }
 
 func (r *OnlineconfRepository) Create(
-	ctx context.Context, entry domain.OnlineconfEntry,
+	ctx context.Context, actor int32, entry domain.OnlineconfEntry,
 ) (domain.OnlineconfEntry, error) {
-	row := r.db.QueryRowContext(ctx, createConf, entry.Scope, entry.Name, entry.Kind, string(entry.Value))
+	row := r.db.QueryRowContext(ctx, createConf, entry.Scope, entry.Name, entry.Kind, string(entry.Value), actor)
 	result, err := scanOnlineconfEntry(row)
 	return result, onlineconfWriteError(err)
 }
 
 func (r *OnlineconfRepository) Update(
-	ctx context.Context, id int, patch domain.OnlineconfPatch,
+	ctx context.Context, actor int32, id int, patch domain.OnlineconfPatch,
 ) (domain.OnlineconfEntry, error) {
 	var value *string
 	if patch.Value != nil {
@@ -58,7 +59,7 @@ func (r *OnlineconfRepository) Update(
 		value = &raw
 	}
 
-	row := r.db.QueryRowContext(ctx, updateConf, id, patch.Scope, patch.Name, value)
+	row := r.db.QueryRowContext(ctx, updateConf, id, patch.Scope, patch.Name, value, actor)
 	result, err := scanOnlineconfEntry(row)
 	return result, onlineconfWriteError(err)
 }
@@ -72,4 +73,18 @@ func (r *OnlineconfRepository) Search(
 		return nil, err
 	}
 	return collectRows(rows, scanOnlineconfEntry)
+}
+
+func (r *OnlineconfRepository) History(ctx context.Context, id int) ([]domain.OnlineconfChange, error) {
+	var raw []byte
+	err := r.db.QueryRowContext(ctx, historyConf, id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrOnlineconfMissing
+	}
+	if err != nil {
+		return nil, err
+	}
+	var changes []domain.OnlineconfChange
+	err = json.Unmarshal(raw, &changes)
+	return changes, err
 }

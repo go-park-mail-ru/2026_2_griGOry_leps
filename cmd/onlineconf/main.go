@@ -79,7 +79,6 @@ func run(cfg *config.Config) error {
 	configs := usecase.NewOnlineconfUsecase(repository.NewOnlineconfRepository(pool))
 	admin := delivery.NewOnlineConfRouter(cfg.FrontendOrigin, delivery.NewSessionMiddleware(checker), csrfHandler, access, configs)
 	entries := delivery.NewOnlineconfRouter(configs)
-	// Поиск читает /v1/entries через локальный порт. Браузер обращается к административному API через gateway.
 	router := http.NewServeMux()
 	router.Handle("/v1/", entries)
 	router.Handle("/", admin)
