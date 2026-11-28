@@ -231,9 +231,21 @@ func TestAdRepo_List_OffsetBeyondTotal(t *testing.T) {
 }
 
 func adMockRows(ads ...domain.Ad) *sqlmock.Rows {
-	rows := sqlmock.NewRows([]string{"id", "user", "category", "title", "description", "price", "city", "delivery", "free", "image", "status", "reason", "created", "updated", "rejection_reason"})
+	return cardMockRows(false, ads...)
+}
+
+func cardMockRows(withViews bool, ads ...domain.Ad) *sqlmock.Rows {
+	columns := []string{"id", "user", "category", "title", "description", "price", "city", "delivery", "free", "image", "status", "reason", "created", "updated", "rejection_reason"}
+	if withViews {
+		columns = append(columns, "views_count")
+	}
+	rows := sqlmock.NewRows(columns)
 	for _, ad := range ads {
-		rows.AddRow(ad.ID, ad.UserID, ad.CategoryID, ad.Title, ad.Description, ad.Price, ad.City, ad.HasDelivery, ad.IsFree, ad.ImageURL, ad.Status, ad.CloseReason, ad.CreatedAt, ad.UpdatedAt, ad.RejectionReason)
+		values := []driver.Value{ad.ID, ad.UserID, ad.CategoryID, ad.Title, ad.Description, ad.Price, ad.City, ad.HasDelivery, ad.IsFree, ad.ImageURL, ad.Status, ad.CloseReason, ad.CreatedAt, ad.UpdatedAt, ad.RejectionReason}
+		if withViews {
+			values = append(values, ad.ViewsCount)
+		}
+		rows.AddRow(values...)
 	}
 	return rows
 }

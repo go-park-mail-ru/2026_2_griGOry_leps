@@ -115,7 +115,14 @@ type Seller struct {
 	CreatedAt    time.Time
 }
 
+type DailyViews struct {
+	Date  string `json:"date"`
+	Count int64  `json:"count"`
+}
+
 type Listing struct {
+	ViewsByDay      []DailyViews
+	ViewsCount      int64
 	ID              int32
 	Category        *ListingCategory
 	Title           string

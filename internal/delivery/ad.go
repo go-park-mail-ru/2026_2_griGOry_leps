@@ -146,6 +146,7 @@ func myAdResponse(ad domain.Ad) map[string]any {
 	resp["close_reason"] = nullable(ad.CloseReason)
 	resp["rejection_reason"] = nullable(ad.RejectionReason)
 	resp["updated_at"] = ad.UpdatedAt
+	resp["views_count"] = ad.ViewsCount
 	return resp
 }
 

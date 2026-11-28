@@ -983,6 +983,11 @@ paths:
     get:
       tags: [Объявления]
       operationId: getListing
+      parameters:
+        - in: query
+          name: view
+          schema: { type: boolean, default: false }
+          description: Учитывается только первое открытие объявления каждым авторизованным пользователем, кроме владельца.
       summary: Просмотр объявления
       description: |
         | Кто и статус | Ответ |
@@ -2273,8 +2278,9 @@ components:
       allOf:
         - $ref: '#/components/schemas/AdCard'
         - type: object
-          required: [status, close_reason, rejection_reason, updated_at]
+          required: [status, close_reason, rejection_reason, updated_at, views_count]
           properties:
+            views_count: { type: integer, format: int64, minimum: 0 }
             status: { $ref: '#/components/schemas/ListingStatus' }
             close_reason:
               type: string
@@ -2359,6 +2365,8 @@ components:
     Listing:
       type: object
       required:
+        - views_count
+        - views_by_day
         - id
         - title
         - category
@@ -2384,6 +2392,17 @@ components:
         У черновика поля, которые ещё не заполнены, приходят null
         (`category`, `price`, `condition`, `address`) или пустыми.
       properties:
+        views_by_day:
+          type: array
+          maxItems: 5
+          description: Последние пять дней с просмотрами по московскому времени, от старых к новым. Для посетителя массив пуст.
+          items:
+            type: object
+            required: [date, count]
+            properties:
+              date: { type: string, format: date }
+              count: { type: integer, format: int64, minimum: 1 }
+        views_count: { type: integer, format: int64, minimum: 0 }
         id: { type: integer, example: 1024 }
         title: { type: string, minLength: 1, maxLength: 80, example: 'Велосипед горный Stels Navigator 29"' }
         category:

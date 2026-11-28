@@ -1230,6 +1230,21 @@ func (mr *MockListingRepositoryMockRecorder) Get(ctx, id, viewerID any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockListingRepository)(nil).Get), ctx, id, viewerID)
 }
 
+// RecordView mocks base method.
+func (m *MockListingRepository) RecordView(ctx context.Context, id, viewerID int32) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordView", ctx, id, viewerID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RecordView indicates an expected call of RecordView.
+func (mr *MockListingRepositoryMockRecorder) RecordView(ctx, id, viewerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordView", reflect.TypeOf((*MockListingRepository)(nil).RecordView), ctx, id, viewerID)
+}
+
 // GetStateForUpdate mocks base method.
 func (m *MockListingRepository) GetStateForUpdate(ctx context.Context, id int32) (domain.ListingState, error) {
 	m.ctrl.T.Helper()

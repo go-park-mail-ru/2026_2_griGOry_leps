@@ -63,7 +63,7 @@ func (r *SellerRepository) ListAds(ctx context.Context, f domain.SellerAdFilter)
 		if err != nil {
 			return fmt.Errorf("list seller ads: %w", err)
 		}
-		if page.Items, err = scanAds(rows); err != nil {
+		if page.Items, err = scanAds(rows, adCardFields); err != nil {
 			return err
 		}
 

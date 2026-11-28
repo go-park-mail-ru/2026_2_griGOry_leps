@@ -23,12 +23,12 @@ func adCardFields(ad *domain.Ad) []any {
 	}
 }
 
-func scanAds(rows *sql.Rows) ([]domain.Ad, error) {
+func scanAds(rows *sql.Rows, fields func(*domain.Ad) []any) ([]domain.Ad, error) {
 	defer func() { _ = rows.Close() }()
 	ads := make([]domain.Ad, 0)
 	for rows.Next() {
 		var ad domain.Ad
-		if err := rows.Scan(adCardFields(&ad)...); err != nil {
+		if err := rows.Scan(fields(&ad)...); err != nil {
 			return nil, fmt.Errorf("scan ad: %w", err)
 		}
 		ads = append(ads, ad)
@@ -81,7 +81,7 @@ func (r *AdRepository) List(ctx context.Context, f domain.AdFilter) ([]domain.Ad
 		if err != nil {
 			return fmt.Errorf("list ads: %w", err)
 		}
-		ads, err = scanAds(rows)
+		ads, err = scanAds(rows, adCardFields)
 		return err
 	})
 	if err != nil {
@@ -124,7 +124,7 @@ func (r *AdRepository) ListByUser(ctx context.Context, f domain.MyAdFilter) ([]d
 		if err != nil {
 			return fmt.Errorf("list my ads: %w", err)
 		}
-		ads, err = scanAds(rows)
+		ads, err = scanAds(rows, func(ad *domain.Ad) []any { return append(adCardFields(ad), &ad.ViewsCount) })
 		return err
 	})
 	if err != nil {
