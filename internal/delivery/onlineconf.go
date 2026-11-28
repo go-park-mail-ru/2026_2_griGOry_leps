@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
@@ -115,7 +116,17 @@ func (h *onlineconfHandler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *onlineconfHandler) search(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
+		return
+	}
+	for key, values := range query {
+		if (key != "scope" && key != "kind" && key != "name") || len(values) != 1 {
+			onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
+			return
+		}
+	}
 	filter := domain.OnlineconfFilter{Name: query.Get("name")}
 	if query.Has("scope") {
 		scope := query.Get("scope")

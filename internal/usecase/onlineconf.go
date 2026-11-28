@@ -35,6 +35,33 @@ func validOnlineconfName(name string) bool {
 	return strings.TrimSpace(name) != "" && utf8.RuneCountInString(name) <= 255
 }
 
+func validOnlineconfFlag(raw json.RawMessage) bool {
+	value := bytes.TrimSpace(raw)
+	if string(value) == "true" || string(value) == "false" {
+		return true
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(value, &fields) != nil || len(fields) != 3 {
+		return false
+	}
+	var percentage *int
+	if json.Unmarshal(fields["percentage"], &percentage) != nil || percentage == nil || *percentage < 0 || *percentage > 100 {
+		return false
+	}
+	for _, key := range []string{"include_user_ids", "exclude_user_ids"} {
+		var ids []int32
+		if json.Unmarshal(fields[key], &ids) != nil || ids == nil {
+			return false
+		}
+		for _, id := range ids {
+			if id <= 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (uc *OnlineconfUsecase) Create(
 	ctx context.Context, entry domain.OnlineconfEntry,
 ) (domain.OnlineconfEntry, error) {
@@ -43,13 +70,15 @@ func (uc *OnlineconfUsecase) Create(
 		return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
 	}
 
-	if entry.Kind == "flag" {
-		value := string(bytes.TrimSpace(entry.Value))
-		if value != "true" && value != "false" {
+	if entry.Kind == "flag" && !validOnlineconfFlag(entry.Value) {
+		return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
+	}
+	if entry.Scope == "search" && entry.Name == "max_query_length" {
+		var length int64
+		if entry.Kind != "config" || json.Unmarshal(entry.Value, &length) != nil || length <= 0 {
 			return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
 		}
 	}
-
 	return uc.entries.Create(ctx, entry)
 }
 

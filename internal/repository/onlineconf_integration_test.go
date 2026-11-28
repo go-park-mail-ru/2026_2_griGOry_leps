@@ -22,6 +22,9 @@ func TestOnlineconfAPI(t *testing.T) {
 		return res.Body.String()
 	}
 	const path = "/v1/entries"
+	for _, query := range []string{"scope=admin", "scope=%ZZ", "scope=search&scope=admin", "scop=search"} {
+		request("GET", path+"?"+query, "", 400)
+	}
 	const flag = `{"name":"my_flag","scope":"auth","kind":"flag","value":false}`
 	request("POST", path, flag, 201)
 	request("POST", path, flag, 409)
@@ -39,4 +42,27 @@ func TestOnlineconfAPI(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result), &entry))
 	require.JSONEq(t, "null", string(entry.Value))
 	request("PATCH", path+"/999", `{"value":0}`, 404)
+	const rollout = `{"percentage":25,"include_user_ids":[1,2],"exclude_user_ids":[2]}`
+	created = request("POST", path, `{"name":"rollout","scope":"ads","kind":"flag","value":`+rollout+`}`, 201)
+	require.NoError(t, json.Unmarshal([]byte(created), &entry))
+	require.JSONEq(t, rollout, string(entry.Value))
+	rolloutPath := path + "/" + strconv.Itoa(entry.ID)
+	for _, value := range []string{
+		`{"percentage":101,"include_user_ids":[],"exclude_user_ids":[]}`,
+		`{"percentage":-1,"include_user_ids":[],"exclude_user_ids":[]}`,
+		`{"percentage":25,"include_user_ids":["1"],"exclude_user_ids":[]}`,
+		`{"percentage":25,"include_user_ids":[]}`,
+	} {
+		request("PATCH", rolloutPath, `{"value":`+value+`}`, 400)
+	}
+	for _, percentage := range []string{"0", "100"} {
+		request("PATCH", rolloutPath, `{"value":{"percentage":`+percentage+`,"include_user_ids":[],"exclude_user_ids":[]}}`, 200)
+	}
+	const lengthEntry = `{"scope":"search","kind":"config","name":"max_query_length","value":`
+	for _, value := range []string{`"10"`, "0", "-1", "1.5", "null"} {
+		request("POST", path, lengthEntry+value+"}", 400)
+	}
+	created = request("POST", path, lengthEntry+"128}", 201)
+	require.NoError(t, json.Unmarshal([]byte(created), &entry))
+	request("PATCH", path+"/"+strconv.Itoa(entry.ID), `{"value":"128"}`, 400)
 }
