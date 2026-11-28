@@ -1,13 +1,16 @@
 package repository
 
 import (
+	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 	"github.com/stretchr/testify/require"
 )
@@ -42,21 +45,35 @@ func TestOnlineconfAPI(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(result), &entry))
 	require.JSONEq(t, "null", string(entry.Value))
 	request("PATCH", path+"/999", `{"value":0}`, 404)
-	const rollout = `{"percentage":25,"include_user_ids":[1,2],"exclude_user_ids":[2]}`
-	created = request("POST", path, `{"name":"rollout","scope":"ads","kind":"flag","value":`+rollout+`}`, 201)
+	const rollout = `{"rollout_percent":25,"included_user_ids":[1,2],"excluded_user_ids":[2]}`
+	created = request("POST", path, `{"name":"price_sort","scope":"search","kind":"flag","value":`+rollout+`}`, 201)
 	require.NoError(t, json.Unmarshal([]byte(created), &entry))
 	require.JSONEq(t, rollout, string(entry.Value))
+	server := httptest.NewServer(router)
+	defer server.Close()
+	cache := onlineconf.NewSearchCache(server.URL + path)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cache.Run(ctx, time.Hour)
+	}()
+	defer func() { cancel(); <-done }()
+	require.Eventually(t, func() bool {
+		snapshot := cache.Snapshot()
+		return snapshot.PriceSortEnabled(1) && !snapshot.PriceSortEnabled(2)
+	}, 3*time.Second, 10*time.Millisecond)
 	rolloutPath := path + "/" + strconv.Itoa(entry.ID)
 	for _, value := range []string{
-		`{"percentage":101,"include_user_ids":[],"exclude_user_ids":[]}`,
-		`{"percentage":-1,"include_user_ids":[],"exclude_user_ids":[]}`,
-		`{"percentage":25,"include_user_ids":["1"],"exclude_user_ids":[]}`,
-		`{"percentage":25,"include_user_ids":[]}`,
+		`{"rollout_percent":101,"included_user_ids":[],"excluded_user_ids":[]}`,
+		`{"rollout_percent":-1,"included_user_ids":[],"excluded_user_ids":[]}`,
+		`{"rollout_percent":25,"included_user_ids":["1"],"excluded_user_ids":[]}`,
+		`{"rollout_percent":25,"included_user_ids":[]}`,
 	} {
 		request("PATCH", rolloutPath, `{"value":`+value+`}`, 400)
 	}
 	for _, percentage := range []string{"0", "100"} {
-		request("PATCH", rolloutPath, `{"value":{"percentage":`+percentage+`,"include_user_ids":[],"exclude_user_ids":[]}}`, 200)
+		request("PATCH", rolloutPath, `{"value":{"rollout_percent":`+percentage+`,"included_user_ids":[],"excluded_user_ids":[]}}`, 200)
 	}
 	const lengthEntry = `{"scope":"search","kind":"config","name":"max_query_length","value":`
 	for _, value := range []string{`"10"`, "0", "-1", "1.5", "null"} {

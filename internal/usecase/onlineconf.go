@@ -45,10 +45,10 @@ func validOnlineconfFlag(raw json.RawMessage) bool {
 		return false
 	}
 	var percentage *int
-	if json.Unmarshal(fields["percentage"], &percentage) != nil || percentage == nil || *percentage < 0 || *percentage > 100 {
+	if json.Unmarshal(fields["rollout_percent"], &percentage) != nil || percentage == nil || *percentage < 0 || *percentage > 100 {
 		return false
 	}
-	for _, key := range []string{"include_user_ids", "exclude_user_ids"} {
+	for _, key := range []string{"included_user_ids", "excluded_user_ids"} {
 		var ids []int32
 		if json.Unmarshal(fields[key], &ids) != nil || ids == nil {
 			return false

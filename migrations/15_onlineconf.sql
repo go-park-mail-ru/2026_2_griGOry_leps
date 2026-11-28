@@ -22,14 +22,14 @@ CREATE TABLE onlineconf_entries (
     CONSTRAINT onlineconf_flag_value_check CHECK (
         kind <> 'flag' OR jsonb_typeof(value) = 'boolean' OR (
             jsonb_typeof(value) = 'object'
-            AND value ?& ARRAY['percentage', 'include_user_ids', 'exclude_user_ids']
-            AND value - ARRAY['percentage', 'include_user_ids', 'exclude_user_ids'] = '{}'::jsonb
-            AND CASE WHEN jsonb_typeof(value->'percentage') = 'number' THEN
-                (value->>'percentage')::numeric BETWEEN 0 AND 100
-                AND trunc((value->>'percentage')::numeric) = (value->>'percentage')::numeric
+            AND value ?& ARRAY['rollout_percent', 'included_user_ids', 'excluded_user_ids']
+            AND value - ARRAY['rollout_percent', 'included_user_ids', 'excluded_user_ids'] = '{}'::jsonb
+            AND CASE WHEN jsonb_typeof(value->'rollout_percent') = 'number' THEN
+                (value->>'rollout_percent')::numeric BETWEEN 0 AND 100
+                AND trunc((value->>'rollout_percent')::numeric) = (value->>'rollout_percent')::numeric
             ELSE false END
-            AND onlineconf_valid_user_ids(value->'include_user_ids')
-            AND onlineconf_valid_user_ids(value->'exclude_user_ids')
+            AND onlineconf_valid_user_ids(value->'included_user_ids')
+            AND onlineconf_valid_user_ids(value->'excluded_user_ids')
         )
     ),
     CONSTRAINT onlineconf_search_length_check CHECK (
@@ -41,9 +41,9 @@ CREATE TABLE onlineconf_entries (
     ),
     CONSTRAINT onlineconf_rollout_integers_check CHECK (
         kind <> 'flag' OR jsonb_typeof(value) <> 'object' OR (
-            (value->>'percentage') ~ '^[0-9]+$'
-            AND (value->>'include_user_ids') !~ '[.]'
-            AND (value->>'exclude_user_ids') !~ '[.]'
+            (value->>'rollout_percent') ~ '^[0-9]+$'
+            AND (value->>'included_user_ids') !~ '[.]'
+            AND (value->>'excluded_user_ids') !~ '[.]'
         )
     )
 );
