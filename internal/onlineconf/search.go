@@ -151,7 +151,7 @@ func decodeSearchSnapshot(body []byte) (SearchSnapshot, error) {
 				snapshot.buttonColor = color
 			}
 		case entry.Name == searchPriceSortKey && entry.Kind == "flag":
-			flag, err := decodePriceSort(entry.Value)
+			flag, err := DecodeRollout(entry.Value)
 			if err != nil {
 				return SearchSnapshot{}, err
 			}
@@ -161,7 +161,7 @@ func decodeSearchSnapshot(body []byte) (SearchSnapshot, error) {
 	return snapshot, nil
 }
 
-func decodePriceSort(raw json.RawMessage) (Rollout, error) {
+func DecodeRollout(raw json.RawMessage) (Rollout, error) {
 	var enabled *bool
 	if err := json.Unmarshal(raw, &enabled); err == nil && enabled != nil {
 		if *enabled {
@@ -177,12 +177,12 @@ func decodePriceSort(raw json.RawMessage) (Rollout, error) {
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil || payload.Percent == nil ||
 		*payload.Percent < 0 || *payload.Percent > 100 {
-		return Rollout{}, errors.New("invalid price_sort rollout percentage")
+		return Rollout{}, errors.New("invalid rollout percentage")
 	}
 	for _, ids := range [][]int32{payload.IncludedIDs, payload.ExcludedIDs} {
 		for _, id := range ids {
 			if id <= 0 {
-				return Rollout{}, errors.New("invalid price_sort user ID")
+				return Rollout{}, errors.New("invalid rollout user ID")
 			}
 		}
 	}

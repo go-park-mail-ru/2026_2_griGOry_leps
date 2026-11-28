@@ -143,6 +143,7 @@ type OrderRepository interface {
 }
 
 type OnlineconfRepository interface {
+	Get(context.Context, int) (domain.OnlineconfEntry, error)
 	History(context.Context, int) ([]domain.OnlineconfChange, error)
 	Create(ctx context.Context, actor int32, entry domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
 	Update(ctx context.Context, actor int32, id int, patch domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
