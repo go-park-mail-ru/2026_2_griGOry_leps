@@ -88,3 +88,11 @@ func (r *OnlineconfRepository) History(ctx context.Context, id int) ([]domain.On
 	err = json.Unmarshal(raw, &changes)
 	return changes, err
 }
+
+func (r *OnlineconfRepository) Get(ctx context.Context, id int) (domain.OnlineconfEntry, error) {
+	entry, err := scanOnlineconfEntry(r.db.QueryRowContext(ctx, `SELECT id,scope,name,kind,value FROM onlineconf_entries WHERE id=$1`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return entry, domain.ErrOnlineconfMissing
+	}
+	return entry, err
+}

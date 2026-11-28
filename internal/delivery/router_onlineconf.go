@@ -26,6 +26,7 @@ func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler
 	admin.Use(noStore, session.RequireAuth, access.RequireAdmin)
 	admin.HandleFunc("/me", access.Me).Methods(http.MethodGet)
 	h := &onlineconfHandler{service: entries}
+	admin.HandleFunc("/entries/{id}/check", h.checkFlag).Methods(http.MethodGet)
 	admin.HandleFunc("/entries/{id}/history", h.history).Methods(http.MethodGet)
 	admin.HandleFunc("/entries", h.search).Methods(http.MethodGet)
 	admin.HandleFunc("/entries", h.create).Methods(http.MethodPost)

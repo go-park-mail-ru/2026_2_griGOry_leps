@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 	"strings"
 	"unicode/utf8"
 
@@ -115,4 +116,22 @@ func (uc *OnlineconfUsecase) Search(
 
 func (uc *OnlineconfUsecase) History(ctx context.Context, id int) ([]domain.OnlineconfChange, error) {
 	return uc.entries.History(ctx, id)
+}
+
+func (uc *OnlineconfUsecase) CheckFlag(ctx context.Context, id int, userID int32) (bool, error) {
+	if id <= 0 || userID <= 0 {
+		return false, domain.ErrInvalidOnlineconf
+	}
+	entry, err := uc.entries.Get(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if entry.Kind != "flag" {
+		return false, domain.ErrInvalidOnlineconf
+	}
+	rule, err := onlineconf.DecodeRollout(entry.Value)
+	if err != nil {
+		return false, err
+	}
+	return rule.EnabledFor(entry.Scope, entry.Name, userID)
 }

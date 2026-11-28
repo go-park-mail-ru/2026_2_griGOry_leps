@@ -151,7 +151,7 @@ func decodeSearchSnapshot(body []byte) (SearchSnapshot, error) {
 				snapshot.buttonColor = color
 			}
 		case entry.Name == searchPriceSortKey && entry.Kind == "flag":
-			flag, err := decodePriceSort(entry.Value)
+			flag, err := DecodeRollout(entry.Value)
 			if err != nil {
 				return SearchSnapshot{}, err
 			}
@@ -161,7 +161,7 @@ func decodeSearchSnapshot(body []byte) (SearchSnapshot, error) {
 	return snapshot, nil
 }
 
-func decodePriceSort(raw json.RawMessage) (Rollout, error) {
+func DecodeRollout(raw json.RawMessage) (Rollout, error) {
 	var enabled *bool
 	if err := json.Unmarshal(raw, &enabled); err == nil && enabled != nil {
 		if *enabled {

@@ -97,6 +97,17 @@ func TestOnlineconfAPI(t *testing.T) {
 		return snapshot.PriceSortEnabled(1) && !snapshot.PriceSortEnabled(2)
 	}, 3*time.Second, 10*time.Millisecond)
 	rolloutPath := path + "/" + strconv.Itoa(entry.ID)
+	for _, tc := range []struct {
+		id   int
+		want string
+	}{
+		{12, `{"enabled":true}`}, // bucket 9 at 25 percent
+		{1, `{"enabled":true}`},  // manually included
+		{2, `{"enabled":false}`}, // exclusion wins over inclusion
+	} {
+		require.JSONEq(t, tc.want, request("GET", rolloutPath+"/check?user_id="+strconv.Itoa(tc.id), "", 200))
+	}
+
 	for _, value := range []string{
 		`{"rollout_percent":101,"included_user_ids":[],"excluded_user_ids":[]}`,
 		`{"rollout_percent":-1,"included_user_ids":[],"excluded_user_ids":[]}`,

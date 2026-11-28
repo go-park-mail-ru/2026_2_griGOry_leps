@@ -15,6 +15,7 @@ import (
 )
 
 type onlineconfService interface {
+	CheckFlag(context.Context, int, int32) (bool, error)
 	History(context.Context, int) ([]domain.OnlineconfChange, error)
 	Create(context.Context, int32, domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
 	Update(context.Context, int32, int, domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
@@ -149,4 +150,15 @@ func (h *onlineconfHandler) history(w http.ResponseWriter, r *http.Request) {
 	}
 	changes, err := h.service.History(r.Context(), int(id))
 	onlineconfResponse(w, r, http.StatusOK, changes, err)
+}
+
+func (h *onlineconfHandler) checkFlag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 32)
+	userID, userErr := strconv.ParseInt(r.URL.Query().Get("user_id"), 10, 32)
+	if err != nil || userErr != nil || id <= 0 || userID <= 0 {
+		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
+		return
+	}
+	enabled, err := h.service.CheckFlag(r.Context(), int(id), int32(userID))
+	onlineconfResponse(w, r, http.StatusOK, map[string]bool{"enabled": enabled}, err)
 }
