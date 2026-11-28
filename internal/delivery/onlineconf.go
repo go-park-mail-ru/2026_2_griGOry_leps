@@ -19,6 +19,7 @@ type onlineconfService interface {
 	Create(context.Context, int32, domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
 	Update(context.Context, int32, int, domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
 	Search(context.Context, domain.OnlineconfFilter) ([]domain.OnlineconfEntry, error)
+	Delete(context.Context, int32, int) error
 }
 
 type onlineconfHandler struct {
@@ -114,6 +115,19 @@ func (h *onlineconfHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, err := h.service.Update(r.Context(), userIDFromContext(r.Context()), int(id), domain.OnlineconfPatch{Scope: scope, Name: name, Value: body.Value})
 	onlineconfResponse(w, r, http.StatusOK, entry, err)
+}
+
+func (h *onlineconfHandler) delete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 32)
+	if err != nil || id <= 0 {
+		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
+		return
+	}
+	if err := h.service.Delete(r.Context(), userIDFromContext(r.Context()), int(id)); err != nil {
+		onlineconfResponse(w, r, 0, nil, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *onlineconfHandler) search(w http.ResponseWriter, r *http.Request) {

@@ -115,4 +115,11 @@ func TestOnlineconfAPI(t *testing.T) {
 	created = request("POST", path, lengthEntry+"128}", 201)
 	require.NoError(t, json.Unmarshal([]byte(created), &entry))
 	request("PATCH", path+"/"+strconv.Itoa(entry.ID), `{"value":"128"}`, 400)
+	lengthPath := path + "/" + strconv.Itoa(entry.ID)
+	request("DELETE", lengthPath, "", 204)
+	request("DELETE", lengthPath, "", 404)
+	request("DELETE", path+"/0", "", 400)
+	request("GET", lengthPath+"/history", "", 404)
+	require.NotContains(t, request("GET", path+"?name=max_query_length", "", 200), "max_query_length")
+	request("POST", path, lengthEntry+"64}", 201)
 }

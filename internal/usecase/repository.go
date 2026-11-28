@@ -147,4 +147,5 @@ type OnlineconfRepository interface {
 	Create(ctx context.Context, actor int32, entry domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
 	Update(ctx context.Context, actor int32, id int, patch domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
 	Search(ctx context.Context, filter domain.OnlineconfFilter) ([]domain.OnlineconfEntry, error)
+	Delete(ctx context.Context, actor int32, id int) error
 }
