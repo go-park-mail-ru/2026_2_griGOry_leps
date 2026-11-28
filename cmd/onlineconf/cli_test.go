@@ -10,9 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type cliTestKey struct{}
+
 func TestRunCLI_Granted(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	ctx := context.WithValue(context.Background(), struct{}{}, "cli")
+	ctx := context.WithValue(context.Background(), cliTestKey{}, "cli")
 	calls := 0
 	grant := func(gotCtx context.Context, id int32) (bool, error) {
 		calls++
