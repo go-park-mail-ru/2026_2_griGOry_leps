@@ -63,7 +63,7 @@ func validOnlineconfFlag(raw json.RawMessage) bool {
 }
 
 func (uc *OnlineconfUsecase) Create(
-	ctx context.Context, entry domain.OnlineconfEntry,
+	ctx context.Context, actor int32, entry domain.OnlineconfEntry,
 ) (domain.OnlineconfEntry, error) {
 	if !validOnlineconfScope(entry.Scope) || !validOnlineconfName(entry.Name) ||
 		!validOnlineconfKind(entry.Kind) || !json.Valid(entry.Value) {
@@ -79,11 +79,11 @@ func (uc *OnlineconfUsecase) Create(
 			return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
 		}
 	}
-	return uc.entries.Create(ctx, entry)
+	return uc.entries.Create(ctx, actor, entry)
 }
 
 func (uc *OnlineconfUsecase) Update(
-	ctx context.Context, id int, patch domain.OnlineconfPatch,
+	ctx context.Context, actor int32, id int, patch domain.OnlineconfPatch,
 ) (domain.OnlineconfEntry, error) {
 	if id <= 0 || (patch.Scope == nil && patch.Name == nil && patch.Value == nil) {
 		return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
@@ -98,7 +98,7 @@ func (uc *OnlineconfUsecase) Update(
 		return domain.OnlineconfEntry{}, domain.ErrInvalidOnlineconf
 	}
 
-	return uc.entries.Update(ctx, id, patch)
+	return uc.entries.Update(ctx, actor, id, patch)
 }
 
 func (uc *OnlineconfUsecase) Search(
@@ -111,4 +111,8 @@ func (uc *OnlineconfUsecase) Search(
 		return nil, domain.ErrInvalidOnlineconf
 	}
 	return uc.entries.Search(ctx, filter)
+}
+
+func (uc *OnlineconfUsecase) History(ctx context.Context, id int) ([]domain.OnlineconfChange, error) {
+	return uc.entries.History(ctx, id)
 }

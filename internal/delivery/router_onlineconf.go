@@ -25,12 +25,15 @@ func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler
 	admin := r.PathPrefix(onlineConfAdminPrefix).Subrouter()
 	admin.Use(noStore, session.RequireAuth, access.RequireAdmin)
 	admin.HandleFunc("/me", access.Me).Methods(http.MethodGet)
-	registerOnlineconfEntries(admin, "/entries", entries)
+	h := &onlineconfHandler{service: entries}
+	admin.HandleFunc("/entries/{id}/history", h.history).Methods(http.MethodGet)
+	admin.HandleFunc("/entries", h.search).Methods(http.MethodGet)
+	admin.HandleFunc("/entries", h.create).Methods(http.MethodPost)
+	admin.HandleFunc("/entries/{id}", h.update).Methods(http.MethodPatch)
 	admin.NotFoundHandler = http.HandlerFunc(notFound)
 	return r
 }
 
-// Ответы админки зависят от сессии и прав, в том числе 401 и 403.
 func noStore(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 type OnlineconfEntry struct {
@@ -31,3 +32,13 @@ var (
 	ErrOnlineconfMissing = errors.New("onlineconf entry not found")
 	ErrOnlineconfExists  = errors.New("onlineconf name already exists in scope")
 )
+
+type OnlineconfChange struct {
+	ID        int64            `json:"id"`
+	EntryID   int              `json:"entry_id"`
+	ActorID   int32            `json:"actor_id"`
+	Operation string           `json:"operation"`
+	ChangedAt time.Time        `json:"changed_at"`
+	Before    *OnlineconfEntry `json:"before"`
+	After     OnlineconfEntry  `json:"after"`
+}

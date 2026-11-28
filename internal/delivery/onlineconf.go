@@ -15,8 +15,9 @@ import (
 )
 
 type onlineconfService interface {
-	Create(context.Context, domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
-	Update(context.Context, int, domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
+	History(context.Context, int) ([]domain.OnlineconfChange, error)
+	Create(context.Context, int32, domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
+	Update(context.Context, int32, int, domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
 	Search(context.Context, domain.OnlineconfFilter) ([]domain.OnlineconfEntry, error)
 }
 
@@ -26,15 +27,9 @@ type onlineconfHandler struct {
 
 func NewOnlineconfRouter(service onlineconfService) http.Handler {
 	r := mux.NewRouter()
-	registerOnlineconfEntries(r, "/v1/entries", service)
-	return r
-}
-
-func registerOnlineconfEntries(r *mux.Router, path string, service onlineconfService) {
 	h := &onlineconfHandler{service: service}
-	r.HandleFunc(path, h.create).Methods(http.MethodPost)
-	r.HandleFunc(path+"/{id}", h.update).Methods(http.MethodPatch)
-	r.HandleFunc(path, h.search).Methods(http.MethodGet)
+	r.HandleFunc("/v1/entries", h.search).Methods(http.MethodGet)
+	return r
 }
 
 func onlineconfBody(r *http.Request, dst any) error {
@@ -80,7 +75,7 @@ func (h *onlineconfHandler) create(w http.ResponseWriter, r *http.Request) {
 		onlineconfResponse(w, r, 0, nil, err)
 		return
 	}
-	entry, err := h.service.Create(r.Context(), domain.OnlineconfEntry{Scope: body.Scope, Name: body.Name, Kind: body.Kind, Value: body.Value})
+	entry, err := h.service.Create(r.Context(), userIDFromContext(r.Context()), domain.OnlineconfEntry{Scope: body.Scope, Name: body.Name, Kind: body.Kind, Value: body.Value})
 	onlineconfResponse(w, r, http.StatusCreated, entry, err)
 }
 
@@ -117,7 +112,7 @@ func (h *onlineconfHandler) update(w http.ResponseWriter, r *http.Request) {
 		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
 		return
 	}
-	entry, err := h.service.Update(r.Context(), int(id), domain.OnlineconfPatch{Scope: scope, Name: name, Value: body.Value})
+	entry, err := h.service.Update(r.Context(), userIDFromContext(r.Context()), int(id), domain.OnlineconfPatch{Scope: scope, Name: name, Value: body.Value})
 	onlineconfResponse(w, r, http.StatusOK, entry, err)
 }
 
@@ -144,4 +139,14 @@ func (h *onlineconfHandler) search(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := h.service.Search(r.Context(), filter)
 	onlineconfResponse(w, r, http.StatusOK, entries, err)
+}
+
+func (h *onlineconfHandler) history(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 32)
+	if err != nil || id < 1 {
+		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
+		return
+	}
+	changes, err := h.service.History(r.Context(), int(id))
+	onlineconfResponse(w, r, http.StatusOK, changes, err)
 }

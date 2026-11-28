@@ -3,28 +3,53 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/csrf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 	"github.com/stretchr/testify/require"
 )
 
+type onlineconfTestAdmin struct{}
+
+func (onlineconfTestAdmin) Me(context.Context, string) (domain.User, error) {
+	return domain.User{ID: 1}, nil
+}
+
+func (onlineconfTestAdmin) CheckAdmin(context.Context, int32) error { return nil }
+
 func TestOnlineconfAPI(t *testing.T) {
-	router := delivery.NewOnlineconfRouter(usecase.NewOnlineconfUsecase(NewOnlineconfRepository(newTestPool(t))))
+	db := newTestPool(t)
+	_, err := db.Exec(`INSERT INTO user_account(first_name,email,phone_number,password_hash) VALUES ('Admin','audit@example.test','+79000000000','unused')`)
+	require.NoError(t, err)
+	service := usecase.NewOnlineconfUsecase(NewOnlineconfRepository(db))
+	tokens := csrf.New([]byte("test-secret"), time.Hour)
+	admin := onlineconfTestAdmin{}
+	router := http.NewServeMux()
+	router.Handle("/v1/", delivery.NewOnlineconfRouter(service))
+	router.Handle("/", delivery.NewOnlineConfRouter("", delivery.NewSessionMiddleware(admin),
+		delivery.NewCSRFHandler(tokens, false), delivery.NewOnlineConfAccessHandler(admin), service))
 	request := func(method, path, body string, status int) string {
 		t.Helper()
 		res := httptest.NewRecorder()
-		router.ServeHTTP(res, httptest.NewRequest(method, path, strings.NewReader(body)))
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: "session_id", Value: "test"})
+		req.Header.Set("X-CSRF-Token", tokens.Generate("session:test", time.Now()))
+		router.ServeHTTP(res, req)
 		require.Equal(t, status, res.Code, res.Body.String())
 		return res.Body.String()
 	}
-	const path = "/v1/entries"
+	const path = "/api/onlineconf/admin/entries"
+	request("POST", "/v1/entries", "{}", 405)
+	request("PATCH", "/v1/entries/1", "{}", 404)
 	for _, query := range []string{"scope=admin", "scope=%ZZ", "scope=search&scope=admin", "scop=search"} {
 		request("GET", path+"?"+query, "", 400)
 	}
@@ -33,6 +58,14 @@ func TestOnlineconfAPI(t *testing.T) {
 	request("POST", path, flag, 409)
 	request("PATCH", path+"/1", `{"value":true}`, 200)
 	request("PATCH", path+"/1", `{"value":null}`, 400)
+	var history []domain.OnlineconfChange
+	require.NoError(t, json.Unmarshal([]byte(request("GET", path+"/1/history", "", 200)), &history))
+	require.Len(t, history, 2)
+	require.Equal(t, int32(1), history[0].ActorID)
+	require.Equal(t, "false", string(history[0].Before.Value))
+	require.Equal(t, "true", string(history[0].After.Value))
+	require.Nil(t, history[1].Before)
+	request("GET", path+"/999/history", "", 404)
 	require.JSONEq(t, `[{"id":1,"name":"my_flag","scope":"auth","kind":"flag","value":true}]`,
 		request("GET", path+"?name=Y_F&scope=auth&kind=flag", "", 200))
 	created := request("POST", path, `{"name":"cfg","scope":"ads","kind":"config","value":[1,2]}`, 201)
@@ -51,7 +84,7 @@ func TestOnlineconfAPI(t *testing.T) {
 	require.JSONEq(t, rollout, string(entry.Value))
 	server := httptest.NewServer(router)
 	defer server.Close()
-	cache := onlineconf.NewSearchCache(server.URL + path)
+	cache := onlineconf.NewSearchCache(server.URL + "/v1/entries")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
