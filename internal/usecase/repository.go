@@ -53,7 +53,6 @@ type Mailer interface {
 	SendEmailVerification(ctx context.Context, to, link string) error
 }
 
-// EmailVerifier вызывается внутри транзакции, под блокировкой пользователя.
 type EmailVerifier interface {
 	IssueLink(ctx context.Context, userID int32, email string) (send func(), err error)
 	RevokeLinks(ctx context.Context, userID int32) error
@@ -136,4 +135,10 @@ type OrderRepository interface {
 	UpdatePayment(ctx context.Context, o domain.Order) error
 	MarkSold(ctx context.Context, orderID int32) error
 	Due(ctx context.Context, now time.Time) ([]int32, error)
+}
+
+type OnlineconfRepository interface {
+	Create(ctx context.Context, entry domain.OnlineconfEntry) (domain.OnlineconfEntry, error)
+	Update(ctx context.Context, id int, patch domain.OnlineconfPatch) (domain.OnlineconfEntry, error)
+	Search(ctx context.Context, filter domain.OnlineconfFilter) ([]domain.OnlineconfEntry, error)
 }
