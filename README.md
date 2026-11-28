@@ -26,11 +26,12 @@ gRPC metadata `x-request-id`. В JSON-логах сервисов он дост�
 go run ./cmd/auth
 go run ./cmd/ads
 go run ./cmd/search
+go run ./cmd/onlineconf
 go run ./cmd/gateway
 ```
 
 Общие настройки берутся из `.env`. `CSRF_SECRET` обязателен и должен совпадать
-у auth и ads. Используйте случайный секрет, не публикуйте его в репозитории.
+у auth, ads и onlineconf. Используйте случайный секрет, не публикуйте его в репозитории.
 
 ```dotenv
 GATEWAY_PORT=8080
@@ -39,9 +40,11 @@ AUTH_GRPC_ADDR=127.0.0.1:9091
 ADS_GRPC_ADDR=127.0.0.1:9092
 ADS_PORT=8082
 SEARCH_PORT=8083
+ONLINECONF_PORT=8084
 AUTH_URL=http://127.0.0.1:8081
 ADS_URL=http://127.0.0.1:8082
 SEARCH_URL=http://127.0.0.1:8083
+ONLINECONF_URL=http://127.0.0.1:8084
 FRONTEND_ORIGIN=http://localhost:5173
 PUBLIC_URL=http://localhost:8080
 COOKIE_SECURE=false
@@ -55,11 +58,13 @@ PUBLIC_URL указывает на gateway, включая ссылки тест
 | auth | Пользователи, профили, сессии, пароли, подтверждение email, аватары |
 | ads | Объявления, фотографии, категории, продавцы и отзывы, адреса доставки, корзина, заказы, оплата |
 | search | Поиск опубликованных объявлений через gRPC-вызов в ads |
+| onlineconf | Записи OnlineConf (`/v1/entries`, только локально) и административный API с проверкой прав (`/api/onlineconf/admin/*`) |
 | gateway | Маршрутизация запросов; бизнес-данных нет |
 
-Gateway направляет `/api/search` и `/api/search/settings` в search, операции аккаунта и аватары —
+Gateway направляет `/api/onlineconf` и `/api/onlineconf/*` в onlineconf,
+`/api/search` и `/api/search/settings` — в search, операции аккаунта и аватары —
 в auth, каталог GET /api/listings и остальные прикладные запросы — в ads. Внутренние маршруты /internal/
-через gateway недоступны. HTTP-порты auth, ads и search слушают только
+через gateway недоступны. HTTP-порты auth, ads, search и onlineconf слушают только
 127.0.0.1, внешний трафик принимает gateway.
 
 Развёртывание и откат на сервере описаны в [инструкции для systemd](deploy/backend/README.md).
@@ -73,7 +78,7 @@ Auth возвращает ID пользователя и признак подт
 `protoc-gen-go-grpc`, чтобы обновить Go-код в `internal/gen/auth/v1`.
 Таймаут — 1 секунда. Недействительная сессия даёт 401,
 недоступность auth — 503, таймаут — 504, некорректный ответ — 502.
-CSRF-токен, полученный у auth через gateway, проверяется ads тем же секретом.
+CSRF-токен, полученный у auth через gateway, проверяется ads и onlineconf тем же секретом.
 
 `GET /api/search` ищет опубликованные объявления по подстроке в названии и описании
 без учёта регистра. Сервис `search` вызывает `ads.v1.AdsService/SearchPublished`
@@ -134,6 +139,26 @@ Auth и ads пока используют общую PostgreSQL-схему: су
 каталог, корзину другого пользователя, оформление заказа и тестовую оплату.
 Публикация и заказ требуют подтверждённого email. Если SMTP не настроен,
 ссылки подтверждения выводятся в лог auth.
+
+### Первый администратор OnlineConf
+
+Перед запуском onlineconf примените миграции 15 и 16 (`make migrate-up`). Войдите
+в GoGet и возьмите `N` из поля `id` ответа `GET /api/me`. В корне backend выполните:
+
+```bash
+go run ./cmd/onlineconf grant-admin --user-id N
+```
+
+Команда использует `DATABASE_URL` из `.env`, выдаёт право и печатает
+`granted user N`; при повторном вызове — `user N is already an admin`.
+Она идемпотентна. Право выдаётся только существующему аккаунту (внешний ключ на
+`user_account`): иначе команда печатает `user N not found` и завершается с кодом 1.
+
+`GET /api/onlineconf/admin/me` использует обычную cookie `session_id` GoGet:
+без действующей сессии — 401, без права OnlineConf — 403, с правом —
+200 `{"user_id":N}`. Право проверяется в БД на каждом запросе. Для отзыва
+удалите строку `DELETE FROM onlineconf_admin WHERE user_id = N` — уже следующий
+запрос получит 403. Административный API выдачи и отзыва прав пока отсутствует.
 
 ### Модерация объявлений
 
@@ -264,13 +289,15 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
    | Переменная | Что задаёт | По умолчанию |
    |---|---|---|
    | `GATEWAY_PORT` | порт общего HTTP-входа | `8080` |
+   | `ONLINECONF_PORT` | локальный HTTP-порт onlineconf | `8084` |
+   | `ONLINECONF_URL` | адрес onlineconf для gateway | `http://127.0.0.1:8084` |
    | `FRONTEND_ORIGIN` | адрес фронта, с которого разрешены запросы (CORS). Должен совпадать с адресом в браузере вплоть до порта | `http://localhost:5173` |
    | `PUBLIC_URL` | адрес бэкенда, который видит браузер. Из него собирается ссылка на тестовую страницу оплаты | `http://localhost:8080` |
    | `DELIVERY_COURIER_PRICE` | цена курьерской доставки в рублях | `390` |
    | `DELIVERY_PICKUP_POINT_PRICE` | цена доставки в пункт выдачи в рублях | `190` |
    | `COOKIE_SECURE` | флаг `Secure` у cookie сессии, `true` только при HTTPS | `false` |
    | `LOG_LEVEL` | минимальный уровень логов: `debug`, `info`, `warn`, `error`. На `debug` в лог пишутся и запросы к базе | `info` |
-   | `CSRF_SECRET` | обязательный общий ключ подписи CSRF-токенов для auth и ads | — |
+   | `CSRF_SECRET` | обязательный общий ключ подписи CSRF-токенов для auth, ads и onlineconf | — |
    | `DATABASE_URL` | адрес базы | `postgres://postgres:12345@127.0.0.1:5432/goget?sslmode=disable` |
    | `UPLOAD_DIR` | папка для загруженных файлов (аватарок), создаётся сама | `uploads` |
    | `SMTP_HOST` | почтовый сервер для писем сброса пароля. Если не задан, ссылка из письма пишется в лог | — |
@@ -303,6 +330,7 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
    make run-auth
    make run-ads
    make run-search
+   make run-onlineconf
    make run-gateway
    ```
 
@@ -316,7 +344,8 @@ UPDATE user_account SET is_moderator = true WHERE user_id = 42;
 | `make run-auth` | запуск аккаунтов и сессий |
 | `make run-ads` | запуск объявлений и заказов |
 | `make run-search` | запуск поиска |
-| `make build` | сборка четырёх программ в `bin/` |
+| `make run-onlineconf` | запуск административного API OnlineConf |
+| `make build` | сборка пяти программ в `bin/` |
 | `make test` | юнит-тесты, база не нужна |
 | `make test-integration` | тесты репозиториев на настоящей базе из `TEST_DATABASE_URL` |
 | `make tidy` | обновление `go.mod` и `go.sum` |
@@ -373,6 +402,7 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `GET` | `/api/sellers/{id}/listings` | активные объявления продавца и его разделы |
 | `GET` | `/api/sellers/{id}/reviews` | отзывы о продавце, сводка рейтинга |
 | `POST` | `/api/sellers/{id}/reports` | пожаловаться на продавца |
+| `GET` | `/api/onlineconf/admin/me` | проверка доступа к OnlineConf, требует права администратора |
 | `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
 
 Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.
@@ -400,6 +430,7 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 cmd/auth/            аккаунты и сессии
 cmd/ads/             объявления и заказы
 cmd/search/          HTTP API поиска опубликованных объявлений
+cmd/onlineconf/      административный API OnlineConf и CLI выдачи права
 cmd/gateway/         общий HTTP-вход
 internal/config/     чтение переменных окружения
 internal/domain/     модели и ошибки

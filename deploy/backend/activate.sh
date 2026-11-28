@@ -4,11 +4,17 @@ set -euo pipefail
 root=/opt/goget/backend
 legacy=gogetbackend.service
 gateway=goget-gateway.service
-services=(goget-backend@auth.service goget-backend@ads.service goget-backend@search.service "$gateway")
+services=(goget-backend@auth.service goget-backend@ads.service goget-backend@search.service goget-backend@onlineconf.service "$gateway")
+all_services=("${services[@]}")
+legacy_release=false
+if [[ ${1:-} == --legacy ]]; then
+    legacy_release=true
+    shift
+fi
 release=${1:-}
 
-if (( EUID != 0 )) || [[ ! $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
-    echo "Usage: sudo $0 RELEASE" >&2
+if (( EUID != 0 )) || (( $# != 1 )) || [[ ! $release =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
+    echo "Usage: sudo $0 [--legacy] RELEASE" >&2
     exit 2
 fi
 
@@ -16,12 +22,33 @@ exec 9>/run/lock/goget-backend.lock
 flock -n 9 || { echo "Another GoGet activation is running" >&2; exit 1; }
 
 target="$root/releases/$release"
-for service in auth ads search gateway; do
+required=(auth ads search gateway)
+if $legacy_release; then
+    if [[ -e "$target/onlineconf" ]]; then
+        echo "Legacy release must not contain onlineconf" >&2
+        exit 1
+    fi
+else
+    required+=(onlineconf)
+fi
+for service in "${required[@]}"; do
     if [[ ! -x "$target/$service" ]]; then
         echo "Missing executable: $target/$service" >&2
         exit 1
     fi
 done
+
+select_services() {
+    services=(goget-backend@auth.service goget-backend@ads.service goget-backend@search.service)
+    health_args=()
+    if $1; then
+        health_args=(--legacy)
+    else
+        services+=(goget-backend@onlineconf.service)
+    fi
+    services+=("$gateway")
+}
+select_services "$legacy_release"
 
 previous=''
 if [[ -L "$root/current" ]]; then
@@ -58,7 +85,7 @@ rollback() {
     fi
 
     echo "Activation failed. Restoring the previous backend." >&2
-    systemctl stop "${services[@]}" || rollback_failed=1
+    systemctl stop "${all_services[@]}" || rollback_failed=1
     if ! $gateway_enabled; then systemctl disable "$gateway" || rollback_failed=1; fi
     if $legacy_enabled; then systemctl enable "$legacy" || rollback_failed=1; fi
     rm -f -- "$link" || rollback_failed=1
@@ -72,8 +99,13 @@ rollback() {
         curl --silent --show-error --fail --retry 5 --retry-connrefused --max-time 5 \
             http://127.0.0.1:8000/api/health >/dev/null || rollback_failed=1
     elif [[ -n $previous ]]; then
+        if [[ -e "$previous/onlineconf" ]]; then
+            select_services false
+        else
+            select_services true
+        fi
         systemctl start "${services[@]}" &&
-            ALLOW_SEARCH_STUB=1 "$root/bin/health.sh" || rollback_failed=1
+            ALLOW_SEARCH_STUB=1 "$root/bin/health.sh" "${health_args[@]}" || rollback_failed=1
     fi
     if (( rollback_failed )); then echo "Rollback requires operator attention" >&2; fi
     exit "$result"
@@ -89,8 +121,11 @@ if $legacy_running; then
 fi
 
 select_release "$target"
+if $legacy_release; then
+    systemctl stop goget-backend@onlineconf.service
+fi
 systemctl restart "${services[@]}"
-"$root/bin/health.sh" &
+"$root/bin/health.sh" "${health_args[@]}" &
 health_pid=$!
 if wait "$health_pid"; then
     health_pid=''

@@ -1,9 +1,9 @@
 # Мониторинг GoGet
 
-Prometheus каждые 15 секунд опрашивает `/metrics` трёх сервисов, Node
+Prometheus каждые 15 секунд опрашивает `/metrics` четырёх сервисов и gateway, Node
 Exporter и собственный endpoint. Сервисы отдают стандартные метрики Go
 и процесса, Node Exporter — метрики хоста. Имена jobs в Prometheus:
-`auth`, `ads`, `search`, `node`, `prometheus`.
+`auth`, `ads`, `search`, `onlineconf`, `gateway`, `node`, `prometheus`.
 
 ## Установка на сервере
 
@@ -43,7 +43,7 @@ curl -fsSG 'http://127.0.0.1:9090/api/v1/query' \
   --data-urlencode 'query=up' | jq '.data.result[] | {job: .metric.job, up: .value[1]}'
 ```
 
-Для всех пяти jobs ожидается `up=1`. Prometheus доступен на
+Для всех семи jobs ожидается `up=1`. Prometheus доступен на
 `127.0.0.1:9090`. Для просмотра с другого компьютера используйте
 SSH-туннель на этот порт. Node Exporter слушает `127.0.0.1:9100`.
 Gateway отвечает `404` на публичный запрос `/metrics`.

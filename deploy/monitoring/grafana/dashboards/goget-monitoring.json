@@ -33,10 +33,10 @@
           "uid": "goget-prometheus"
         },
         "query": {
-          "query": "label_values(up{job=~\"auth|ads|search\"}, job)",
+          "query": "label_values(up{job=~\"auth|ads|search|onlineconf\"}, job)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "definition": "label_values(up{job=~\"auth|ads|search\"}, job)",
+        "definition": "label_values(up{job=~\"auth|ads|search|onlineconf\"}, job)",
         "refresh": 1,
         "sort": 1,
         "multi": false,
@@ -56,10 +56,10 @@
           "uid": "goget-prometheus"
         },
         "query": {
-          "query": "label_values(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\"}, method)",
+          "query": "label_values(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\"}, method)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "definition": "label_values(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\"}, method)",
+        "definition": "label_values(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\"}, method)",
         "refresh": 1,
         "sort": 1,
         "multi": false,
@@ -79,10 +79,10 @@
           "uid": "goget-prometheus"
         },
         "query": {
-          "query": "label_values(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\"}, route)",
+          "query": "label_values(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\"}, route)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "definition": "label_values(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\"}, route)",
+        "definition": "label_values(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\"}, route)",
         "refresh": 1,
         "sort": 1,
         "multi": false,
@@ -160,7 +160,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=~\"auth|ads|search|node|prometheus\"}",
+          "expr": "up{job=~\"auth|ads|search|onlineconf|node|prometheus\"}",
           "legendFormat": "{{job}}",
           "refId": "A",
           "instant": true,
@@ -217,7 +217,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval]))",
+          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval]))",
           "legendFormat": "{{job}}",
           "range": true
         }
@@ -259,13 +259,13 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\",code=~\"4..\"}[$__rate_interval])) or (0 * sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
+          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\",code=~\"4..\"}[$__rate_interval])) or (0 * sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
           "legendFormat": "{{job}} · 4xx",
           "range": true
         },
         {
           "refId": "B",
-          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\",code=~\"5..\"}[$__rate_interval])) or (0 * sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
+          "expr": "sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\",code=~\"5..\"}[$__rate_interval])) or (0 * sum by (job) (rate(goget_http_requests_total{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
           "legendFormat": "{{job}} · 5xx",
           "range": true
         }
@@ -307,7 +307,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(goget_http_request_duration_seconds_bucket{job=~\"auth|ads|search\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(goget_http_request_duration_seconds_bucket{job=~\"auth|ads|search|onlineconf\",job=~\"${service}\",method=~\"${method}\",route=~\"${route}\"}[$__rate_interval])))",
           "legendFormat": "{{job}}",
           "range": true
         }

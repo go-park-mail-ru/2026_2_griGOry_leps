@@ -52,7 +52,7 @@ func TestSearchOnlineConfRefreshesSettingsAndSearchTogether(t *testing.T) {
 	settings := onlineconf.NewSearchCache(config.URL)
 	search := httptest.NewServer(NewSearchRouter("http://front.test", ads, NewSessionMiddleware(auth), settings))
 	t.Cleanup(search.Close)
-	router, err := gateway.New(config.URL, config.URL, search.URL, "http://front.test")
+	router, err := gateway.New(config.URL, config.URL, search.URL, config.URL, "http://front.test")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())

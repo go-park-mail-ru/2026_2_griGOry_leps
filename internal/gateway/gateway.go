@@ -26,7 +26,11 @@ func IsSearchPath(p string) bool {
 	return p == "/api/search" || p == "/api/search/settings"
 }
 
-func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
+func IsOnlineConfPath(p string) bool {
+	return p == "/api/onlineconf" || strings.HasPrefix(p, "/api/onlineconf/")
+}
+
+func New(authURL, adsURL, searchURL, onlineconfURL, origin string) (http.Handler, error) {
 	auth, err := newProxy(authURL)
 	if err != nil {
 		return nil, err
@@ -36,6 +40,10 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		return nil, err
 	}
 	search, err := newProxy(searchURL)
+	if err != nil {
+		return nil, err
+	}
+	onlineconf, err := newProxy(onlineconfURL)
 	if err != nil {
 		return nil, err
 	}
@@ -63,6 +71,8 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 			auth.ServeHTTP(w, r)
 		case IsSearchPath(p):
 			search.ServeHTTP(w, r)
+		case IsOnlineConfPath(p):
+			onlineconf.ServeHTTP(w, r)
 		default:
 			ads.ServeHTTP(w, r)
 		}
@@ -78,8 +88,10 @@ func MetricRoute(r *http.Request) string {
 		return "blocked"
 	case IsAuthPath(p):
 		return "auth"
-	case p == "/api/search":
+	case IsSearchPath(p):
 		return "search"
+	case IsOnlineConfPath(p):
+		return "onlineconf"
 	default:
 		return "ads"
 	}

@@ -94,3 +94,7 @@ type FavoritesUsecase interface {
 	Add(ctx context.Context, userID, listingID int32) error
 	Remove(ctx context.Context, userID, listingID int32) error
 }
+
+type OnlineConfAccess interface {
+	CheckAdmin(ctx context.Context, userID int32) error
+}

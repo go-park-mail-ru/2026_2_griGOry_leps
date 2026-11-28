@@ -1029,3 +1029,41 @@ func (mr *MockFavoritesUsecaseMockRecorder) Remove(ctx, userID, listingID any) *
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Remove", reflect.TypeOf((*MockFavoritesUsecase)(nil).Remove), ctx, userID, listingID)
 }
+
+// MockOnlineConfAccess is a mock of OnlineConfAccess interface.
+type MockOnlineConfAccess struct {
+	ctrl     *gomock.Controller
+	recorder *MockOnlineConfAccessMockRecorder
+	isgomock struct{}
+}
+
+// MockOnlineConfAccessMockRecorder is the mock recorder for MockOnlineConfAccess.
+type MockOnlineConfAccessMockRecorder struct {
+	mock *MockOnlineConfAccess
+}
+
+// NewMockOnlineConfAccess creates a new mock instance.
+func NewMockOnlineConfAccess(ctrl *gomock.Controller) *MockOnlineConfAccess {
+	mock := &MockOnlineConfAccess{ctrl: ctrl}
+	mock.recorder = &MockOnlineConfAccessMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOnlineConfAccess) EXPECT() *MockOnlineConfAccessMockRecorder {
+	return m.recorder
+}
+
+// CheckAdmin mocks base method.
+func (m *MockOnlineConfAccess) CheckAdmin(ctx context.Context, userID int32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckAdmin", ctx, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckAdmin indicates an expected call of CheckAdmin.
+func (mr *MockOnlineConfAccessMockRecorder) CheckAdmin(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAdmin", reflect.TypeOf((*MockOnlineConfAccess)(nil).CheckAdmin), ctx, userID)
+}

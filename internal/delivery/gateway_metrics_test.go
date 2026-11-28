@@ -12,7 +12,7 @@ import (
 
 func TestBlockedRequestsGroupUnknownMethods(t *testing.T) {
 	upstream := "http://upstream.invalid"
-	gw, err := gateway.New(upstream, upstream, upstream, "")
+	gw, err := gateway.New(upstream, upstream, upstream, upstream, "")
 	require.NoError(t, err)
 	handler := WithGatewayMetrics(gw)
 	for _, method := range []string{"OTHER", http.MethodGet} {

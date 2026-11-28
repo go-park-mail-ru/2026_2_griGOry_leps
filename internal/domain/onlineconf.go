@@ -26,6 +26,7 @@ type OnlineconfFilter struct {
 }
 
 var (
+	ErrInvalidUserID     = errors.New("user_id must be positive")
 	ErrInvalidOnlineconf = errors.New("invalid onlineconf entry or filter")
 	ErrOnlineconfMissing = errors.New("onlineconf entry not found")
 	ErrOnlineconfExists  = errors.New("onlineconf name already exists in scope")

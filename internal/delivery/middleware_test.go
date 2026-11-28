@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -140,4 +141,17 @@ func TestAccessLog_ServerErrorLevel(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 
 	require.Equal(t, "ERROR", accessRecord(t, buf)["level"])
+}
+
+func TestAccessLog_ClientCanceledServerErrorIsInfo(t *testing.T) {
+	buf := captureLogs(t)
+	h := accessLogMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx))
+
+	require.Equal(t, "INFO", accessRecord(t, buf)["level"])
 }

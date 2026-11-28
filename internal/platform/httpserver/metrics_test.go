@@ -23,3 +23,12 @@ func TestMetricsHandler(t *testing.T) {
 	handler.ServeHTTP(api, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 	require.Equal(t, http.StatusNoContent, api.Code)
 }
+
+func TestMetricsEnabled(t *testing.T) {
+	for _, name := range []string{"auth", "ads", "search", "onlineconf"} {
+		require.True(t, metricsEnabled(name), name)
+	}
+	for _, name := range []string{"gateway", "unknown", ""} {
+		require.False(t, metricsEnabled(name), name)
+	}
+}
