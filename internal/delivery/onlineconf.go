@@ -25,12 +25,16 @@ type onlineconfHandler struct {
 }
 
 func NewOnlineconfRouter(service onlineconfService) http.Handler {
-	h := &onlineconfHandler{service: service}
 	r := mux.NewRouter()
-	r.HandleFunc("/v1/entries", h.create).Methods(http.MethodPost)
-	r.HandleFunc("/v1/entries/{id}", h.update).Methods(http.MethodPatch)
-	r.HandleFunc("/v1/entries", h.search).Methods(http.MethodGet)
+	registerOnlineconfEntries(r, "/v1/entries", service)
 	return r
+}
+
+func registerOnlineconfEntries(r *mux.Router, path string, service onlineconfService) {
+	h := &onlineconfHandler{service: service}
+	r.HandleFunc(path, h.create).Methods(http.MethodPost)
+	r.HandleFunc(path+"/{id}", h.update).Methods(http.MethodPatch)
+	r.HandleFunc(path, h.search).Methods(http.MethodGet)
 }
 
 func onlineconfBody(r *http.Request, dst any) error {
@@ -65,6 +69,7 @@ func onlineconfResponse(w http.ResponseWriter, r *http.Request, status int, data
 }
 
 func (h *onlineconfHandler) create(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var body struct {
 		Scope string          `json:"scope"`
 		Name  string          `json:"name"`
@@ -96,6 +101,7 @@ func (h *onlineconfHandler) update(w http.ResponseWriter, r *http.Request) {
 		onlineconfResponse(w, r, 0, nil, domain.ErrInvalidOnlineconf)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 	var body struct {
 		Scope json.RawMessage `json:"scope"`
 		Name  json.RawMessage `json:"name"`
