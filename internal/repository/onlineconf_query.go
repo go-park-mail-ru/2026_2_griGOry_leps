@@ -24,6 +24,17 @@ const updateConf = `
  )
  SELECT id,scope,name,kind,value FROM updated`
 
+const deleteConf = `
+ WITH previous AS (
+    SELECT * FROM onlineconf_entries WHERE id=$1 FOR UPDATE
+ ), deleted AS (
+    DELETE FROM onlineconf_entries e USING previous p WHERE e.id=p.id RETURNING e.id
+ ), logged AS (
+    INSERT INTO onlineconf_entry_history (entry_id,actor_id,operation,before_data)
+    SELECT p.id,$2,'delete',to_jsonb(p) FROM previous p JOIN deleted USING (id)
+ )
+ SELECT id FROM deleted`
+
 const historyConf = `
  SELECT COALESCE((
     SELECT jsonb_agg(jsonb_build_object(

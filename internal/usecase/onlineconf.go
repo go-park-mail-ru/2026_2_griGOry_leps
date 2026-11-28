@@ -101,6 +101,13 @@ func (uc *OnlineconfUsecase) Update(
 	return uc.entries.Update(ctx, actor, id, patch)
 }
 
+func (uc *OnlineconfUsecase) Delete(ctx context.Context, actor int32, id int) error {
+	if id <= 0 {
+		return domain.ErrInvalidOnlineconf
+	}
+	return uc.entries.Delete(ctx, actor, id)
+}
+
 func (uc *OnlineconfUsecase) Search(
 	ctx context.Context, filter domain.OnlineconfFilter,
 ) ([]domain.OnlineconfEntry, error) {

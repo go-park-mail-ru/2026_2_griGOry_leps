@@ -30,6 +30,7 @@ func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler
 	admin.HandleFunc("/entries", h.search).Methods(http.MethodGet)
 	admin.HandleFunc("/entries", h.create).Methods(http.MethodPost)
 	admin.HandleFunc("/entries/{id}", h.update).Methods(http.MethodPatch)
+	admin.HandleFunc("/entries/{id}", h.delete).Methods(http.MethodDelete)
 	admin.NotFoundHandler = http.HandlerFunc(notFound)
 	return r
 }

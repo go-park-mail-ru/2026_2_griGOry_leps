@@ -220,6 +220,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/OnlineConfError' }
         '409': { $ref: '#/components/responses/OnlineConfConflict' }
+    delete:
+      tags: [OnlineConf]
+      operationId: deleteOnlineConfEntry
+      summary: Удалить запись
+      description: |
+        Удаляет конфиг или фича-флаг. Удаление записывается в историю изменений;
+        продуктовые сервисы перестают видеть запись после ближайшего обновления кэша.
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int32, minimum: 1 }
+      responses:
+        '204': { description: Запись удалена }
+        '400': { $ref: '#/components/responses/OnlineConfBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnlineConfError' }
 
   /health:
     get:

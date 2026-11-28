@@ -64,6 +64,12 @@ func (r *OnlineconfRepository) Update(
 	return result, onlineconfWriteError(err)
 }
 
+func (r *OnlineconfRepository) Delete(ctx context.Context, actor int32, id int) error {
+	var deleted int
+	err := r.db.QueryRowContext(ctx, deleteConf, id, actor).Scan(&deleted)
+	return onlineconfWriteError(err)
+}
+
 func (r *OnlineconfRepository) Search(
 	ctx context.Context, filter domain.OnlineconfFilter,
 ) ([]domain.OnlineconfEntry, error) {
