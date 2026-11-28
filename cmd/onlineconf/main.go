@@ -76,9 +76,10 @@ func run(cfg *config.Config) error {
 	defer func() { _ = checker.Close() }()
 	access := delivery.NewOnlineConfAccessHandler(usecase.NewOnlineConfAccessUsecase(admins))
 	csrfHandler := delivery.NewCSRFHandler(csrf.New([]byte(cfg.CSRFSecret), 24*time.Hour), cfg.CookieSecure)
-	admin := delivery.NewOnlineConfRouter(cfg.FrontendOrigin, delivery.NewSessionMiddleware(checker), csrfHandler, access)
-	entries := delivery.NewOnlineconfRouter(usecase.NewOnlineconfUsecase(repository.NewOnlineconfRepository(pool)))
-	// /v1/entries читает search по локальному адресу; gateway туда не проксирует, CSRF и сессия к нему не относятся.
+	configs := usecase.NewOnlineconfUsecase(repository.NewOnlineconfRepository(pool))
+	admin := delivery.NewOnlineConfRouter(cfg.FrontendOrigin, delivery.NewSessionMiddleware(checker), csrfHandler, access, configs)
+	entries := delivery.NewOnlineconfRouter(configs)
+	// Поиск читает /v1/entries через локальный порт. Браузер обращается к административному API через gateway.
 	router := http.NewServeMux()
 	router.Handle("/v1/", entries)
 	router.Handle("/", admin)

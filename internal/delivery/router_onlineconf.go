@@ -8,13 +8,13 @@ import (
 
 const onlineConfAdminPrefix = "/api/onlineconf/admin"
 
-func NewOnlineConfRouter(frontendOrigin string, session *SessionMiddleware, csrfHandler *CSRFHandler, access *OnlineConfAccessHandler) http.Handler {
-	r := newOnlineConfAPIRouter(session, csrfHandler, access)
+func NewOnlineConfRouter(frontendOrigin string, session *SessionMiddleware, csrfHandler *CSRFHandler, access *OnlineConfAccessHandler, entries onlineconfService) http.Handler {
+	r := newOnlineConfAPIRouter(session, csrfHandler, access, entries)
 	timed := http.TimeoutHandler(r, requestTimeout, `{"error":"request timeout"}`)
 	return requestIDMiddleware(accessLogMiddleware(corsMiddleware(frontendOrigin, jsonContentType(timed))))
 }
 
-func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler, access *OnlineConfAccessHandler) *mux.Router {
+func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler, access *OnlineConfAccessHandler, entries onlineconfService) *mux.Router {
 	r := newAPIRouter()
 	r.Use(csrfHandler.Middleware)
 	r.HandleFunc("/api/health", func(w http.ResponseWriter, req *http.Request) {
@@ -25,6 +25,7 @@ func newOnlineConfAPIRouter(session *SessionMiddleware, csrfHandler *CSRFHandler
 	admin := r.PathPrefix(onlineConfAdminPrefix).Subrouter()
 	admin.Use(noStore, session.RequireAuth, access.RequireAdmin)
 	admin.HandleFunc("/me", access.Me).Methods(http.MethodGet)
+	registerOnlineconfEntries(admin, "/entries", entries)
 	admin.NotFoundHandler = http.HandlerFunc(notFound)
 	return r
 }

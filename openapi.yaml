@@ -8,7 +8,8 @@ info:
     - JSON, поля в snake_case. Даты — ISO 8601 (UTC).
     - Идентификаторы — целые числа (как в БД).
     - Цена и любые суммы — строка с двумя знаками после точки (`"15000.00"`), валюта всегда RUB.
-    - Ошибки — плоский объект `{"error": "текст"}`, без RFC 9457 и машиночитаемых кодов.
+    - Ошибки обычно имеют формат `{"error": "текст"}`. Ошибки записей OnlineConf
+      могут возвращать `{"error": {"code": "код", "message": "текст"}}`.
       У ошибок валидации есть `field` — имя поля запроса; проверки идут по порядку,
       отдаётся первая сработавшая ошибка. У некоторых 409 есть дополнительные поля
       (см. схему `Error`).
@@ -124,6 +125,101 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
               example: { error: authentication service timeout }
+
+  /onlineconf/admin/entries:
+    get:
+      tags: [OnlineConf]
+      operationId: listOnlineConfEntries
+      summary: Найти конфиги и фича-флаги
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: scope
+          in: query
+          schema: { $ref: '#/components/schemas/OnlineConfScope' }
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/OnlineConfKind' }
+        - name: name
+          in: query
+          description: Часть названия без учёта регистра.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Список подходящих записей
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OnlineConfEntry' }
+        '400': { $ref: '#/components/responses/OnlineConfBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [OnlineConf]
+      operationId: createOnlineConfEntry
+      summary: Создать конфиг или фича-флаг
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/OnlineConfFields'
+                - type: object
+                  required: [scope, name, kind, value]
+                  properties:
+                    kind: { $ref: '#/components/schemas/OnlineConfKind' }
+      responses:
+        '201':
+          description: Созданная запись
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnlineConfEntry' }
+        '400': { $ref: '#/components/responses/OnlineConfBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/OnlineConfConflict' }
+
+  /onlineconf/admin/entries/{id}:
+    patch:
+      tags: [OnlineConf]
+      operationId: updateOnlineConfEntry
+      summary: Обновить скоуп, название или значение записи
+      security:
+        - sessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int32, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/OnlineConfFields'
+                - minProperties: 1
+      responses:
+        '200':
+          description: Обновлённая запись
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnlineConfEntry' }
+        '400': { $ref: '#/components/responses/OnlineConfBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Запись не найдена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnlineConfError' }
+        '409': { $ref: '#/components/responses/OnlineConfConflict' }
 
   /health:
     get:
@@ -1913,6 +2009,16 @@ components:
       schema: { type: integer, minimum: 0, default: 0 }
 
   responses:
+    OnlineConfBadRequest:
+      description: Недопустимые параметры запроса
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OnlineConfError' }
+    OnlineConfConflict:
+      description: Название уже занято в выбранном скоупе
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OnlineConfError' }
     ModerationForbidden:
       description: Доступ требует роли модератора и чужого объявления. Для записи требуется CSRF-токен.
       content:
@@ -2086,6 +2192,41 @@ components:
           example: { error: cart items are unavailable, listing_ids: [1024, 1031] }
 
   schemas:
+    OnlineConfScope:
+      type: string
+      enum: [frontend, auth, ads, search]
+    OnlineConfKind:
+      type: string
+      enum: [config, flag]
+    OnlineConfFields:
+      type: object
+      properties:
+        scope: { $ref: '#/components/schemas/OnlineConfScope' }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        value:
+          description: |
+            Для config допускается любое JSON-значение. Для flag допускается boolean
+            или объект с rollout_percent (целое от 0 до 100) и массивами положительных
+            int32 included_user_ids и excluded_user_ids.
+          example: { rollout_percent: 25, included_user_ids: [42], excluded_user_ids: [17] }
+    OnlineConfEntry:
+      allOf:
+        - $ref: '#/components/schemas/OnlineConfFields'
+        - type: object
+          required: [id, scope, name, kind, value]
+          properties:
+            id: { type: integer, format: int32, minimum: 1 }
+            kind: { $ref: '#/components/schemas/OnlineConfKind' }
+    OnlineConfError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
     Error:
       type: object
       required: [error]

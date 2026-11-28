@@ -403,6 +403,9 @@ POST/PUT/PATCH/DELETE требуют заголовок `X-CSRF-Token` с ток
 | `GET` | `/api/sellers/{id}/reviews` | отзывы о продавце, сводка рейтинга |
 | `POST` | `/api/sellers/{id}/reports` | пожаловаться на продавца |
 | `GET` | `/api/onlineconf/admin/me` | проверка доступа к OnlineConf, требует права администратора |
+| `GET` | `/api/onlineconf/admin/entries?kind=flag&scope=search&name=price` | список записей, все фильтры необязательны |
+| `POST` | `/api/onlineconf/admin/entries` | создать конфиг или фича-флаг |
+| `PATCH` | `/api/onlineconf/admin/entries/{id}` | обновить имя, скоуп или значение записи |
 | `GET` | `/uploads/avatars/{file}` | загруженная аватарка |
 
 Ручки `/api/me*` без действующей cookie сессии отвечают 401. В `avatar_url` приходит путь на сервере API (`/uploads/avatars/…`), полный адрес картинки — origin API плюс этот путь.

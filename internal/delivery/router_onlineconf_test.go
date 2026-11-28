@@ -32,8 +32,8 @@ func newOnlineConfTestRouter(t *testing.T) onlineConfTestRouter {
 	csrf := newCSRFHandler()
 	h := NewOnlineConfAccessHandler(access)
 	return onlineConfTestRouter{
-		NewOnlineConfRouter("http://front.test", session, csrf, h),
-		newOnlineConfAPIRouter(session, csrf, h), checker, access, csrf,
+		NewOnlineConfRouter("http://front.test", session, csrf, h, nil),
+		newOnlineConfAPIRouter(session, csrf, h, nil), checker, access, csrf,
 	}
 }
 
@@ -81,6 +81,26 @@ func TestOnlineConfRouter_AdminGetsMe(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, `{"user_id":7}`, rec.Body.String())
 	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+}
+
+func TestOnlineConfRouter_EntriesRequireSessionAndCSRF(t *testing.T) {
+	r := newOnlineConfTestRouter(t)
+	path := onlineConfAdminPrefix + "/entries"
+	rec := onlineConfRequest(r.handler, path, false)
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+
+	for _, method := range []string{http.MethodPost, http.MethodPatch} {
+		requestPath := path
+		if method == http.MethodPatch {
+			requestPath += "/1"
+		}
+		req := httptest.NewRequest(method, requestPath, strings.NewReader("{}"))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "s"})
+		rec = httptest.NewRecorder()
+		r.handler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.JSONEq(t, `{"error":"invalid csrf token"}`, rec.Body.String())
+	}
 }
 
 func TestOnlineConfRouter_EveryAdminRouteForbidsRegularUser(t *testing.T) {
