@@ -22,6 +22,10 @@ func IsAuthPath(p string) bool {
 	return strings.HasPrefix(p, "/api/password/") || strings.HasPrefix(p, "/api/email/") || strings.HasPrefix(p, "/api/me/email/") || strings.HasPrefix(p, "/uploads/avatars/")
 }
 
+func IsSearchPath(p string) bool {
+	return p == "/api/search" || p == "/api/search/settings"
+}
+
 func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 	auth, err := newProxy(authURL)
 	if err != nil {
@@ -57,7 +61,7 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		switch {
 		case IsAuthPath(p):
 			auth.ServeHTTP(w, r)
-		case p == "/api/search":
+		case IsSearchPath(p):
 			search.ServeHTTP(w, r)
 		default:
 			ads.ServeHTTP(w, r)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/delivery"
 	adsv1 "github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gen/ads/v1"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/usecase"
 )
 
@@ -57,7 +58,7 @@ func TestPublishedSearch(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	router := delivery.NewSearchRouter("", adsv1.NewAdsServiceClient(conn))
+	router := delivery.NewSearchRouter("", adsv1.NewAdsServiceClient(conn), nil, onlineconf.NewSearchCache(""))
 
 	tests := []struct {
 		name   string

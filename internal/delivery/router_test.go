@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/gateway"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 )
 
 type testRouter struct {
@@ -44,12 +45,12 @@ func newTestRouterWithUploads(t *testing.T, dir string) *testRouter {
 		NewModerationHandler(nil),
 		NewFavoritesHandler(NewMockFavoritesUsecase(ctrl)),
 	)
-	searchRouter := NewSearchRouter("http://front.test", nil)
+	searchRouter := NewSearchRouter("http://front.test", nil, NewSessionMiddleware(r.auth), onlineconf.NewSearchCache(""))
 	r.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		switch {
 		case gateway.IsAuthPath(req.URL.Path):
 			authRouter.ServeHTTP(w, req)
-		case req.URL.Path == "/api/search":
+		case gateway.IsSearchPath(req.URL.Path):
 			searchRouter.ServeHTTP(w, req)
 		default:
 			adsRouter.ServeHTTP(w, req)
