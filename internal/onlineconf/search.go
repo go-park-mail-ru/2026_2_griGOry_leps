@@ -21,6 +21,14 @@ const (
 type SearchSnapshot struct {
 	MaxQueryLength int32
 	priceSort      Rollout
+	buttonColor    string
+}
+
+func (s SearchSnapshot) ButtonColor() string {
+	if s.buttonColor == "orange" {
+		return "orange"
+	}
+	return "blue"
 }
 
 func (s SearchSnapshot) PriceSortEnabled(userID int32) bool {
@@ -137,6 +145,11 @@ func decodeSearchSnapshot(body []byte) (SearchSnapshot, error) {
 				return SearchSnapshot{}, errors.New("invalid max_query_length")
 			}
 			snapshot.MaxQueryLength = limit
+		case entry.Name == "search_button_color" && entry.Kind == "config":
+			var color string
+			if json.Unmarshal(entry.Value, &color) == nil {
+				snapshot.buttonColor = color
+			}
 		case entry.Name == searchPriceSortKey && entry.Kind == "flag":
 			flag, err := decodePriceSort(entry.Value)
 			if err != nil {

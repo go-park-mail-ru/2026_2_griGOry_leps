@@ -1009,7 +1009,7 @@ paths:
         - sessionCookie: []
       responses:
         '200':
-          description: Лимит длины запроса и доступность сортировки по цене
+          description: Лимит длины запроса, доступность сортировки по цене и цвет кнопки поиска
           headers:
             Cache-Control:
               schema: { type: string, example: no-store }
@@ -1017,7 +1017,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [max_query_length, price_sort_enabled]
+                required: [max_query_length, price_sort_enabled, search_button_color]
                 properties:
                   max_query_length:
                     type: integer
@@ -1026,6 +1026,10 @@ paths:
                     description: Длина q в кодовых точках Unicode без пробелов по краям. null означает отсутствие лимита.
                     example: 100
                   price_sort_enabled: { type: boolean, example: true }
+                  search_button_color:
+                    type: string
+                    enum: [blue, orange]
+                    example: orange
         '500': { $ref: '#/components/responses/InternalError' }
         '502': { description: Ошибка при проверке сессии }
         '503': { description: Сервис auth недоступен }

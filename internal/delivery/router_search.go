@@ -50,9 +50,10 @@ func (h searchHandler) options(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := struct {
-		MaxQueryLength   *int32 `json:"max_query_length"`
-		PriceSortEnabled bool   `json:"price_sort_enabled"`
-	}{PriceSortEnabled: enabled}
+		MaxQueryLength    *int32 `json:"max_query_length"`
+		PriceSortEnabled  bool   `json:"price_sort_enabled"`
+		SearchButtonColor string `json:"search_button_color"`
+	}{PriceSortEnabled: enabled, SearchButtonColor: snapshot.ButtonColor()}
 	if snapshot.MaxQueryLength > 0 {
 		response.MaxQueryLength = &snapshot.MaxQueryLength
 	}

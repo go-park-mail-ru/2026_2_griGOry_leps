@@ -30,11 +30,11 @@ func (a *onlineConfSearchAds) SearchPublished(_ context.Context, req *adsv1.Sear
 }
 
 func TestSearchOnlineConfRefreshesSettingsAndSearchTogether(t *testing.T) {
-	snapshot := func(limit int, flag string) string {
-		return fmt.Sprintf(`[{"scope":"search","name":"max_query_length","kind":"config","value":%d},{"scope":"search","name":"price_sort","kind":"flag","value":%s}]`, limit, flag)
+	snapshot := func(limit int, flag, color string) string {
+		return fmt.Sprintf(`[{"scope":"search","name":"max_query_length","kind":"config","value":%d},{"scope":"search","name":"price_sort","kind":"flag","value":%s},{"scope":"search","name":"search_button_color","kind":"config","value":%s}]`, limit, flag, color)
 	}
 	var body atomic.Value
-	body.Store(snapshot(3, `{"rollout_percent":0,"included_user_ids":[21]}`))
+	body.Store(snapshot(3, `{"rollout_percent":0,"included_user_ids":[21]}`, `"orange"`))
 	var polls atomic.Int32
 	config := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		polls.Add(1)
@@ -81,11 +81,11 @@ func TestSearchOnlineConfRefreshesSettingsAndSearchTogether(t *testing.T) {
 	rec := get("/api/search/settings", "buyer")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	require.JSONEq(t, `{"max_query_length":3,"price_sort_enabled":true}`, rec.Body.String())
+	require.JSONEq(t, `{"max_query_length":3,"price_sort_enabled":true,"search_button_color":"orange"}`, rec.Body.String())
 	for _, session := range []string{"seller", "", "expired"} {
 		rec = get("/api/search/settings", session)
 		require.Equal(t, http.StatusOK, rec.Code)
-		require.JSONEq(t, `{"max_query_length":3,"price_sort_enabled":false}`, rec.Body.String())
+		require.JSONEq(t, `{"max_query_length":3,"price_sort_enabled":false,"search_button_color":"orange"}`, rec.Body.String())
 		rec = get("/api/search?sort=price_asc&user_id=21", session)
 		require.Equal(t, http.StatusForbidden, rec.Code)
 		require.JSONEq(t, `{"error":"price sorting disabled"}`, rec.Body.String())
@@ -101,25 +101,25 @@ func TestSearchOnlineConfRefreshesSettingsAndSearchTogether(t *testing.T) {
 	require.JSONEq(t, `{"error":"search query too long","field":"q"}`, rec.Body.String())
 	require.Equal(t, http.StatusOK, get("/api/search?sort=newest&price_min=10", "no-auth-call").Code)
 
-	body.Store(snapshot(2, `{"rollout_percent":100,"excluded_user_ids":[21]}`))
+	body.Store(snapshot(2, `{"rollout_percent":100,"excluded_user_ids":[21]}`, `"blue"`))
 	require.Eventually(t, func() bool { return settings.Snapshot().MaxQueryLength == 2 }, 3*time.Second, 5*time.Millisecond)
 	require.Equal(t, http.StatusForbidden, get("/api/search?sort=price_desc", "buyer").Code)
 	require.Equal(t, http.StatusOK, get("/api/search?sort=price_desc", "seller").Code)
 	require.Equal(t, http.StatusOK, get("/api/search?sort=price_desc", "").Code)
 
-	body.Store(snapshot(1, `{"rollout_percent":101}`))
+	body.Store(snapshot(1, `{"rollout_percent":101}`, `"orange"`))
 	wantPolls := polls.Load() + 2
 	require.Eventually(t, func() bool { return polls.Load() >= wantPolls }, 3*time.Second, 5*time.Millisecond)
 	rec = get("/api/search/settings", "buyer")
-	require.JSONEq(t, `{"max_query_length":2,"price_sort_enabled":false}`, rec.Body.String())
+	require.JSONEq(t, `{"max_query_length":2,"price_sort_enabled":false,"search_button_color":"blue"}`, rec.Body.String())
 
-	body.Store(snapshot(4, `{"rollout_percent":25}`))
+	body.Store(snapshot(4, `{"rollout_percent":25}`, `{"color":"orange"}`))
 	require.Eventually(t, func() bool { return settings.Snapshot().MaxQueryLength == 4 }, 3*time.Second, 5*time.Millisecond)
 	rec = get("/api/search/settings", "rollout-user-4")
-	require.JSONEq(t, `{"max_query_length":4,"price_sort_enabled":false}`, rec.Body.String())
+	require.JSONEq(t, `{"max_query_length":4,"price_sort_enabled":false,"search_button_color":"blue"}`, rec.Body.String())
 	require.Equal(t, http.StatusForbidden, get("/api/search?sort=price_desc", "rollout-user-4").Code)
 	rec = get("/api/search/settings", "rollout-user-12")
-	require.JSONEq(t, `{"max_query_length":4,"price_sort_enabled":true}`, rec.Body.String())
+	require.JSONEq(t, `{"max_query_length":4,"price_sort_enabled":true,"search_button_color":"blue"}`, rec.Body.String())
 	require.Equal(t, http.StatusOK, get("/api/search?sort=price_desc", "rollout-user-12").Code)
 }
 
@@ -128,8 +128,8 @@ func TestSearchOnlineConfStartupDefaults(t *testing.T) {
 		name, url, settings string
 		priceSortStatus     int
 	}{
-		{"no URL configured", "", `{"max_query_length":null,"price_sort_enabled":true}`, http.StatusOK},
-		{"before first snapshot", "http://127.0.0.1:1/v1/entries", `{"max_query_length":null,"price_sort_enabled":false}`, http.StatusForbidden},
+		{"no URL configured", "", `{"max_query_length":null,"price_sort_enabled":true,"search_button_color":"blue"}`, http.StatusOK},
+		{"before first snapshot", "http://127.0.0.1:1/v1/entries", `{"max_query_length":null,"price_sort_enabled":false,"search_button_color":"blue"}`, http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router := NewSearchRouter("", &onlineConfSearchAds{}, nil, onlineconf.NewSearchCache(tc.url))

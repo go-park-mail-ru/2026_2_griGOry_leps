@@ -110,7 +110,8 @@ CSRF-токен, полученный у auth через gateway, проверя
 [
   {"id": 1, "scope": "search", "kind": "config", "name": "max_query_length", "value": 100},
   {"id": 2, "scope": "search", "kind": "flag", "name": "price_sort",
-   "value": {"rollout_percent": 25, "included_user_ids": [42], "excluded_user_ids": [17]}}
+   "value": {"rollout_percent": 25, "included_user_ids": [42], "excluded_user_ids": [17]}},
+  {"id": 3, "scope": "search", "kind": "config", "name": "search_button_color", "value": "orange"}
 ]
 ```
 
@@ -122,6 +123,8 @@ CSRF-токен, полученный у auth через gateway, проверя
 применяется процент. Для проверки в админке используйте ту же функцию,
 что и поиск, `onlineconf.Rollout.EnabledFor` с парой `("search", "price_sort")`.
 Гостям сортировка по цене доступна при 100%.
+Параметр `search_button_color` принимает JSON-строку `"blue"` или `"orange"`.
+При отсутствии ключа или при неизвестном значении API возвращает `blue`.
 
 При сбое сервис пользуется последним корректным снимком. С настроенным URL
 сортировка по цене выключена до первой успешной загрузки. Если URL пуст,
