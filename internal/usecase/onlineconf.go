@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/onlineconf"
 )
 
 type OnlineconfUsecase struct {
@@ -118,6 +119,9 @@ func (uc *OnlineconfUsecase) History(ctx context.Context, id int) ([]domain.Onli
 	return uc.entries.History(ctx, id)
 }
 
+// CheckFlag reads the value straight from the storage, while services use a
+// periodically refreshed snapshot, so right after an edit the result may be
+// ahead of what services currently apply.
 func (uc *OnlineconfUsecase) CheckFlag(ctx context.Context, id int, userID int32) (bool, error) {
 	if id <= 0 || userID <= 0 {
 		return false, domain.ErrInvalidOnlineconf
@@ -131,7 +135,7 @@ func (uc *OnlineconfUsecase) CheckFlag(ctx context.Context, id int, userID int32
 	}
 	rule, err := onlineconf.DecodeRollout(entry.Value)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("%w: flag %s/%s: %v", domain.ErrInvalidOnlineconf, entry.Scope, entry.Name, err)
 	}
 	return rule.EnabledFor(entry.Scope, entry.Name, userID)
 }

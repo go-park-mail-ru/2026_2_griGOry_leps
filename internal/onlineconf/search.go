@@ -177,12 +177,12 @@ func DecodeRollout(raw json.RawMessage) (Rollout, error) {
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil || payload.Percent == nil ||
 		*payload.Percent < 0 || *payload.Percent > 100 {
-		return Rollout{}, errors.New("invalid price_sort rollout percentage")
+		return Rollout{}, errors.New("invalid rollout percentage")
 	}
 	for _, ids := range [][]int32{payload.IncludedIDs, payload.ExcludedIDs} {
 		for _, id := range ids {
 			if id <= 0 {
-				return Rollout{}, errors.New("invalid price_sort user ID")
+				return Rollout{}, errors.New("invalid rollout user ID")
 			}
 		}
 	}
