@@ -109,6 +109,8 @@ sys.exit(0 if ok else 1)
         self.assertEqual((self.root / "current").resolve(), new)
         self.assertIn("restart goget-backend@auth.service goget-backend@ads.service goget-backend@search.service goget-backend@onlineconf.service goget-gateway.service", self.commands())
         self.assertIn("curl http://127.0.0.1:8000/api/onlineconf/admin/me", self.commands())
+        # OnlineConf допускает лимит длины запроса от 1 символа.
+        self.assertIn("curl http://127.0.0.1:8000/api/search?q=g\n", self.commands())
 
     def test_manual_rollback_to_legacy_release(self):
         old = self.release("old", onlineconf=False)

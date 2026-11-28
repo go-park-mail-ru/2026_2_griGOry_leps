@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func runCLI(ctx context.Context, args []string, grant func(context.Context, int32) (bool, error), stdout, stderr io.Writer) int {
@@ -26,6 +28,10 @@ func runCLI(ctx context.Context, args []string, grant func(context.Context, int3
 		return 1
 	}
 	created, err := grant(ctx, int32(id))
+	if errors.Is(err, domain.ErrUserNotFound) {
+		_, _ = fmt.Fprintf(stderr, "user %d not found\n", id)
+		return 1
+	}
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1

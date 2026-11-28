@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,6 +76,11 @@ func run(cfg *config.Config) error {
 	defer func() { _ = checker.Close() }()
 	access := delivery.NewOnlineConfAccessHandler(usecase.NewOnlineConfAccessUsecase(admins))
 	csrfHandler := delivery.NewCSRFHandler(csrf.New([]byte(cfg.CSRFSecret), 24*time.Hour), cfg.CookieSecure)
-	router := delivery.NewOnlineConfRouter(cfg.FrontendOrigin, delivery.NewSessionMiddleware(checker), csrfHandler, access)
+	admin := delivery.NewOnlineConfRouter(cfg.FrontendOrigin, delivery.NewSessionMiddleware(checker), csrfHandler, access)
+	entries := delivery.NewOnlineconfRouter(usecase.NewOnlineconfUsecase(repository.NewOnlineconfRepository(pool)))
+	// /v1/entries читает search по локальному адресу; gateway туда не проксирует, CSRF и сессия к нему не относятся.
+	router := http.NewServeMux()
+	router.Handle("/v1/", entries)
+	router.Handle("/", admin)
 	return httpserver.Run("onlineconf", "127.0.0.1", httpserver.Env("ONLINECONF_PORT", "8084"), router)
 }

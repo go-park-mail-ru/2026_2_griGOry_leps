@@ -2,7 +2,12 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 type OnlineConfAdminRepository struct {
@@ -30,6 +35,10 @@ func (r *OnlineConfAdminRepository) IsAdmin(ctx context.Context, userID int32) (
 
 func (r *OnlineConfAdminRepository) Grant(ctx context.Context, userID int32, grantedBy *int32) (bool, error) {
 	result, err := conn(ctx, r.db).ExecContext(ctx, grantOnlineConfAdminQuery, userID, grantedBy)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		return false, domain.ErrUserNotFound
+	}
 	if err != nil {
 		return false, fmt.Errorf("grant onlineconf admin: %w", err)
 	}

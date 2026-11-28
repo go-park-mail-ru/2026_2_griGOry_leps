@@ -22,6 +22,10 @@ func IsAuthPath(p string) bool {
 	return strings.HasPrefix(p, "/api/password/") || strings.HasPrefix(p, "/api/email/") || strings.HasPrefix(p, "/api/me/email/") || strings.HasPrefix(p, "/uploads/avatars/")
 }
 
+func IsSearchPath(p string) bool {
+	return p == "/api/search" || p == "/api/search/settings"
+}
+
 func IsOnlineConfPath(p string) bool {
 	return p == "/api/onlineconf" || strings.HasPrefix(p, "/api/onlineconf/")
 }
@@ -65,7 +69,7 @@ func New(authURL, adsURL, searchURL, onlineconfURL, origin string) (http.Handler
 		switch {
 		case IsAuthPath(p):
 			auth.ServeHTTP(w, r)
-		case p == "/api/search":
+		case IsSearchPath(p):
 			search.ServeHTTP(w, r)
 		case IsOnlineConfPath(p):
 			onlineconf.ServeHTTP(w, r)
@@ -84,7 +88,7 @@ func MetricRoute(r *http.Request) string {
 		return "blocked"
 	case IsAuthPath(p):
 		return "auth"
-	case p == "/api/search":
+	case IsSearchPath(p):
 		return "search"
 	case IsOnlineConfPath(p):
 		return "onlineconf"

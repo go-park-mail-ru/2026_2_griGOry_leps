@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 type cliTestKey struct{}
@@ -102,4 +105,15 @@ func TestRequireDatabaseURL(t *testing.T) {
 		_, err := requireDatabaseURL(lookup(values))
 		require.EqualError(t, err, "DATABASE_URL must be set")
 	}
+}
+
+func TestRunCLI_UnknownUser(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	grant := func(context.Context, int32) (bool, error) {
+		return false, fmt.Errorf("grant onlineconf admin: %w", domain.ErrUserNotFound)
+	}
+	code := runCLI(context.Background(), []string{"grant-admin", "--user-id", "7"}, grant, &stdout, &stderr)
+	require.Equal(t, 1, code)
+	require.Empty(t, stdout.String())
+	require.Equal(t, "user 7 not found\n", stderr.String())
 }

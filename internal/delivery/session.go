@@ -37,24 +37,28 @@ func (h *SessionMiddleware) RequireAuth(next http.Handler) http.Handler {
 
 func (h *SessionMiddleware) OptionalAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(sessionCookieName)
+		id, err := h.optionalUserID(r)
 		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		user, err := h.checker.Me(r.Context(), cookie.Value)
-		if err != nil {
-			if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
-				next.ServeHTTP(w, r)
-				return
-			}
 			writeSessionError(w, r, err)
 			return
 		}
-
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDKey{}, user.ID)))
+		if id != 0 {
+			r = r.WithContext(context.WithValue(r.Context(), userIDKey{}, id))
+		}
+		next.ServeHTTP(w, r)
 	})
+}
+
+func (h *SessionMiddleware) optionalUserID(r *http.Request) (int32, error) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return 0, nil
+	}
+	user, err := h.checker.Me(r.Context(), cookie.Value)
+	if errors.Is(err, domain.ErrSessionExpired) || errors.Is(err, domain.ErrUserNotFound) {
+		return 0, nil
+	}
+	return user.ID, err
 }
 
 func writeSessionError(w http.ResponseWriter, r *http.Request, err error) {

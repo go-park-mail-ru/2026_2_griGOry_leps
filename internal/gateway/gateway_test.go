@@ -42,6 +42,7 @@ func TestOnlineConfRouted(t *testing.T) {
 		{"/api/onlineconf/", "onlineconf"},
 		{"/api/onlineconfx", "ads"},
 		{"/api/search", "search"},
+		{"/api/search/settings", "search"},
 		{"/api/login", "auth"},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
@@ -61,6 +62,7 @@ func TestMetricRouteOnlineConf(t *testing.T) {
 		{"/api/onlineconf", "onlineconf"},
 		{"/api/onlineconfx", "ads"},
 		{"/api/ads/../onlineconf/admin/me", "onlineconf"},
+		{"/api/search/settings", "search"},
 	} {
 		require.Equal(t, tc.want, MetricRoute(httptest.NewRequest(http.MethodGet, tc.path, nil)))
 	}

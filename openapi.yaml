@@ -843,7 +843,10 @@ paths:
         объявление с большим ID. Для сортировки newest вместо offset можно
         передать cursor из next_cursor предыдущей страницы с теми же фильтрами.
         Если совпадений нет, сервер возвращает пустой массив items и total, равный 0.
-      security: []
+        Лимит длины q и доступность сортировки по цене возвращает GET /search/settings.
+      security:
+        - {}
+        - sessionCookie: []
       parameters:
         - name: q
           in: query
@@ -886,10 +889,51 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-        '502': { description: Ошибка при выполнении запроса в ads }
-        '503': { description: Сервис ads недоступен }
-        '504': { description: Истекло время ожидания ответа от ads }
+              examples:
+                queryTooLong: { value: { error: search query too long, field: q } }
+        '403':
+          description: Сортировка по цене выключена для текущего пользователя
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: price sorting disabled }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { description: Ошибка при выполнении запроса в ads или проверке сессии }
+        '503': { description: Сервис ads или auth недоступен }
+        '504': { description: Истекло время ожидания ответа от ads или auth }
 
+  /search/settings:
+    get:
+      tags: [Лента]
+      operationId: getSearchSettings
+      summary: Действующие настройки поиска для текущего пользователя
+      description: Гости и пользователи с истёкшей сессией получают настройки для гостей.
+      security:
+        - {}
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Лимит длины запроса и доступность сортировки по цене
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [max_query_length, price_sort_enabled]
+                properties:
+                  max_query_length:
+                    type: integer
+                    minimum: 1
+                    nullable: true
+                    description: Длина q в кодовых точках Unicode без пробелов по краям. null означает отсутствие лимита.
+                    example: 100
+                  price_sort_enabled: { type: boolean, example: true }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502': { description: Ошибка при проверке сессии }
+        '503': { description: Сервис auth недоступен }
+        '504': { description: Истекло время ожидания ответа от auth }
 
   /listings:
     get:

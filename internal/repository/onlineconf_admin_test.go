@@ -6,7 +6,10 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
 func TestOnlineConfAdmin_IsAdmin(t *testing.T) {
@@ -77,4 +80,12 @@ func TestOnlineConfAdmin_CheckReady(t *testing.T) {
 			require.ErrorContains(t, err, "check onlineconf schema")
 		}
 	}
+}
+
+func TestOnlineConfAdmin_Grant_UnknownUser(t *testing.T) {
+	db, mock := newSQLMock(t)
+	mock.ExpectExec(grantOnlineConfAdminQuery).WithArgs(int32(7), nil).
+		WillReturnError(&pgconn.PgError{Code: "23503", ConstraintName: "onlineconf_admin_user_id_fkey"})
+	_, err := NewOnlineConfAdminRepository(db).Grant(context.Background(), 7, nil)
+	require.ErrorIs(t, err, domain.ErrUserNotFound)
 }
