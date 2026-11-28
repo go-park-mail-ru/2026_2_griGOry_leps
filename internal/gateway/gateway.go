@@ -22,7 +22,11 @@ func IsAuthPath(p string) bool {
 	return strings.HasPrefix(p, "/api/password/") || strings.HasPrefix(p, "/api/email/") || strings.HasPrefix(p, "/api/me/email/") || strings.HasPrefix(p, "/uploads/avatars/")
 }
 
-func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
+func IsOnlineConfPath(p string) bool {
+	return p == "/api/onlineconf" || strings.HasPrefix(p, "/api/onlineconf/")
+}
+
+func New(authURL, adsURL, searchURL, onlineconfURL, origin string) (http.Handler, error) {
 	auth, err := newProxy(authURL)
 	if err != nil {
 		return nil, err
@@ -32,6 +36,10 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 		return nil, err
 	}
 	search, err := newProxy(searchURL)
+	if err != nil {
+		return nil, err
+	}
+	onlineconf, err := newProxy(onlineconfURL)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +67,8 @@ func New(authURL, adsURL, searchURL, origin string) (http.Handler, error) {
 			auth.ServeHTTP(w, r)
 		case p == "/api/search":
 			search.ServeHTTP(w, r)
+		case IsOnlineConfPath(p):
+			onlineconf.ServeHTTP(w, r)
 		default:
 			ads.ServeHTTP(w, r)
 		}
@@ -76,6 +86,8 @@ func MetricRoute(r *http.Request) string {
 		return "auth"
 	case p == "/api/search":
 		return "search"
+	case IsOnlineConfPath(p):
+		return "onlineconf"
 	default:
 		return "ads"
 	}

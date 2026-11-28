@@ -7,6 +7,11 @@ import (
 	"github.com/go-park-mail-ru/2026_2_griGOry_leps/internal/domain"
 )
 
+type OnlineConfAdminRepository interface {
+	IsAdmin(ctx context.Context, userID int32) (bool, error)
+	Grant(ctx context.Context, userID int32, grantedBy *int32) (bool, error)
+}
+
 type UserRepository interface {
 	Create(ctx context.Context, email, passwordHash, firstName, phone string) (domain.User, error)
 	GetByEmail(ctx context.Context, email string) (domain.User, error)

@@ -1,7 +1,7 @@
 [Unit]
 Description=GoGet API gateway
-Wants=goget-backend@auth.service goget-backend@ads.service goget-backend@search.service
-After=network.target goget-backend@auth.service goget-backend@ads.service goget-backend@search.service
+Wants=goget-backend@auth.service goget-backend@ads.service goget-backend@search.service goget-backend@onlineconf.service
+After=network.target goget-backend@auth.service goget-backend@ads.service goget-backend@search.service goget-backend@onlineconf.service
 StartLimitIntervalSec=0
 
 [Service]

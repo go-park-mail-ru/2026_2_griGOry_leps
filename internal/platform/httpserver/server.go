@@ -27,8 +27,7 @@ func Run(name, host, port string, handler http.Handler) error {
 }
 
 func RunContext(ctx context.Context, name, host, port string, handler http.Handler) error {
-	switch name {
-	case "auth", "ads", "search":
+	if metricsEnabled(name) {
 		handler = withMetrics(handler)
 	}
 

@@ -6,6 +6,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+func metricsEnabled(name string) bool {
+	switch name {
+	case "auth", "ads", "search", "onlineconf":
+		return true
+	default:
+		return false
+	}
+}
+
 func withMetrics(next http.Handler) http.Handler {
 	metrics := promhttp.Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

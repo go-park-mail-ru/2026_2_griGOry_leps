@@ -69,8 +69,62 @@ tags:
     description: Корзина текущего пользователя
   - name: Заказы
     description: Оформление покупки и оплата
+  - name: OnlineConf
+    description: Административный доступ по сессии GoGet и праву OnlineConf
 
 paths:
+  /onlineconf/admin/me:
+    get:
+      tags: [OnlineConf]
+      operationId: onlineConfAdminMe
+      summary: Проверить доступ администратора OnlineConf
+      description: |
+        Использует cookie `session_id` GoGet. Право OnlineConf проверяется
+        в БД на каждом запросе, без кеша. Первый администратор выдаётся
+        командой `onlineconf grant-admin --user-id N`; N — поле `id` из `GET /me`.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Пользователь имеет право администратора OnlineConf
+          headers:
+            Cache-Control:
+              description: Ответ не кешируется
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id]
+                properties:
+                  user_id: { type: integer, format: int32, minimum: 1, example: 7 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: У пользователя нет права администратора OnlineConf
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: forbidden }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '502':
+          description: Некорректный ответ auth
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: invalid authentication service response }
+        '503':
+          description: Auth недоступен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: authentication service unavailable }
+        '504':
+          description: Истёк таймаут проверки сессии
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example: { error: authentication service timeout }
+
   /health:
     get:
       tags: [Служебное]

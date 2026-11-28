@@ -1,8 +1,10 @@
 package delivery
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -44,7 +46,7 @@ func accessLogMiddleware(next http.Handler) http.Handler {
 		duration := time.Since(start)
 		observeHTTPRequest(r.Method, route.Load(), rec.status, duration)
 		level := slog.LevelInfo
-		if rec.status >= http.StatusInternalServerError {
+		if rec.status >= http.StatusInternalServerError && !errors.Is(r.Context().Err(), context.Canceled) {
 			level = slog.LevelError
 		}
 

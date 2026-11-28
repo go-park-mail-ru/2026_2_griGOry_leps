@@ -28,6 +28,7 @@ func main() {
 		httpserver.Env("AUTH_URL", "http://127.0.0.1:8081"),
 		httpserver.Env("ADS_URL", "http://127.0.0.1:8082"),
 		httpserver.Env("SEARCH_URL", "http://127.0.0.1:8083"),
+		httpserver.Env("ONLINECONF_URL", "http://127.0.0.1:8084"),
 		httpserver.Env("FRONTEND_ORIGIN", "http://localhost:5173"),
 	)
 	if err != nil {

@@ -18,6 +18,60 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
+// MockOnlineConfAdminRepository is a mock of OnlineConfAdminRepository interface.
+type MockOnlineConfAdminRepository struct {
+	ctrl     *gomock.Controller
+	recorder *MockOnlineConfAdminRepositoryMockRecorder
+	isgomock struct{}
+}
+
+// MockOnlineConfAdminRepositoryMockRecorder is the mock recorder for MockOnlineConfAdminRepository.
+type MockOnlineConfAdminRepositoryMockRecorder struct {
+	mock *MockOnlineConfAdminRepository
+}
+
+// NewMockOnlineConfAdminRepository creates a new mock instance.
+func NewMockOnlineConfAdminRepository(ctrl *gomock.Controller) *MockOnlineConfAdminRepository {
+	mock := &MockOnlineConfAdminRepository{ctrl: ctrl}
+	mock.recorder = &MockOnlineConfAdminRepositoryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockOnlineConfAdminRepository) EXPECT() *MockOnlineConfAdminRepositoryMockRecorder {
+	return m.recorder
+}
+
+// Grant mocks base method.
+func (m *MockOnlineConfAdminRepository) Grant(ctx context.Context, userID int32, grantedBy *int32) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Grant", ctx, userID, grantedBy)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Grant indicates an expected call of Grant.
+func (mr *MockOnlineConfAdminRepositoryMockRecorder) Grant(ctx, userID, grantedBy any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grant", reflect.TypeOf((*MockOnlineConfAdminRepository)(nil).Grant), ctx, userID, grantedBy)
+}
+
+// IsAdmin mocks base method.
+func (m *MockOnlineConfAdminRepository) IsAdmin(ctx context.Context, userID int32) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsAdmin", ctx, userID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsAdmin indicates an expected call of IsAdmin.
+func (mr *MockOnlineConfAdminRepositoryMockRecorder) IsAdmin(ctx, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsAdmin", reflect.TypeOf((*MockOnlineConfAdminRepository)(nil).IsAdmin), ctx, userID)
+}
+
 // MockUserRepository is a mock of UserRepository interface.
 type MockUserRepository struct {
 	ctrl     *gomock.Controller

@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: run run-auth run-ads run-search run-gateway build test test-integration tidy migrate-up migrate-status migrate-down seed proto
+.PHONY: run run-auth run-ads run-search run-onlineconf run-gateway build test test-integration tidy migrate-up migrate-status migrate-down seed proto
 
 run: run-gateway
 
@@ -14,11 +14,14 @@ run-ads:
 run-search:
 	go run ./cmd/search
 
+run-onlineconf:
+	go run ./cmd/onlineconf
+
 run-gateway:
 	go run ./cmd/gateway
 
 build:
-	go build -o bin/ ./cmd/auth ./cmd/ads ./cmd/search ./cmd/gateway
+	go build -o bin/ ./cmd/auth ./cmd/ads ./cmd/search ./cmd/onlineconf ./cmd/gateway
 
 test:
 	go test ./...
